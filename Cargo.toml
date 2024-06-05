@@ -1,0 +1,10 @@
+[workspace]
+members = ["muni_bot"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["municorn <municorn@musicaloft.com>"]
+description = "muni_bot, municorn's Twitch and Discord chatbot"
+edition = "2021"
+license-file = "LICENSE"
