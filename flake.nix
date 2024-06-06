@@ -59,11 +59,11 @@
       };
 
       nativeBuildInputs = with pkgs; [
+        cargo-leptos
         clang
         glibc
         leptosfmt
         pkg-config
-        trunk
       ];
       buildInputs = with pkgs; [libressl];
 
