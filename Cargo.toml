@@ -8,3 +8,11 @@ authors = ["municorn <municorn@musicaloft.com>"]
 description = "muni_bot, municorn's Twitch and Discord chatbot"
 edition = "2021"
 license-file = "LICENSE"
+
+# Defines a size-optimized profile for the WASM bundle in release mode
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"
