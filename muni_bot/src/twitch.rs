@@ -1,4 +1,4 @@
-use std::{borrow::Cow, str::FromStr};
+use std::str::FromStr;
 
 use twitch_oauth2::Scope;
 use url::Url;
@@ -15,7 +15,7 @@ const SCOPE: [Scope; 8] = [
     Scope::ChannelReadSubscriptions,
     Scope::ModeratorManageAnnouncements,
     Scope::ModeratorManageBannedUsers,
-    Scope::Other(Cow::Borrowed("moderator:read:chatters")),
+    Scope::ModeratorReadChatters,
     Scope::ModeratorManageChatMessages,
     Scope::ChatEdit,
     Scope::ChatRead,
