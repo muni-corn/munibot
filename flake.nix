@@ -62,8 +62,8 @@
         cargo-leptos
         clang
         glibc
-        leptosfmt
         pkg-config
+        tailwindcss
       ];
       buildInputs = with pkgs; [libressl];
 
@@ -104,7 +104,14 @@
         moldDevShell {
           checks = self.checks.${system};
 
-          packages = with pkgs; [leptosfmt cargo-watch cargo-outdated flyctl cargo-machete];
+          packages = with pkgs; [
+            cargo-machete
+            cargo-outdated
+            cargo-watch
+            flyctl
+            leptosfmt
+            tailwindcss
+          ];
 
           LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
           RUST_LOG = "error,muni_bot=info";

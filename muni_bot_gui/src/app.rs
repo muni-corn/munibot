@@ -8,12 +8,10 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        // injects a stylesheet into the document <head>
-        // id=leptos means cargo-leptos will hot-reload this stylesheet
         <Stylesheet id="leptos" href="/pkg/muni_bot_gui.css"/>
 
         // sets the document title
-        <Title text="Welcome to Leptos"/>
+        <Title text="muni_bot"/>
 
         // content for this welcome page
         <Router>
@@ -30,13 +28,12 @@ pub fn App() -> impl IntoView {
 /// Renders the home page of your application.
 #[component]
 fn HomePage() -> impl IntoView {
-    // Creates a reactive value to update the button
-    let (count, set_count) = create_signal(0);
-    let on_click = move |_| set_count.update(|count| *count += 1);
-
     view! {
-        <h1>"Welcome to Leptos!"</h1>
-        <button on:click=on_click>"Click Me: " {count}</button>
+        <div class="h-screen w-screen bg-gradient-to-br from-emerald-900 to-sky-900">
+            <header class="align-middle">
+                <h1 class="text-white text-4xl font-bold">"muni_bot"</h1>
+            </header>
+        </div>
     }
 }
 
