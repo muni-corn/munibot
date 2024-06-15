@@ -5,7 +5,11 @@ module.exports = {
     files: ["*.html", "./src/**/*.rs"],
   },
   theme: {
-    extend: {},
+    extend: {
+      backgroundImage: {
+        "muni-bot": "url('/assets/muni_bot_bg.jpg')",
+      },
+    },
   },
   plugins: [],
 };

@@ -29,10 +29,17 @@ pub fn App() -> impl IntoView {
 #[component]
 fn HomePage() -> impl IntoView {
     view! {
-        <div class="h-screen w-screen bg-gradient-to-br from-emerald-900 to-sky-900">
-            <header class="align-middle">
-                <h1 class="text-white text-4xl font-bold">"muni_bot"</h1>
-            </header>
+        <div class="h-screen w-screen bg-black">
+            <div class="flex items-center flex-col h-screen w-screen bg-muni-bot bg-cover bg-center bg-blend-multiply bg-black/75 place-content-center">
+                <p class="text-center text-5xl font-bold font-mono mb-8 text-sky-400">"muni_bot"</p>
+                <p class="text-center text-sky-400 mb-20">
+                    "the best bot for twitch and discord. personality included."
+                </p>
+                <button class="text-white font-bold align-center py-3 px-6 rounded-full bg-emerald-500 place-self-center mx-auto">
+                    "Get muni_bot"
+                </button>
+            </div>
+
         </div>
     }
 }
@@ -54,7 +61,5 @@ fn NotFound() -> impl IntoView {
         resp.set_status(actix_web::http::StatusCode::NOT_FOUND);
     }
 
-    view! {
-        <h1>"Not Found"</h1>
-    }
+    view! { <h1>"Not Found"</h1> }
 }
