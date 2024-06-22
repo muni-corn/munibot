@@ -7,7 +7,7 @@ module.exports = {
   theme: {
     extend: {
       backgroundImage: {
-        "muni-bot": "url('/assets/muni_bot_bg.jpg')",
+        "muni-bot": "url('/muni_bot_bg.jpg')",
       },
     },
   },
