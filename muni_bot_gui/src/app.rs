@@ -1,9 +1,7 @@
-use crate:: error_template::{AppError, ErrorTemplate};
+use crate::pages::{error_template::{AppError, ErrorTemplate}, get::Get};
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
-
-use crate::get::Get;
 
 #[component]
 pub fn App() -> impl IntoView {
