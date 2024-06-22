@@ -42,10 +42,10 @@ fn HomePage() -> impl IntoView {
                 <p class="text-center text-sky-400 mb-20">
                     "the fun bot for twitch and discord. personality included."
                 </p>
-                <A href=discord_oauth_url>
+                <A href="get">
                     <button class="btn raised mx-auto mb-4">"Get muni_bot"</button>
                 </A>
-                <A href="dashboard">
+                <A href=discord_oauth_url>
                     <button class="btn mx-auto">"Dashboard"</button>
                 </A>
             </div>
