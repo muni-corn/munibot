@@ -32,6 +32,8 @@ pub fn App() -> impl IntoView {
 /// Renders the home page of your application.
 #[component]
 fn HomePage() -> impl IntoView {
+    let discord_oauth_url = std::env::var("DISCORD_OAUTH_URL").expect("DISCORD_OAUTH_URL env var not found :c");
+
     view! {
         <div class="h-screen w-screen bg-black">
             <div class="flex items-center flex-col h-screen w-screen bg-muni-bot bg-cover bg-center bg-blend-multiply bg-black/75 place-content-center">
@@ -39,7 +41,7 @@ fn HomePage() -> impl IntoView {
                 <p class="text-center text-sky-400 mb-20">
                     "the fun bot for twitch and discord. personality included."
                 </p>
-                <A href="get">
+                <A href=discord_oauth_url>
                     <button class="btn raised mx-auto mb-4">"Get muni_bot"</button>
                 </A>
                 <A href="dashboard">
