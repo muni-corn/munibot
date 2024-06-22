@@ -1,3 +1,20 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  h1 {
+    @apply text-5xl text-white font-bold font-mono;
+  }
+
+  button {
+    @apply text-emerald-500 font-bold py-3 px-6 rounded-full hover:bg-emerald-500/25 active:bg-emerald-600/50 active:top-0.5 focus:ring-4 ring-emerald-600/50 relative transition;
+
+    &.raised {
+      @apply text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700;
+    }
+  }
+}
+
+@layer components {
+}

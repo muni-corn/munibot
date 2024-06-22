@@ -31,13 +31,16 @@ fn HomePage() -> impl IntoView {
     view! {
         <div class="h-screen w-screen bg-black">
             <div class="flex items-center flex-col h-screen w-screen bg-muni-bot bg-cover bg-center bg-blend-multiply bg-black/75 place-content-center">
-                <p class="text-center text-5xl font-bold font-mono mb-8 text-sky-400">"muni_bot"</p>
+                <h1 class="text-center mb-8 text-sky-400">"muni_bot"</h1>
                 <p class="text-center text-sky-400 mb-20">
-                    "the best bot for twitch and discord. personality included."
+                    "the fun bot for twitch and discord. personality included."
                 </p>
-                <button class="text-white font-bold align-center py-3 px-6 rounded-full bg-emerald-500 place-self-center mx-auto">
-                    "Get muni_bot"
-                </button>
+                <A href="get">
+                    <button class="btn raised mx-auto mb-4">"Get muni_bot"</button>
+                </A>
+                <A href="dashboard">
+                    <button class="btn mx-auto">"Dashboard"</button>
+                </A>
             </div>
 
         </div>
