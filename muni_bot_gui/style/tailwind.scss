@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  div.backdrop-blue-green {
+    @apply h-screen w-screen bg-gradient-to-br from-sky-900 to-emerald-900;
+  }
+
   h1 {
     @apply text-5xl text-white font-bold font-mono;
   }
