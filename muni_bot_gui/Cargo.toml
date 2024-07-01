@@ -21,6 +21,7 @@ thiserror = "1"
 tracing = { version = "0.1", optional = true }
 http = "1"
 dotenvy = "0.15.7"
+leptos-use = { version = "0.10.10", features = ["ssr", "axum", "serde", "wasm_ssr"] }
 
 [features]
 hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate"]
