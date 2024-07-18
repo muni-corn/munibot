@@ -1,7 +1,12 @@
-use crate::pages::{error_template::{AppError, ErrorTemplate}, get::Get};
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
+
+use crate::pages::{
+    discord_auth::DiscordAuth,
+    error_template::{AppError, ErrorTemplate},
+    get::Get,
+};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -24,6 +29,7 @@ pub fn App() -> impl IntoView {
                 <Routes>
                     <Route path="" view=HomePage/>
                     <Route path="/get" view=Get/>
+                    <Route path="/discord" view=DiscordAuth/>
                 </Routes>
             </main>
         </Router>
