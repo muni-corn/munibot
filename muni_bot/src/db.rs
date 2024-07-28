@@ -1,6 +1,30 @@
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
-use surrealdb::{opt::IntoResource, Connection, RecordIdKey, Surreal};
+use surrealdb::{
+    engine::remote::ws::{Client, Ws},
+    opt::{auth::Database, IntoResource},
+    Connection, RecordIdKey, Surreal,
+};
+
+use crate::{config::DbConfig, MuniBotError};
+
+pub async fn connect_to_db(
+    config: &DbConfig,
+    database_name: &str,
+) -> Result<Surreal<Client>, MuniBotError> {
+    dotenvy::dotenv().ok();
+
+    let db = Surreal::new::<Ws>(&config.url).await?;
+    db.signin(Database {
+        namespace: "muni_bot",
+        database: database_name,
+        username: &config.user,
+        password: &std::env::var("DATABASE_PASS").expect("expected DATABASE_PASS to be set"),
+    })
+    .await?;
+
+    Ok(db)
+}
 
 #[async_trait]
 pub trait DbItem<C: Connection>: Serialize + DeserializeOwned {

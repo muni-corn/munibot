@@ -17,6 +17,7 @@ use surrealdb::{engine::remote::ws, opt::auth::Database, Surreal};
 use self::{admin::AdminCommandProvider, commands::DiscordCommandProvider};
 use crate::{
     config::{Config, DiscordConfig},
+    db::connect_to_db,
     handlers::DiscordMessageHandlerCollection,
     MuniBotError,
 };
@@ -31,19 +32,9 @@ impl DiscordState {
         handlers: DiscordMessageHandlerCollection,
         config: &Config,
     ) -> Result<Self, MuniBotError> {
-        let database_url = config.db.url.clone();
-        let db = Surreal::new::<ws::Ws>(&database_url).await?;
-        db.signin(Database {
-            namespace: "muni_bot",
-            database: "muni_bot",
-            username: &config.db.user,
-            password: &env::var("DATABASE_PASS").expect("expected DATABASE_PASS to be set"),
-        })
-        .await?;
-
         Ok(Self {
             handlers,
-            db,
+            db: connect_to_db(&config.db, "muni_bot").await?,
             config: config.discord.clone(),
         })
     }

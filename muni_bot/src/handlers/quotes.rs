@@ -13,6 +13,7 @@ use twitch_irc::message::ServerMessage;
 
 use crate::{
     config::{Config, DbConfig},
+    db::connect_to_db,
     twitch::{
         agent::TwitchAgent,
         bot::MuniBotTwitchIRCClient,
@@ -42,16 +43,7 @@ impl QuotesHandler {
     /// Create a new QuotesHandler, connecting to the database.
     pub async fn new(db_config: &DbConfig) -> Result<Self, MuniBotError> {
         dotenv().ok(); // TODO: map to MuniBotError::DotenvError
-
-        let db = Surreal::new::<Ws>(&db_config.url).await?;
-        db.signin(Database {
-            namespace: "muni_bot",
-            database: "muni_bot",
-            username: &db_config.user,
-            password: &env::var("DATABASE_PASS").expect("expected DATABASE_PASS to be set"),
-        })
-        .await?;
-
+        let db = connect_to_db(db_config, "muni_bot").await?;
         Ok(Self { db })
     }
 
