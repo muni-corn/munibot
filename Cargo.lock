@@ -3336,6 +3336,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "muni_bot_core"
+version = "0.1.0"
+
+[[package]]
 name = "muni_bot_gui"
 version = "0.1.0"
 dependencies = [

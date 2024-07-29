@@ -1,5 +1,5 @@
 [workspace]
-members = ["muni_bot", "muni_bot_gui"]
+members = ["muni_bot", "muni_bot_core", "muni_bot_gui"]
 resolver = "2"
 
 [workspace.package]

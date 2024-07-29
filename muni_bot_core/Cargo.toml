@@ -1,0 +1,9 @@
+[package]
+name = "muni_bot_core"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
