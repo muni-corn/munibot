@@ -1,14 +1,12 @@
 use std::time::{Duration, Instant};
 
+use muni_bot_core::config::Config;
 use twitch_irc::message::{ReplyToMessage, ServerMessage};
 
-use crate::{
-    config::Config,
-    twitch::{
-        agent::TwitchAgent,
-        bot::MuniBotTwitchIRCClient,
-        handler::{TwitchHandlerError, TwitchMessageHandler},
-    },
+use crate::twitch::{
+    agent::TwitchAgent,
+    bot::MuniBotTwitchIRCClient,
+    handler::{TwitchHandlerError, TwitchMessageHandler},
 };
 
 pub struct LiftHandler {

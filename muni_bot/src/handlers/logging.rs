@@ -1,16 +1,14 @@
 use std::future::Future;
 
 use async_trait::async_trait;
+use muni_bot_core::db::DbItem;
 use poise::serenity_prelude::{self as serenity, *};
 use serde::{Deserialize, Serialize};
 use surrealdb::{Connection, Surreal};
 
-use crate::{
-    db::DbItem,
-    discord::{
-        handler::{DiscordEventHandler, DiscordHandlerError},
-        DiscordFrameworkContext,
-    },
+use crate::discord::{
+    handler::{DiscordEventHandler, DiscordHandlerError},
+    DiscordFrameworkContext,
 };
 
 pub struct LoggingHandler;

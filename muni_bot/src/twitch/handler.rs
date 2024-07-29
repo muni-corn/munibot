@@ -1,13 +1,11 @@
 use std::fmt::Display;
 
 use async_trait::async_trait;
+use muni_bot_core::config::Config;
 use twitch_irc::message::ServerMessage;
 
 use super::agent::{TwitchAgent, TwitchAgentError};
-use crate::{
-    config::Config,
-    twitch::bot::{MuniBotTwitchIRCClient, MuniBotTwitchIRCError},
-};
+use crate::twitch::bot::{MuniBotTwitchIRCClient, MuniBotTwitchIRCError};
 
 #[async_trait]
 pub trait TwitchMessageHandler: Send {

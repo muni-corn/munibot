@@ -1,9 +1,8 @@
+use muni_bot_core::MuniBotError;
 use poise::serenity_prelude::{GuildId, UserId};
 use serde::{Deserialize, Serialize};
 use surrealdb::{Connection, Surreal};
 use thiserror::Error;
-
-use crate::MuniBotError;
 
 pub const GUILD_WALLET_TABLE: &str = "guild_wallet";
 

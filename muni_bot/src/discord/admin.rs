@@ -1,7 +1,8 @@
+use muni_bot_core::{db::DbItem, MuniBotError};
 use poise::serenity_prelude::ChannelId;
 
 use super::{DiscordCommand, DiscordCommandProvider, DiscordContext};
-use crate::{db::DbItem, handlers::logging::LoggingChannel, MuniBotError};
+use crate::handlers::logging::LoggingChannel;
 
 pub struct AdminCommandProvider;
 

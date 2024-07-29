@@ -1,7 +1,20 @@
+#![feature(decl_macro)]
+#![feature(let_chains)]
+#![feature(never_type)]
+#![warn(unused_crate_dependencies)]
+
 use std::sync::Arc;
 
 use clap::Parser;
+use discord::start_discord_integration;
 use env_logger::Env;
+use handlers::{
+    bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
+    greeting::GreetingHandler, logging::LoggingHandler, magical::MagicalHandler,
+    temperature::TemperatureConversionProvider, topic_change::TopicChangeProvider,
+    ventriloquize::VentriloquizeProvider, DiscordCommandProviderCollection,
+    DiscordMessageHandlerCollection,
+};
 use log::{error, info, warn};
 use muni_bot::{
     config::Config,
@@ -15,7 +28,14 @@ use muni_bot::{
     twitch::{bot::TwitchBot, get_basic_auth_url},
     MuniBotError,
 };
+use muni_bot_core::{config::Config, MuniBotError};
 use tokio::sync::Mutex;
+use twitch::{bot::TwitchBot, get_basic_auth_url};
+
+pub mod config;
+pub mod discord;
+pub mod handlers;
+pub mod twitch;
 
 #[derive(Parser, Debug)]
 struct Args {

@@ -1,11 +1,11 @@
 use chrono::Local;
+use muni_bot_core::MuniBotError;
 use poise::serenity_prelude::{GuildId, UserId};
 use serde::{Deserialize, Serialize};
 use surrealdb::{Connection, Surreal};
 use thiserror::Error;
 
 use super::wallet::{Wallet, WalletError};
-use crate::MuniBotError;
 
 const GUILD_PAYOUT_TABLE: &str = "guild_payout";
 

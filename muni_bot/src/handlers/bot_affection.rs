@@ -1,12 +1,9 @@
+use muni_bot_core::{DiscordCommandError, MuniBotError};
 use poise::serenity_prelude::MessageBuilder;
 use rand::{seq::SliceRandom, Rng};
 
-use crate::{
-    discord::{
-        commands::{DiscordCommandError, DiscordCommandProvider},
-        DiscordCommand, DiscordContext, DiscordState,
-    },
-    MuniBotError,
+use crate::discord::{
+    commands::DiscordCommandProvider, DiscordCommand, DiscordContext, DiscordState,
 };
 
 const NUZZLE_PREFIXES: [&str; 5] = ["*giggle!*", "eee hehe!", "hehehe!", "aaa!", "eep!"];

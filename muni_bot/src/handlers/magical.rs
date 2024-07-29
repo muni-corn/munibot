@@ -5,10 +5,10 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::Local;
+use muni_bot_core::{config::Config, MuniBotError};
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    config::Config,
     discord::{
         commands::DiscordCommandProvider, utils::display_name_from_command_context, DiscordCommand,
         DiscordContext,
@@ -18,7 +18,6 @@ use crate::{
         bot::MuniBotTwitchIRCClient,
         handler::{TwitchHandlerError, TwitchMessageHandler},
     },
-    MuniBotError,
 };
 
 pub struct MagicalHandler;

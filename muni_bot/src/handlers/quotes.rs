@@ -1,25 +1,22 @@
-use std::env;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use dotenvy::dotenv;
+use muni_bot_core::{
+    config::{Config, DbConfig},
+    db::connect_to_db,
+    MuniBotError,
+};
 use serde::{Deserialize, Serialize};
 use surrealdb::{
-    engine::remote::ws::{self, Ws},
-    opt::auth::Database,
+    engine::remote::ws::{self},
     Surreal,
 };
 use twitch_irc::message::ServerMessage;
 
-use crate::{
-    config::{Config, DbConfig},
-    db::connect_to_db,
-    twitch::{
-        agent::TwitchAgent,
-        bot::MuniBotTwitchIRCClient,
-        handler::{TwitchHandlerError, TwitchMessageHandler},
-    },
-    MuniBotError,
+use crate::twitch::{
+    agent::TwitchAgent,
+    bot::MuniBotTwitchIRCClient,
+    handler::{TwitchHandlerError, TwitchMessageHandler},
 };
 
 const QUOTE_TABLE: &str = "quote";

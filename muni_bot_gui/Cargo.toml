@@ -24,9 +24,10 @@ leptos-use = { version = "0.10.10" }
 leptos_axum = { version = "0.6", optional = true }
 leptos_meta = { version = "0.6", features = ["nightly"] }
 leptos_router = { version = "0.6", features = ["nightly"] }
+muni_bot_core = { path = "../muni_bot_core" }
 serde = { version = "1.0.204", features = ["derive"] }
 strum = { version = "0.26.3", features = ["derive"] }
-surrealdb = "1.5.4"
+surrealdb = "2.0"
 thiserror = "1"
 tokio = { version = "1", features = ["full"], optional = true }
 tower = { version = "0.4", optional = true }

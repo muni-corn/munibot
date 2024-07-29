@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use log::{error, info, warn};
+use muni_bot_core::config::Config;
 use tokio::task::JoinHandle;
 use twitch_irc::{
     irc, login::StaticLoginCredentials, message::ServerMessage, ClientConfig, SecureTCPTransport,
@@ -12,7 +13,6 @@ use super::{
     handler::{TwitchHandlerError, TwitchMessageHandler},
 };
 use crate::{
-    config::Config,
     handlers::{
         affection::AffectionHandler, autoban::AutoBanHandler, bonk::BonkHandler,
         greeting::GreetingHandler, lift::LiftHandler, lurk::LurkHandler, magical::MagicalHandler,

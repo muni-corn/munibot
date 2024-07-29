@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use muni_bot_core::{DiscordCommandError, MuniBotError};
 use num_format::{Locale, ToFormattedString};
 use poise::serenity_prelude::{Context, FullEvent, Message, UserId};
 use wallet::Wallet;
@@ -6,13 +7,12 @@ use wallet::Wallet;
 use self::wallet::WalletError;
 use crate::{
     discord::{
-        commands::{DiscordCommandError, DiscordCommandProvider},
+        commands::DiscordCommandProvider,
         handler::{DiscordEventHandler, DiscordHandlerError},
         utils::display_name_from_command_context,
         DiscordCommand, DiscordContext, DiscordFrameworkContext,
     },
     handlers::economy::payout::{ClaimResult, Payout, PayoutError},
-    MuniBotError,
 };
 
 mod payout;

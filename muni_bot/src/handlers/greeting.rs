@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use muni_bot_core::config::Config;
 use once_cell::sync::Lazy;
 use poise::serenity_prelude::{Context, FullEvent};
 use rand::seq::SliceRandom;
@@ -6,7 +7,6 @@ use regex::Regex;
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    config::Config,
     discord::{
         handler::{DiscordEventHandler, DiscordHandlerError},
         utils::display_name_from_message,

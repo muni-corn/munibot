@@ -1,12 +1,10 @@
 use std::{thread, time::Duration};
 
 use log::error;
+use muni_bot_core::MuniBotError;
 use poise::{serenity_prelude::CreateMessage, Command, CreateReply};
 
-use crate::{
-    discord::{commands::DiscordCommandProvider, DiscordContext, DiscordState},
-    MuniBotError,
-};
+use crate::discord::{commands::DiscordCommandProvider, DiscordContext, DiscordState};
 
 pub struct VentriloquizeProvider;
 

@@ -7,20 +7,20 @@ use std::env;
 
 use dotenvy::dotenv;
 use log::{error, info};
+use muni_bot_core::{
+    config::{Config, DiscordConfig},
+    db::connect_to_db,
+    MuniBotError,
+};
 use poise::{
     samples::register_globally,
     serenity_prelude::{self as serenity, Settings},
     Prefix, PrefixFrameworkOptions,
 };
-use surrealdb::{engine::remote::ws, opt::auth::Database, Surreal};
+use surrealdb::{engine::remote::ws, Surreal};
 
 use self::{admin::AdminCommandProvider, commands::DiscordCommandProvider};
-use crate::{
-    config::{Config, DiscordConfig},
-    db::connect_to_db,
-    handlers::DiscordMessageHandlerCollection,
-    MuniBotError,
-};
+use crate::handlers::DiscordMessageHandlerCollection;
 
 pub struct DiscordState {
     pub config: DiscordConfig,
