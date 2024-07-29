@@ -7,6 +7,10 @@
     @apply h-screen w-screen bg-gradient-to-br from-sky-900 to-emerald-900;
   }
 
+  div.error-backdrop-container {
+    @apply w-screen h-screen bg-gradient-to-br from-black to-red-900 flex flex-col place-content-center items-center text-white;
+  }
+
   h1 {
     @apply text-5xl text-white font-bold font-mono;
   }

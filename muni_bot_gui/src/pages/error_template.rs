@@ -52,7 +52,7 @@ pub fn ErrorTemplate(
     }
 
     view! {
-        <div class="w-screen h-screen bg-gradient-to-br from-black to-red-900 flex flex-col place-content-center items-center">
+        <div class="error-backdrop-container">
             <h1 class="mb-8">{if errors.len() > 1 { "Errors" } else { "Error" }}</h1>
             <For
                 // a function that returns the items we're iterating over; a signal is fine
