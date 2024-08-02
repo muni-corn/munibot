@@ -1,6 +1,7 @@
 pub mod app;
 mod pages;
 
+pub mod auth;
 #[cfg(feature = "ssr")]
 pub mod fileserv;
 pub mod utils;

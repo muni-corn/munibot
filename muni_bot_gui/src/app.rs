@@ -49,7 +49,7 @@ fn HomePage() -> impl IntoView {
                 <A href="get">
                     <button class="btn raised mx-auto mb-4">"Get muni_bot"</button>
                 </A>
-                <A href="https://discord.com/oauth2/authorize?client_id=1130216953169051738&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A6864%2Fdiscord&scope=identify+openid">
+                <A href="https://discord.com/oauth2/authorize?client_id=1130216953169051738&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fdiscord&scope=identify+openid">
                     <button class="btn mx-auto">"Dashboard"</button>
                 </A>
             </div>
