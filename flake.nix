@@ -114,7 +114,7 @@
           ];
 
           LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-          RUST_LOG = "error,muni_bot=info";
+          RUST_LOG = "info,muni_bot_core=debug,muni_bot=debug,muni_bot_gui=debug,tracing::span=off";
           LEPTOS_TAILWIND_VERSION = "v3.4.14";
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
         };
