@@ -17,6 +17,7 @@ chrono = "0.4.38"
 console_error_panic_hook = "0.1"
 discord = { git = "https://github.com/SpaceManiac/discord-rs", version = "0.9.0" }
 dotenvy = "0.15.7"
+env_logger = "0.11.5"
 http = "1"
 jsonwebtoken = "9.3.0"
 leptos = { version = "0.6", features = ["nightly"] }
@@ -24,7 +25,9 @@ leptos-use = { version = "0.10.10" }
 leptos_axum = { version = "0.6", optional = true }
 leptos_meta = { version = "0.6", features = ["nightly"] }
 leptos_router = { version = "0.6", features = ["nightly"] }
-muni_bot_core = { path = "../muni_bot_core" }
+log = "0.4.22"
+muni_bot_core = { path = "../muni_bot_core", optional = true }
+reqwest = { version = "0.12.5", features = ["json"] }
 serde = { version = "1.0.204", features = ["derive"] }
 strum = { version = "0.26.3", features = ["derive"] }
 surrealdb = "2.0"

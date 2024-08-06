@@ -1643,9 +1643,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.11.3"
+version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38b35839ba51819680ba087cd351788c9a3c476841207e0b8cee0b04722343b9"
+checksum = "e13fa619b91fb2381732789fc5de83b45675e882f66623b7d8cb4f643017018d"
 dependencies = [
  "anstream",
  "anstyle",
@@ -3409,6 +3409,7 @@ dependencies = [
  "console_error_panic_hook",
  "discord",
  "dotenvy",
+ "env_logger",
  "http 1.1.0",
  "jsonwebtoken",
  "leptos",
@@ -3416,7 +3417,9 @@ dependencies = [
  "leptos_axum",
  "leptos_meta",
  "leptos_router",
+ "log 0.4.22",
  "muni_bot_core",
+ "reqwest 0.12.5",
  "serde",
  "strum",
  "surrealdb 2.0.4",
