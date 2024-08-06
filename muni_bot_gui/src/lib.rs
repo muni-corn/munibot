@@ -3,6 +3,7 @@ mod pages;
 
 #[cfg(feature = "ssr")]
 pub mod fileserv;
+pub mod utils;
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]

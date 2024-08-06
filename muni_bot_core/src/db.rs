@@ -12,8 +12,6 @@ pub async fn connect_to_db(
     config: &DbConfig,
     database_name: &str,
 ) -> Result<Surreal<Client>, MuniBotError> {
-    dotenvy::dotenv().ok();
-
     let db = Surreal::new::<Ws>(&config.url).await?;
     db.signin(Database {
         namespace: "muni_bot",

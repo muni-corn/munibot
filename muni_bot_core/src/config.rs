@@ -17,6 +17,8 @@ pub struct Config {
 pub struct DbConfig {
     pub url: String,
     pub user: String,
+    pub db_name: String,
+    pub gui_db_name: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -113,6 +115,8 @@ impl Default for Config {
             db: DbConfig {
                 url: "127.0.0.1:7654".to_owned(),
                 user: "muni_bot".to_owned(),
+                db_name: "muni_bot".to_owned(),
+                gui_db_name: "muni_bot_gui".to_owned(),
             },
             discord: DiscordConfig {
                 invite_link: None,

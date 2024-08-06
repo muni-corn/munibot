@@ -36,6 +36,7 @@ pub mod config;
 pub mod discord;
 pub mod handlers;
 pub mod twitch;
+pub mod utils;
 
 #[derive(Parser, Debug)]
 struct Args {

@@ -9,7 +9,6 @@ use dotenvy::dotenv;
 use log::{error, info};
 use muni_bot_core::{
     config::{Config, DiscordConfig},
-    db::connect_to_db,
     MuniBotError,
 };
 use poise::{
@@ -20,7 +19,7 @@ use poise::{
 use surrealdb::{engine::remote::ws, Surreal};
 
 use self::{admin::AdminCommandProvider, commands::DiscordCommandProvider};
-use crate::handlers::DiscordMessageHandlerCollection;
+use crate::{handlers::DiscordMessageHandlerCollection, utils::connect_to_db};
 
 pub struct DiscordState {
     pub config: DiscordConfig,
@@ -34,7 +33,7 @@ impl DiscordState {
     ) -> Result<Self, MuniBotError> {
         Ok(Self {
             handlers,
-            db: connect_to_db(&config.db, "muni_bot").await?,
+            db: connect_to_db(&config.db).await?,
             config: config.discord.clone(),
         })
     }

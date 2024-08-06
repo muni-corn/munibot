@@ -3,7 +3,6 @@ use chrono::{DateTime, Local};
 use dotenvy::dotenv;
 use muni_bot_core::{
     config::{Config, DbConfig},
-    db::connect_to_db,
     MuniBotError,
 };
 use serde::{Deserialize, Serialize};
@@ -13,10 +12,13 @@ use surrealdb::{
 };
 use twitch_irc::message::ServerMessage;
 
-use crate::twitch::{
-    agent::TwitchAgent,
-    bot::MuniBotTwitchIRCClient,
-    handler::{TwitchHandlerError, TwitchMessageHandler},
+use crate::{
+    twitch::{
+        agent::TwitchAgent,
+        bot::MuniBotTwitchIRCClient,
+        handler::{TwitchHandlerError, TwitchMessageHandler},
+    },
+    utils::connect_to_db,
 };
 
 const QUOTE_TABLE: &str = "quote";
@@ -40,7 +42,7 @@ impl QuotesHandler {
     /// Create a new QuotesHandler, connecting to the database.
     pub async fn new(db_config: &DbConfig) -> Result<Self, MuniBotError> {
         dotenv().ok(); // TODO: map to MuniBotError::DotenvError
-        let db = connect_to_db(db_config, "muni_bot").await?;
+        let db = connect_to_db(db_config).await?;
         Ok(Self { db })
     }
 
