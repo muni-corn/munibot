@@ -3,6 +3,7 @@ use leptos_meta::*;
 use leptos_router::*;
 
 use crate::pages::{
+    dashboard::Dashboard,
     discord_auth::DiscordAuth,
     error_template::{AppError, ErrorTemplate},
     get::Get,
@@ -30,6 +31,11 @@ pub fn App() -> impl IntoView {
                     <Route path="" view=HomePage/>
                     <Route path="/get" view=Get/>
                     <Route path="/discord" view=DiscordAuth/>
+                    <Route path="/dashboard" view=Dashboard>
+                        <Route path="one" view=|| view! { <div>"One"</div> }/>
+                        <Route path="two" view=|| view! { <div>"Two"</div> }/>
+                        <Route path="" view=|| view! { <div>"Welcome"</div> }/>
+                    </Route>
                 </Routes>
             </main>
         </Router>
@@ -53,7 +59,6 @@ fn HomePage() -> impl IntoView {
                     <button class="btn mx-auto">"Dashboard"</button>
                 </A>
             </div>
-
         </div>
     }
 }

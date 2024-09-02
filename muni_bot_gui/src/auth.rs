@@ -226,6 +226,7 @@ pub async fn login_discord(discord_code: String) -> Result<(), ServerFnError> {
 
     auth.login_user(gui_user.id.to_string());
     auth.remember_user(false);
+    leptos_axum::redirect("/dashboard");
 
     Ok(())
 }

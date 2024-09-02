@@ -4,15 +4,15 @@
 
 @layer base {
   div.backdrop-blue-green {
-    @apply h-screen w-screen bg-gradient-to-br from-sky-900 to-emerald-900;
+    @apply h-screen w-screen bg-gradient-to-br dark:from-sky-900 dark:to-emerald-900 dark:text-white from-sky-100 to-emerald-100;
   }
 
   div.error-backdrop-container {
-    @apply w-screen h-screen bg-gradient-to-br from-black to-red-900 flex flex-col place-content-center items-center text-white;
+    @apply w-screen h-screen bg-gradient-to-br flex flex-col place-content-center items-center dark:text-white dark:from-black dark:to-red-900 from-white to-red-100;
   }
 
   h1 {
-    @apply text-5xl text-white font-bold font-mono;
+    @apply text-5xl dark:text-white font-bold font-mono;
   }
 
   button {

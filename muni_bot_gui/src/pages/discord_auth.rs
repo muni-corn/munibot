@@ -19,7 +19,13 @@ pub fn DiscordAuth() -> impl IntoView {
     view! {
         <Await future=f let:result>
             {match result {
-                None => view! { <div class="backdrop-blue-green">"One moment..."</div> },
+                None => {
+                    view! {
+                        <div>
+                            <Redirect path="/dashboard"/>
+                        </div>
+                    }
+                }
                 Some(e) => view! { <div class="error-backdrop-container">{e.to_string()}</div> },
             }}
 
