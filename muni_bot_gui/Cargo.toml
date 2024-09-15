@@ -62,10 +62,6 @@ ssr = [
     "leptos_router/ssr",
 ]
 
-[package.metadata.cargo-all-features]
-denylist = ["axum", "tower", "tower-http", "tokio", "sqlx", "leptos_axum"]
-skip_feature_sets = [["ssr", "hydrate"]]
-
 [package.metadata.leptos]
 # The name used by wasm-bindgen/cargo-leptos for the JS/WASM bundle. Defaults to the crate name
 output-name = "muni_bot_gui"
