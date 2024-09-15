@@ -14,7 +14,9 @@
   h1 {
     @apply text-5xl dark:text-white font-bold font-mono;
   }
+}
 
+@layer components {
   button {
     @apply text-emerald-500 font-bold py-3 px-6 rounded-full hover:bg-emerald-500/25 active:bg-emerald-600/50 active:top-0.5 focus:ring-4 ring-emerald-600/50 relative transition;
 
@@ -22,7 +24,12 @@
       @apply text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700;
     }
   }
-}
 
-@layer components {
+  .sidebar-nav-item {
+    @apply hover:bg-white/25 active:bg-white/50 focus:ring-4 p-2 rounded-xl;
+
+    &.active {
+      @apply bg-white/10;
+    }
+  }
 }
