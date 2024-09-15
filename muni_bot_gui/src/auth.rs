@@ -28,7 +28,6 @@ pub mod ssr {
     use axum_session_auth::{Authentication, HasPermission};
     use axum_session_surreal::SessionSurrealPool;
     use leptos::{use_context, ServerFnError};
-    use log::debug;
     use serde::{Deserialize, Serialize};
     use surrealdb::{engine::remote::ws, sql::Thing};
     use thiserror::Error;
