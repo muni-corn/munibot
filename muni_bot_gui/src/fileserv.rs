@@ -1,14 +1,14 @@
-use crate::app::App;
-use axum::response::Response as AxumResponse;
 use axum::{
     body::Body,
     extract::State,
     http::{Request, Response, StatusCode},
-    response::IntoResponse,
+    response::{IntoResponse, Response as AxumResponse},
 };
 use leptos::*;
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
+
+use crate::app::App;
 
 pub async fn file_and_error_handler(
     State(options): State<LeptosOptions>,
@@ -43,8 +43,8 @@ async fn get_static_file(
     request: Request<Body>,
     root: &str,
 ) -> Result<Response<Body>, (StatusCode, String)> {
-    // `ServeDir` implements `tower::Service` so we can call it with `tower::ServiceExt::oneshot`
-    // This path is relative to the cargo root
+    // `ServeDir` implements `tower::Service` so we can call it with
+    // `tower::ServiceExt::oneshot` This path is relative to the cargo root
     match ServeDir::new(root)
         .precompressed_gzip()
         .precompressed_br()
@@ -52,9 +52,5 @@ async fn get_static_file(
         .await
     {
         Ok(res) => Ok(res.into_response()),
-        Err(err) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error serving files: {err}"),
-        )),
     }
 }
