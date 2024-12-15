@@ -11,23 +11,10 @@ use env_logger::Env;
 use handlers::{
     bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
     greeting::GreetingHandler, logging::LoggingHandler, magical::MagicalHandler,
-    temperature::TemperatureConversionProvider, topic_change::TopicChangeProvider,
-    ventriloquize::VentriloquizeProvider, DiscordCommandProviderCollection,
-    DiscordMessageHandlerCollection,
+    temperature::TemperatureConversionProvider, ventriloquize::VentriloquizeProvider,
+    DiscordCommandProviderCollection, DiscordMessageHandlerCollection,
 };
 use log::{error, info, warn};
-use muni_bot::{
-    config::Config,
-    discord::start_discord_integration,
-    handlers::{
-        bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
-        greeting::GreetingHandler, logging::LoggingHandler, magical::MagicalHandler,
-        temperature::TemperatureConversionProvider, ventriloquize::VentriloquizeProvider,
-        DiscordCommandProviderCollection, DiscordMessageHandlerCollection,
-    },
-    twitch::{bot::TwitchBot, get_basic_auth_url},
-    MuniBotError,
-};
 use muni_bot_core::{config::Config, MuniBotError};
 use tokio::sync::Mutex;
 use twitch::{bot::TwitchBot, get_basic_auth_url};
