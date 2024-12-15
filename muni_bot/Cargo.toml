@@ -26,8 +26,7 @@ rand = { version = "0.8", features = ["std_rng"] }
 regex = "1"
 reqwest = "0.11"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
-surrealdb = "2.0"
+surrealdb = "2.1.2"
 thiserror = "1.0"
 tokio = { version = "1.22", features = [ "full" ] }
 twitch-irc = { version = "5.0", features = [ "refreshing-token-native-tls" ] }
