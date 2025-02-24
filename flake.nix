@@ -44,6 +44,7 @@
 
       # establish commonly used arguments
       commonArgs = {
+        pname = name;
         src = lib.cleanSourceWith {
           src = self;
           filter = path: type:
@@ -78,7 +79,7 @@
 
       # `nix run`
       apps.default = utils.lib.mkApp {
-        name = name;
+        inherit name;
         drv = self.packages."${system}".default;
         exePath = "/bin/${name}";
       };
