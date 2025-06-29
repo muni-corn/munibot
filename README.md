@@ -31,6 +31,39 @@ TWITCH_CLIENT_SECRET=
 TWITCH_TOKEN=
 ```
 
+## surrealdb
+
+here are some SurrealQL commands to run on your SurrealDB instance to set things
+up.
+
+### configuring an admin user
+
+if your surrealdb instance doesn't have a root user yet, ensure the instance is
+started with the flags `-u root -p root`, then login with
+`surreal sql -e ws://127.0.0.1:7654 -u root -p root`.
+
+if you want, you can create a root user:
+
+```sql
+DEFINE USER muni ON ROOT PASSWORD "m1lksh@kE!" ROLES OWNER;
+```
+
+**make sure you restart your instance without the `-u` and `-p` flags!**
+
+### creating a `munibot` user
+
+```sql
+USE NS munibot;
+USE DB munibot;
+DEFINE USER munibot ON DATABASE PASSWORD "m1lksh@kE!" ROLES EDITOR;
+```
+
+add your password to the `.env` file:
+
+```conf
+DATABASE_PASS=m1lksh@kE!
+```
+
 # contact my creator
 
 the best way to contact my creator is `@municorn` on Discord.
