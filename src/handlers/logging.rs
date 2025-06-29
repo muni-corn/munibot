@@ -7,7 +7,8 @@ use log::debug;
 use poise::serenity_prelude::{
     self as serenity, CacheHttp, ChannelId, CreateEmbed, CreateMessage, EmbedMessageBuilding,
     FullEvent, Guild, GuildId, GuildMemberUpdateEvent, Member, Mentionable, Message,
-    MessageBuilder, MessageUpdateEvent, PartialGuild, ReactionType, Result, Role, async_trait,
+    MessageBuilder, MessageId, MessageUpdateEvent, PartialGuild, ReactionType, Result, Role,
+    async_trait,
 };
 use serde::{Deserialize, Serialize};
 use surrealdb::{Connection, RecordId, Surreal};
@@ -32,6 +33,11 @@ pub struct LoggingHandler {
     /// channels with pauses on them. a pause prevents logs from being created
     /// about the corresponding `PauseType`.
     pauses: HashMap<ChannelId, HashSet<PauseType>>,
+
+    /// messages to ignore logs for, to be used with things like autodelete to
+    /// prevent log spam
+    ignored_messages: HashSet<MessageId>,
+
     access: GlobalAccess,
 }
 
@@ -321,12 +327,23 @@ impl DiscordEventHandler for LoggingHandler {
                 deleted_message_id,
                 guild_id,
             } => {
+                // check if we have a guild_id first, as logs can't happen anyway without it
                 if let Some(guild_id) = guild_id {
-                    if let Some(pause_set) = self.pauses.get(channel_id)
-                        && pause_set.contains(&PauseType::MessageDelete)
-                    {
+                    let ignored = self.ignored_messages.contains(deleted_message_id);
+                    let paused = self
+                        .pauses
+                        .get(channel_id)
+                        .map(|pause_set| pause_set.contains(&PauseType::MessageDelete))
+                        .unwrap_or(false);
+
+                    if ignored || paused {
+                        // since this message will likely never be seen again, remove it from
+                        // ignored messages (if it exists)
+                        self.ignored_messages.remove(deleted_message_id);
+
                         return Ok(());
                     }
+
                     let mut msg = MessageBuilder::new();
                     let mut fields = vec![];
 
@@ -576,6 +593,7 @@ impl LoggingHandler {
     pub fn new(access: GlobalAccess) -> Self {
         Self {
             pauses: Default::default(),
+            ignored_messages: HashSet::new(),
             access,
         }
     }
@@ -659,6 +677,16 @@ impl LoggingHandler {
             {
                 log::error!("error while alerting of set_pauses: {e}")
             }
+        }
+    }
+
+    pub fn ignore_message(&mut self, message_id: MessageId) {
+        self.ignored_messages.insert(message_id);
+    }
+
+    pub fn ignore_messages_iter(&mut self, message_ids: impl Iterator<Item = MessageId>) {
+        for m in message_ids {
+            self.ignore_message(m);
         }
     }
 
