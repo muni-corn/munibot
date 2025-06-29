@@ -336,12 +336,7 @@ impl AutoDeleteTimer {
                 logging
                     .lock()
                     .await
-                    .set_pauses(
-                        self.data.channel_id,
-                        &[PauseType::MessageDeleteBulk, PauseType::MessageDelete],
-                        "munibot is cleaning up messages because an autodelete timer has fired",
-                    )
-                    .await;
+                    .ignore_messages_iter(chopping_block.iter().map(|m| m.id));
 
                 let DeleteMessagesResult {
                     deletions,
@@ -349,12 +344,6 @@ impl AutoDeleteTimer {
                     skipped,
                     last_message_deleted,
                 } = self.delete_messages(cache_http_arc, chopping_block).await;
-
-                logging
-                    .lock()
-                    .await
-                    .clear_pauses(self.data.channel_id)
-                    .await;
 
                 if failures > 0 {
                     log::warn!(
