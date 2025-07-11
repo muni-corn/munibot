@@ -66,7 +66,7 @@
           pkg-config
           trunk
         ];
-        buildInputs = with pkgs; [ libressl ];
+        buildInputs = with pkgs; [ libressl_4_0 ];
 
         munibot = craneLib.buildPackage (
           commonArgs
