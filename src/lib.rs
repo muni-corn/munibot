@@ -1,7 +1,6 @@
 #![feature(decl_macro)]
-#![feature(let_chains)]
 #![feature(never_type)]
-#![feature(duration_constructors)]
+#![feature(duration_constructors_lite)]
 
 use poise::serenity_prelude as serenity;
 use thiserror::Error;
