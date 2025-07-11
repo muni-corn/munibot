@@ -54,7 +54,7 @@
               || (craneLib.filterCargoSources path type);
           };
           strictDeps = true;
-          stdenv = pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv;
+          stdenv = p: p.stdenvAdapters.useMoldLinker p.stdenv;
 
           inherit nativeBuildInputs buildInputs cargoArtifacts;
         };
