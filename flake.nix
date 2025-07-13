@@ -3,9 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    fenix.url = "github:nix-community/fenix";
-    utils.url = "github:numtide/flake-utils";
     crane.url = "github:ipetkov/crane";
+    fenix.url = "github:nix-community/fenix";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    utils.url = "github:numtide/flake-utils";
   };
 
   outputs =
@@ -14,6 +15,7 @@
       nixpkgs,
       crane,
       fenix,
+      treefmt-nix,
       utils,
     }:
     utils.lib.eachDefaultSystem (
@@ -22,6 +24,9 @@
         name = "munibot";
         pkgs = nixpkgs.legacyPackages.${system};
         lib = pkgs.lib;
+
+        # treefmt formatting
+        treefmtEval = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
 
         # make rust toolchain
         toolchain =
@@ -93,6 +98,7 @@
           clippy = craneLib.cargoClippy (
             commonArgs // { cargoClippyExtraArgs = "--all-targets --all-features"; }
           );
+          formatting = treefmtEval.config.build.check self;
         };
 
         # `nix develop`
@@ -123,6 +129,9 @@
             LEPTOS_TAILWIND_VERSION = "v3.4.14";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
           };
+
+        # `nix fmt`
+        formatter = treefmtEval.config.build.wrapper;
       }
     )
     // {
