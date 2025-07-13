@@ -5,20 +5,20 @@ use chrono::{DateTime, Local};
 use dotenvy::dotenv;
 use serde::{Deserialize, Serialize};
 use surrealdb::{
+    Surreal,
     engine::remote::ws::{self, Ws},
     opt::auth::Database,
-    Surreal,
 };
 use twitch_irc::message::ServerMessage;
 
 use crate::{
+    MuniBotError,
     config::{Config, DbConfig},
     twitch::{
         agent::TwitchAgent,
         bot::MuniBotTwitchIRCClient,
         handler::{TwitchHandlerError, TwitchMessageHandler},
     },
-    MuniBotError,
 };
 
 const QUOTE_TABLE: &str = "quote";
@@ -165,8 +165,8 @@ impl TwitchMessageHandler for QuotesHandler {
                         client,
                         &m.channel_login,
                         &format!(
-                        "quote #{quote_count} is in! recorded in the muni history books forever"
-                    ),
+                            "quote #{quote_count} is in! recorded in the muni history books forever"
+                        ),
                     )
                     .await?;
                 }

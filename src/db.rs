@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use serde::{de::DeserializeOwned, Serialize};
-use surrealdb::{opt::IntoResource, Connection, RecordIdKey, Surreal};
+use serde::{Serialize, de::DeserializeOwned};
+use surrealdb::{Connection, RecordIdKey, Surreal, opt::IntoResource};
 
 #[async_trait]
 pub trait DbItem<C: Connection>: Serialize + DeserializeOwned {

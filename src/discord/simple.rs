@@ -1,6 +1,6 @@
 use poise::serenity_prelude::MessageBuilder;
 
-use super::{commands::DiscordCommandProvider, DiscordContext};
+use super::{DiscordContext, commands::DiscordCommandProvider};
 use crate::MuniBotError;
 
 pub struct SimpleCommandProvider;

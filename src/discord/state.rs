@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use poise::serenity_prelude::{Cache, Http, Result};
-use surrealdb::{engine::remote::ws, Surreal};
+use surrealdb::{Surreal, engine::remote::ws};
 use tokio::sync::Mutex;
 
 use super::{autodelete::AutoDeleteHandler, handler::DiscordEventHandler};
 use crate::{
-    config::{Config, DiscordConfig},
-    handlers::{logging::LoggingHandler, DiscordMessageHandlerCollection},
     MuniBotError,
+    config::{Config, DiscordConfig},
+    handlers::{DiscordMessageHandlerCollection, logging::LoggingHandler},
 };
 
 #[derive(Clone, Debug)]

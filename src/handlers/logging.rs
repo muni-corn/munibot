@@ -5,9 +5,9 @@ use std::{
 
 use log::debug;
 use poise::serenity_prelude::{
-    self as serenity, async_trait, CacheHttp, ChannelId, CreateEmbed, CreateMessage,
-    EmbedMessageBuilding, FullEvent, Guild, GuildId, GuildMemberUpdateEvent, Member, Mentionable,
-    Message, MessageBuilder, MessageUpdateEvent, PartialGuild, ReactionType, Result, Role,
+    self as serenity, CacheHttp, ChannelId, CreateEmbed, CreateMessage, EmbedMessageBuilding,
+    FullEvent, Guild, GuildId, GuildMemberUpdateEvent, Member, Mentionable, Message,
+    MessageBuilder, MessageUpdateEvent, PartialGuild, ReactionType, Result, Role, async_trait,
 };
 use serde::{Deserialize, Serialize};
 use surrealdb::{Connection, RecordId, Surreal};
@@ -15,9 +15,9 @@ use surrealdb::{Connection, RecordId, Surreal};
 use crate::{
     db::DbItem,
     discord::{
+        DiscordFrameworkContext,
         handler::{DiscordEventHandler, DiscordHandlerError},
         state::GlobalAccess,
-        DiscordFrameworkContext,
     },
 };
 
@@ -753,7 +753,10 @@ fn simple_embed(title: &str, message: &str) -> CreateEmbed {
 }
 
 fn useless_embed(title: &str) -> CreateEmbed {
-    simple_embed(title, "muni hasn't bothered to implement useful information for this yet. screenshot this and go bother him.")
+    simple_embed(
+        title,
+        "muni hasn't bothered to implement useful information for this yet. screenshot this and go bother him.",
+    )
 }
 
 fn embed_with_fields(

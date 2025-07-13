@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use log::{error, info, warn};
 use tokio::task::JoinHandle;
 use twitch_irc::{
-    irc, login::StaticLoginCredentials, message::ServerMessage, ClientConfig, SecureTCPTransport,
-    TwitchIRCClient,
+    ClientConfig, SecureTCPTransport, TwitchIRCClient, irc, login::StaticLoginCredentials,
+    message::ServerMessage,
 };
 
 use super::{
@@ -14,10 +14,10 @@ use super::{
 use crate::{
     config::Config,
     handlers::{
-        affection::AffectionHandler, autoban::AutoBanHandler, bonk::BonkHandler,
-        greeting::GreetingHandler, lift::LiftHandler, lurk::LurkHandler, magical::MagicalHandler,
-        quotes::QuotesHandler, shoutout::ShoutoutHandler, socials::SocialsHandler,
-        TwitchHandlerCollection,
+        TwitchHandlerCollection, affection::AffectionHandler, autoban::AutoBanHandler,
+        bonk::BonkHandler, greeting::GreetingHandler, lift::LiftHandler, lurk::LurkHandler,
+        magical::MagicalHandler, quotes::QuotesHandler, shoutout::ShoutoutHandler,
+        socials::SocialsHandler,
     },
     twitch::tokens::TwitchAuth,
 };

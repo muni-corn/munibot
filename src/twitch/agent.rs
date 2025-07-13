@@ -2,9 +2,9 @@ use std::{error::Error, fmt::Display};
 
 use log::{debug, info};
 use twitch_api::{
-    helix::{channels::ChannelInformation, users::User, ClientRequestError},
-    types::UserId,
     HelixClient,
+    helix::{ClientRequestError, channels::ChannelInformation, users::User},
+    types::UserId,
 };
 
 use super::tokens::TwitchAuth;

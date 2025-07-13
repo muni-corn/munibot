@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use log::error;
-use poise::{serenity_prelude::CreateMessage, Command, CreateReply};
+use poise::{Command, CreateReply, serenity_prelude::CreateMessage};
 use tokio::time::sleep;
 
 use crate::{
-    discord::{commands::DiscordCommandProvider, state::DiscordState, DiscordContext},
     MuniBotError,
+    discord::{DiscordContext, commands::DiscordCommandProvider, state::DiscordState},
 };
 
 pub struct VentriloquizeProvider;

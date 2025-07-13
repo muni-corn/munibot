@@ -4,18 +4,18 @@ use clap::Parser;
 use env_logger::Env;
 use log::{error, info, warn};
 use munibot::{
+    MuniBotError,
     config::Config,
     discord::{
         simple::SimpleCommandProvider, start_discord_integration, vc_greeter::VoiceChannelGreeter,
     },
     handlers::{
+        DiscordCommandProviderCollection, DiscordMessageHandlerCollection,
         bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
         greeting::GreetingHandler, magical::MagicalHandler,
         temperature::TemperatureConversionProvider, ventriloquize::VentriloquizeProvider,
-        DiscordCommandProviderCollection, DiscordMessageHandlerCollection,
     },
     twitch::{bot::TwitchBot, get_basic_auth_url},
-    MuniBotError,
 };
 use tokio::sync::Mutex;
 
@@ -58,9 +58,13 @@ async fn main() -> Result<(), MuniBotError> {
                 error!("no TWITCH_TOKEN found ({e})");
                 info!("visit {auth_page_url} to get a token");
             } else {
-                error!("no TWITCH_TOKEN found and no TWITCH_CLIENT_ID set. the TWITCH_CLIENT_ID environment variable is required to generate an auth url link.");
+                error!(
+                    "no TWITCH_TOKEN found and no TWITCH_CLIENT_ID set. the TWITCH_CLIENT_ID environment variable is required to generate an auth url link."
+                );
             }
-            warn!("since twitch integration is misconfigured, i won't be running my twitch integration at this time. >.>");
+            warn!(
+                "since twitch integration is misconfigured, i won't be running my twitch integration at this time. >.>"
+            );
             None
         }
     };
@@ -78,7 +82,9 @@ async fn main() -> Result<(), MuniBotError> {
         }
     }
 
-    warn!("all bot integrations have unexpectedly stopped. i can't do anything else right now. goodbye! ^-^");
+    warn!(
+        "all bot integrations have unexpectedly stopped. i can't do anything else right now. goodbye! ^-^"
+    );
     Ok(())
 }
 

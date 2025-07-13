@@ -30,7 +30,9 @@ impl TwitchMessageHandler for ShoutoutHandler {
                 // strip @ from the front of the username if it's there
                 .map(|s| s.trim_start_matches('@'))
             {
-                let message = format!("this is a PSA that you NEED to go check out {target} at https://twitch.tv/{target} ! :3 clearly they deserve the shoutout, so go follow them now >:c");
+                let message = format!(
+                    "this is a PSA that you NEED to go check out {target} at https://twitch.tv/{target} ! :3 clearly they deserve the shoutout, so go follow them now >:c"
+                );
 
                 // send the message
                 self.send_twitch_message(client, &msg.channel_login, &message)

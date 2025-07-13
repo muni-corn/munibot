@@ -8,17 +8,17 @@ use chrono::Local;
 use twitch_irc::message::ServerMessage;
 
 use crate::{
+    MuniBotError,
     config::Config,
     discord::{
-        commands::DiscordCommandProvider, utils::display_name_from_command_context, DiscordCommand,
-        DiscordContext,
+        DiscordCommand, DiscordContext, commands::DiscordCommandProvider,
+        utils::display_name_from_command_context,
     },
     twitch::{
         agent::TwitchAgent,
         bot::MuniBotTwitchIRCClient,
         handler::{TwitchHandlerError, TwitchMessageHandler},
     },
-    MuniBotError,
 };
 
 pub struct MagicalHandler;

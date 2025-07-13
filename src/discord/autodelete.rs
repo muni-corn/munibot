@@ -3,9 +3,9 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use chrono::{DateTime, Utc};
 use log::{debug, error, warn};
 use poise::serenity_prelude::{
-    futures::{stream, StreamExt},
     Cache, CacheHttp, ChannelId, GuildChannel, GuildId, Mentionable, Message, MessageBuilder,
     MessageId, PartialGuild, Result,
+    futures::{StreamExt, stream},
 };
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
@@ -14,8 +14,9 @@ use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 
 use super::state::GlobalAccess;
 use crate::{
-    handlers::logging::{LoggingHandler, PauseType},
     MuniBotError,
+    handlers::logging::LoggingHandler,
+    handlers::logging::{LoggingHandler, PauseType},
 };
 
 const TABLE_NAME: &str = "autodelete_timer";
@@ -107,7 +108,9 @@ impl AutoDeleteHandler {
                 .await?;
             Ok(())
         } else {
-            log::warn!("tried to save an autodelete timer (channel id {channel_id}) but it doesn't seem to have been persisted in the database");
+            log::warn!(
+                "tried to save an autodelete timer (channel id {channel_id}) but it doesn't seem to have been persisted in the database"
+            );
             Err(anyhow::anyhow!(
                 "tried to set an autodelete timer, but i don't think i was able to save it..."
             ))
@@ -296,7 +299,9 @@ impl AutoDeleteTimer {
             if let AutoDeleteMode::AfterSilence = self.data.mode
                 && last_message_id.created_at().to_utc() > Utc::now() - self.data.duration
             {
-                log::warn!("autodelete: timer with AfterSilence attempted to fire before its duration was met");
+                log::warn!(
+                    "autodelete: timer with AfterSilence attempted to fire before its duration was met"
+                );
                 return Ok(());
             }
 
@@ -518,7 +523,10 @@ impl AutoDeleteTimer {
             // probably no messages to clean up, so we can exit now
             debug!(
                 "channel {} (id {}) in {} (id {}) has no messages. we'll check back in after this timer's duration ({})",
-                channel.name, channel.id, guild.name, guild.id,
+                channel.name,
+                channel.id,
+                guild.name,
+                guild.id,
                 humantime::Duration::from(self.data.duration)
             );
             Ok(self.data.duration)

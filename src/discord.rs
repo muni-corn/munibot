@@ -13,15 +13,15 @@ use autodelete::AutoDeleteHandler;
 use dotenvy::dotenv;
 use log::{error, info};
 use poise::{
+    Prefix, PrefixFrameworkOptions,
     samples::register_globally,
     serenity_prelude::{self as serenity, Result, Settings},
-    Prefix, PrefixFrameworkOptions,
 };
 use state::DiscordState;
-use surrealdb::{engine::remote::ws, opt::auth::Database, Surreal};
+use surrealdb::{Surreal, engine::remote::ws, opt::auth::Database};
 
 use self::{admin::AdminCommandProvider, commands::DiscordCommandProvider};
-use crate::{config::Config, handlers::DiscordMessageHandlerCollection, MuniBotError};
+use crate::{MuniBotError, config::Config, handlers::DiscordMessageHandlerCollection};
 
 pub type DiscordCommand = poise::Command<DiscordState, MuniBotError>;
 pub type DiscordContext<'a> = poise::Context<'a, DiscordState, MuniBotError>;

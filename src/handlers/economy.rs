@@ -5,14 +5,14 @@ use wallet::Wallet;
 
 use self::wallet::WalletError;
 use crate::{
+    MuniBotError,
     discord::{
+        DiscordCommand, DiscordContext, DiscordFrameworkContext,
         commands::{DiscordCommandError, DiscordCommandProvider},
         handler::{DiscordEventHandler, DiscordHandlerError},
         utils::display_name_from_command_context,
-        DiscordCommand, DiscordContext, DiscordFrameworkContext,
     },
     handlers::economy::payout::{ClaimResult, Payout, PayoutError},
-    MuniBotError,
 };
 
 mod payout;
@@ -194,7 +194,11 @@ async fn transfer(
         if let Err(e) = author_wallet.spend(db, amount).await {
             match e {
                 WalletError::InsufficientFunds => {
-                    let message = format!("you want to transfer **{}** coins, but you only have **{}** coins in your wallet :<", amount.to_formatted_string(&Locale::en), author_wallet.balance().to_formatted_string(&Locale::en));
+                    let message = format!(
+                        "you want to transfer **{}** coins, but you only have **{}** coins in your wallet :<",
+                        amount.to_formatted_string(&Locale::en),
+                        author_wallet.balance().to_formatted_string(&Locale::en)
+                    );
                     ctx.say(message).await?;
 
                     return Ok(());
@@ -204,7 +208,7 @@ async fn transfer(
                         message: format!("error spending from author wallet: {e}"),
                         command_identifier: "transfer".to_string(),
                     }
-                    .into())
+                    .into());
                 }
             }
         }

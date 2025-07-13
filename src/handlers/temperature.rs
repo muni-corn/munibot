@@ -1,6 +1,6 @@
 use crate::{
-    discord::{commands::DiscordCommandProvider, DiscordCommand, DiscordContext},
     MuniBotError,
+    discord::{DiscordCommand, DiscordContext, commands::DiscordCommandProvider},
 };
 
 pub struct TemperatureConversionProvider;

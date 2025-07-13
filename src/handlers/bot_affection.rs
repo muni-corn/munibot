@@ -1,14 +1,14 @@
 use poise::serenity_prelude::MessageBuilder;
-use rand::{seq::SliceRandom, Rng};
+use rand::{Rng, seq::SliceRandom};
 use tokio::time::sleep;
 
 use crate::{
+    MuniBotError,
     discord::{
+        DiscordCommand, DiscordContext,
         commands::{DiscordCommandError, DiscordCommandProvider},
         state::DiscordState,
-        DiscordCommand, DiscordContext,
     },
-    MuniBotError,
 };
 
 const BOOP_PREFIXES: [&str; 4] = ["ACK!", "ack!", "eep!", "meep!"];
@@ -101,11 +101,7 @@ impl BotAffectionProvider {
 
 /// Returns a string with the given probability, or an empty string.
 fn get_str_or_empty(mut rng: impl Rng, s: &str, p: f64) -> &str {
-    if rng.gen_bool(p) {
-        s
-    } else {
-        ""
-    }
+    if rng.gen_bool(p) { s } else { "" }
 }
 
 /// Boop the bot!
