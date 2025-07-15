@@ -40,7 +40,7 @@ pub struct TwitchConfig {
 impl Config {
     /// Reads the config from the file if it exists, otherwise writes the
     /// default config to the file and loads that.
-    pub fn read_or_write_default_from<P: AsRef<Path>>(path: P) -> Result<Self, MuniBotError> {
+    pub fn read_or_write_default_from<P: AsRef<Path>>(path: P) -> Result<Self, Box<MuniBotError>> {
         let p = path.as_ref();
 
         // check if the path exists
