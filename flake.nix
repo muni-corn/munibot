@@ -117,9 +117,10 @@
               buildInputs
               ++ (with pkgs; [
                 leptosfmt
+                cargo-edit
+                cargo-outdated
                 cargo-release
                 cargo-watch
-                cargo-outdated
                 flyctl
                 cargo-machete
               ]);
