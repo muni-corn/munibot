@@ -65,15 +65,13 @@ async fn yeet_user(
 ) -> Result<(), TwitchHandlerError> {
     let Some(broadcaster_id) = agent.get_user_from_login(channel_login).await? else {
         return Err(TwitchHandlerError::Other(format!(
-            "could not get broadcaster id for channel {}",
-            channel_login
+            "could not get broadcaster id for channel {channel_login}"
         )));
     };
 
     let Some(ban_user_id) = agent.get_user_from_login(user_login).await? else {
         return Err(TwitchHandlerError::Other(format!(
-            "could not get user id for user {} on channel {}",
-            user_login, channel_login
+            "could not get user id for user {user_login} on channel {channel_login}"
         )));
     };
 

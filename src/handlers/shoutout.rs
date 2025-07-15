@@ -48,7 +48,7 @@ impl TwitchMessageHandler for ShoutoutHandler {
 
                 for mut target in targets_raw.split_whitespace() {
                     target = target.trim_start_matches('@');
-                    let link = format!(" https://twitch.tv/{}", target);
+                    let link = format!(" https://twitch.tv/{target}");
 
                     // if the message after adding this link would exceed twitch's character limit
                     // of 500, send the message first and reset it

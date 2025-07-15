@@ -28,7 +28,7 @@ impl DiscordHandlerError {
     pub fn from_display(handler_name: &'static str, error: impl Display) -> Self {
         Self {
             handler_name,
-            message: format!("{}", error),
+            message: format!("{error}"),
         }
     }
 }

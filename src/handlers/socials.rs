@@ -27,7 +27,7 @@ impl TwitchMessageHandler for SocialsHandler {
                     self.send_twitch_message(
                         client,
                         &m.channel_login,
-                        &format!("join the herd's discord server here! {}", invite_link),
+                        &format!("join the herd's discord server here! {invite_link}"),
                     )
                     .await?;
                 } else {

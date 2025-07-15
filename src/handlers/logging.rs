@@ -185,8 +185,7 @@ impl DiscordEventHandler for LoggingHandler {
                     vec![(
                         "account created".into(),
                         format!(
-                            "<t:{}:F>, <t:{}:R>",
-                            account_created_timestamp, account_created_timestamp
+                            "<t:{account_created_timestamp}:F>, <t:{account_created_timestamp}:R>"
                         ),
                         false,
                     )],
@@ -401,7 +400,7 @@ impl DiscordEventHandler for LoggingHandler {
                             ),
                             vec![(
                                 "deleted message ids".into(),
-                                format!("{:?}", multiple_deleted_messages_ids),
+                                format!("{multiple_deleted_messages_ids:?}"),
                                 false,
                             )],
                         ),

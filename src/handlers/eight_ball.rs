@@ -16,7 +16,7 @@ impl EightBallProvider {
     fn get_shake_message() -> String {
         let mut rng = rand::thread_rng();
         let adverb = SHAKE_ADVERBS.choose(&mut rng).unwrap();
-        format!("shakes eight ball {}...", adverb)
+        format!("shakes eight ball {adverb}...")
     }
 
     /// Returns a random eight ball response.
@@ -39,11 +39,11 @@ async fn eight_ball(
         .push_quote_line_safe(question)
         .push_line("")
         .push_italic_line(shake_message)
-        .push(format!("the eight ball says, \"{}\"", eight_ball_response))
+        .push(format!("the eight ball says, \"{eight_ball_response}\""))
         .build();
 
     ctx.say(message).await.map_err(|e| DiscordCommandError {
-        message: format!("couldn't send message: {}", e),
+        message: format!("couldn't send message: {e}"),
         command_identifier: "eight_ball".to_string(),
     })?;
 
