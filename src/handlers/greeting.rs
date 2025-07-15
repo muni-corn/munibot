@@ -8,9 +8,9 @@ use twitch_irc::message::ServerMessage;
 use crate::{
     config::Config,
     discord::{
+        DiscordFrameworkContext,
         handler::{DiscordEventHandler, DiscordHandlerError},
         utils::display_name_from_message,
-        DiscordFrameworkContext,
     },
     twitch::{
         agent::TwitchAgent,
@@ -28,25 +28,14 @@ static HI_REGEX: Lazy<Regex> = Lazy::new(|| {
 impl GreetingHandler {
     /// Returns a greeting message if applicable, or None if not to keep quiet.
     fn get_greeting_message(user_name: &str, message_text: &str) -> Option<String> {
-        if message_text.trim().starts_with("uwu") {
-            if user_name.to_lowercase() == "linokii" {
-                Some("linokii uwu<3".to_string())
-            } else {
-                None
-            }
-        } else if HI_REGEX.is_match(message_text) {
+        if HI_REGEX.is_match(message_text) {
             // send a hi message back
             // pick a template
             let mut rng = rand::thread_rng();
-            let mut greeting = HELLO_TEMPLATES
+            let greeting = HELLO_TEMPLATES
                 .choose(&mut rng)
                 .unwrap()
                 .replace("{name}", user_name);
-
-            // if the message was sent from linokii, append a very special uwu
-            if user_name.to_lowercase() == "linokii" {
-                greeting.push_str(" uwu");
-            }
 
             Some(greeting)
         } else {
