@@ -630,8 +630,7 @@ impl LoggingHandler {
             .get_channel(channel_id)
             .await
             .map(|c| c.guild().map(|gc| gc.guild_id))
-        {
-            if let Err(e) = send_message(
+            && let Err(e) = send_message(
                 self.access.as_cache_http(),
                 self.access.db(),
                 guild_id,
@@ -643,9 +642,8 @@ impl LoggingHandler {
                 ),
             )
             .await
-            {
-                log::error!("error while alerting of set_pauses: {e}")
-            }
+        {
+            log::error!("error while alerting of set_pauses: {e}")
         }
     }
 
@@ -659,8 +657,7 @@ impl LoggingHandler {
             .get_channel(channel_id)
             .await
             .map(|c| c.guild().map(|gc| gc.guild_id))
-        {
-            if let Err(e) = send_message(
+            && let Err(e) = send_message(
                 self.access.as_cache_http(),
                 self.access.db(),
                 guild_id,
@@ -674,9 +671,8 @@ impl LoggingHandler {
                 ),
             )
             .await
-            {
-                log::error!("error while alerting of set_pauses: {e}")
-            }
+        {
+            log::error!("error while alerting of set_pauses: {e}")
         }
     }
 
@@ -1036,17 +1032,17 @@ where
         ))
     }
 
-    if old.description != new.description {
-        if let Some(status) = match (&old.description, &new.description) {
+    if old.description != new.description
+        && let Some(status) = match (&old.description, &new.description) {
             (Some(_), Some(desc)) | (None, Some(desc)) if !desc.is_empty() => {
                 Some(desc.to_string())
             }
             (Some(_), None) => Some("*removed*".to_string()),
             _ => None,
-        } {
-            fields.push(("description".to_string(), status, false))
-        };
-    }
+        }
+    {
+        fields.push(("description".to_string(), status, false))
+    };
 
     if old.banner != new.banner {
         let status = if new.banner.is_none() {
@@ -1165,10 +1161,10 @@ where
         ))
     }
 
-    if old.widget_enabled != new.widget_enabled {
-        if let (Some(_), Some(enabled)) = (old.widget_enabled, new.widget_enabled) {
-            fields.push(("widget".to_string(), yes_no_bool(enabled), true))
-        }
+    if old.widget_enabled != new.widget_enabled
+        && let (Some(_), Some(enabled)) = (old.widget_enabled, new.widget_enabled)
+    {
+        fields.push(("widget".to_string(), yes_no_bool(enabled), true))
     }
 
     if old.widget_channel_id != new.widget_channel_id {

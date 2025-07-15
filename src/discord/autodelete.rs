@@ -151,17 +151,16 @@ impl AutoDeleteHandler {
                     timer.channel_name(self.access.as_cache_http()).await,
                     timer.guild_name(self.access.cache())
                 );
-                if timer.should_check() {
-                    if let Err(e) = timer
+                if timer.should_check()
+                    && let Err(e) = timer
                         .clean_now(
                             self.access.as_cache_http(),
                             self.access.db().clone(),
                             self.logging.clone(),
                         )
                         .await
-                    {
-                        error!("timer failed to clean: {e}");
-                    }
+                {
+                    error!("timer failed to clean: {e}");
                 }
             })
             .await;
