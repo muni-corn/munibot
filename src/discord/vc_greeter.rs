@@ -1,11 +1,11 @@
 use poise::serenity_prelude::{
-    async_trait, ChannelId, Context, FullEvent, GuildId, Result, UserId,
+    ChannelId, Context, FullEvent, GuildId, MessageBuilder, Result, UserId, async_trait,
 };
 
 use super::{
+    DiscordFrameworkContext,
     handler::{DiscordEventHandler, DiscordHandlerError},
     utils::display_name_from_ids,
-    DiscordFrameworkContext,
 };
 
 pub struct VoiceChannelGreeter;
@@ -53,8 +53,10 @@ async fn greet_user(
             message: format!("couldn't get display name: {e}"),
         })?;
 
+    let msg = MessageBuilder::new().push("hi, ").push_safe(name).build();
+
     channel_id
-        .say(&ctx.http, format!("hi, {name}!"))
+        .say(&ctx.http, msg)
         .await
         .map_err(|e| DiscordHandlerError {
             handler_name: "vc_greeter",
