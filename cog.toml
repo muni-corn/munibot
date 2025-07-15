@@ -1,0 +1,49 @@
+from_latest_tag = false
+ignore_merge_commits = true
+ignore_fixup_commits = true
+disable_changelog = false
+disable_bump_commit = false
+generate_mono_repository_global_tag = true
+generate_mono_repository_package_tags = true
+branch_whitelist = []
+skip_ci = "[skip ci]"
+skip_untracked = false
+
+pre_bump_hooks = [
+  "nix fmt",
+  "cargo build --release", # verify the project builds
+  "cargo set-version {{version}}", # bump version in Cargo.toml
+  "cargo check --release",
+  "git add :/Cargo.lock", # stage version bump in Cargo.lock
+]
+post_bump_hooks = [
+  "git push",
+  "git push {{version}}",
+]
+
+pre_package_bump_hooks = []
+post_package_bump_hooks = []
+
+[git_hooks]
+
+[commit_types]
+feat = { changelog_title = "new features" }
+fix = { changelog_title = "bug fixes" }
+perf = { changelog_title = "performance" }
+build = { changelog_title = "build system" }
+refactor = { changelog_title = "refactors" }
+chore = { changelog_title = "other changes", omit_from_changelog = true }
+style = { changelog_title = "code style", omit_from_changelog = true }
+ci = { changelog_title = "continuous integration", omit_from_changelog = true }
+
+[changelog]
+path = "CHANGELOG.md"
+authors = [{ username = "municorn", signature = "municorn" }]
+template = "./changelog_template.tera"
+remote = "git.musicaloft.com"
+owner = "municorn"
+repository = "munibot"
+
+[bump_profiles]
+
+[packages]
