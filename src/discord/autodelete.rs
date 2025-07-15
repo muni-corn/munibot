@@ -13,11 +13,7 @@ use surrealdb::{Connection, RecordId, Surreal};
 use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 
 use super::state::GlobalAccess;
-use crate::{
-    MuniBotError,
-    handlers::logging::LoggingHandler,
-    handlers::logging::{LoggingHandler, PauseType},
-};
+use crate::{MuniBotError, handlers::logging::LoggingHandler};
 
 const TABLE_NAME: &str = "autodelete_timer";
 
