@@ -1,6 +1,7 @@
 #![feature(decl_macro)]
 #![feature(never_type)]
 #![feature(duration_constructors_lite)]
+#![feature(round_char_boundary)]
 
 use poise::serenity_prelude as serenity;
 use thiserror::Error;
