@@ -794,12 +794,21 @@ fn embed_with_fields(
     }
 
     if !fields.is_empty() {
-        let fields = fields.into_iter().map(|(name, mut value, inline)| {
+        let fields = fields.into_iter().map(|(name, value, inline)| {
             if value.len() > 1024 {
-                value = value[..1023].to_string();
-                value.push('…');
+                let split_index = value.floor_char_boundary(1023);
+                if let Some((truncated_string, _)) = value.split_at_checked(split_index) {
+                    (name, format!("{truncated_string}…"), inline)
+                } else {
+                    (
+                        name,
+                        "*too long and couldn't truncate...*".to_string(),
+                        inline,
+                    )
+                }
+            } else {
+                (name, value, inline)
             }
-            (name, value, inline)
         });
         embed = embed.fields(fields);
     }
