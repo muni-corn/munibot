@@ -2,6 +2,8 @@
 name = "munibot"
 version = "0.2.3"
 edition = "2024"
+authors = ["municorn <municorn@musicaloft.com>"]
+license = "GPL-3.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -34,3 +36,10 @@ twitch-irc = { version = "5.0", features = ["refreshing-token-native-tls"] }
 twitch_api = { version = "0.7", features = ["client", "helix", "eventsub", "hmac", "reqwest"] }
 twitch_oauth2 = "0.15"
 url = "2.4"
+
+[package.metadata.release]
+sign-commit = true
+sign-tag = true
+pre-release-commit-message = "chore(release): release {{crate_name}} {{version}}"
+tag-message = "chore(release): release {{crate_name}} {{version}}"
+publish = false
