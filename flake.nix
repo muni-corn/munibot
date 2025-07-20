@@ -128,6 +128,7 @@
                   cargo-watch
                   flyctl
                   cargo-machete
+                  convco
                 ]);
 
               LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
