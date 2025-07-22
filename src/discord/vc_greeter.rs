@@ -53,7 +53,11 @@ async fn greet_user(
             message: format!("couldn't get display name: {e}"),
         })?;
 
-    let msg = MessageBuilder::new().push("hi, ").push_safe(name).build();
+    let msg = MessageBuilder::new()
+        .push("hi, ")
+        .push_safe(name)
+        .push("!")
+        .build();
 
     channel_id
         .say(&ctx.http, msg)
@@ -79,8 +83,14 @@ async fn farewell_user(
             message: format!("couldn't get display name: {e}"),
         })?;
 
+    let msg = MessageBuilder::new()
+        .push("bye, ")
+        .push_safe(name)
+        .push("!")
+        .build();
+
     channel_id
-        .say(&ctx.http, format!("bye, {name}!"))
+        .say(&ctx.http, msg)
         .await
         .map_err(|e| DiscordHandlerError {
             handler_name: "vc_greeter",
