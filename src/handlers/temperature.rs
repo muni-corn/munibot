@@ -1,5 +1,5 @@
 use crate::{
-    MuniBotError,
+    MunibotError,
     discord::{DiscordCommand, DiscordContext, commands::DiscordCommandProvider},
 };
 
@@ -10,7 +10,7 @@ pub struct TemperatureConversionProvider;
 async fn convert_temperature(
     ctx: DiscordContext<'_>,
     #[description = "temperature to convert, ending in 'F' or 'C'"] temperature: String,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     let temperature = temperature.to_string().trim().to_lowercase();
 
     let quantity = temperature
@@ -18,7 +18,7 @@ async fn convert_temperature(
         .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
         .collect::<String>()
         .parse::<f32>()
-        .map_err(|e| MuniBotError::Other(format!("couldn't parse temperature: {e}")))?;
+        .map_err(|e| MunibotError::Other(format!("couldn't parse temperature: {e}")))?;
 
     let unit = temperature.chars().find(|c| *c == 'f' || *c == 'c');
 
@@ -34,7 +34,7 @@ async fn convert_temperature(
     };
 
     ctx.say(response).await.map_err(|e| {
-        MuniBotError::Other(format!(
+        MunibotError::Other(format!(
             "couldn't send temperature conversion response: {e}"
         ))
     })?;

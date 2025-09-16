@@ -21,11 +21,11 @@ use state::DiscordState;
 use surrealdb::{Surreal, engine::remote::ws, opt::auth::Database};
 
 use self::{admin::AdminCommandProvider, commands::DiscordCommandProvider};
-use crate::{MuniBotError, config::Config, handlers::DiscordMessageHandlerCollection};
+use crate::{MunibotError, config::Config, handlers::DiscordMessageHandlerCollection};
 
-pub type DiscordCommand = poise::Command<DiscordState, MuniBotError>;
-pub type DiscordContext<'a> = poise::Context<'a, DiscordState, MuniBotError>;
-pub type DiscordFrameworkContext<'a> = poise::FrameworkContext<'a, DiscordState, MuniBotError>;
+pub type DiscordCommand = poise::Command<DiscordState, MunibotError>;
+pub type DiscordContext<'a> = poise::Context<'a, DiscordState, MunibotError>;
+pub type DiscordFrameworkContext<'a> = poise::FrameworkContext<'a, DiscordState, MunibotError>;
 
 pub async fn start_discord_integration(
     handlers: DiscordMessageHandlerCollection,
@@ -56,7 +56,7 @@ pub async fn start_discord_integration(
     // always add admin commands
     commands.append(&mut AdminCommandProvider.commands());
 
-    let options = poise::FrameworkOptions::<DiscordState, MuniBotError> {
+    let options = poise::FrameworkOptions::<DiscordState, MunibotError> {
         event_handler: |ctx, event, framework, data| {
             Box::pin(event_handler(ctx, event, framework, data))
         },
@@ -75,7 +75,7 @@ pub async fn start_discord_integration(
         | serenity::GatewayIntents::MESSAGE_CONTENT
         | serenity::GatewayIntents::GUILD_MEMBERS;
 
-    let framework = poise::Framework::<DiscordState, MuniBotError>::builder()
+    let framework = poise::Framework::<DiscordState, MunibotError>::builder()
         .setup(move |ctx, ready, framework| {
             Box::pin(on_ready(
                 ctx,
@@ -106,11 +106,11 @@ pub async fn start_discord_integration(
 async fn on_ready(
     ctx: &serenity::Context,
     ready: &serenity::Ready,
-    framework: &poise::Framework<DiscordState, MuniBotError>,
+    framework: &poise::Framework<DiscordState, MunibotError>,
     handlers: DiscordMessageHandlerCollection,
     config: Config,
     db: Arc<Surreal<ws::Client>>,
-) -> Result<DiscordState, MuniBotError> {
+) -> Result<DiscordState, MunibotError> {
     register_globally(ctx, &framework.options().commands)
         .await
         .expect("failed to register commands globally");
@@ -133,7 +133,7 @@ async fn event_handler(
     event: &serenity::FullEvent,
     framework_context: DiscordFrameworkContext<'_>,
     data: &DiscordState,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     for handler in data.handlers().iter() {
         let mut locked_handler = handler.lock().await;
         let handled_future = locked_handler.handle_discord_event(context, framework_context, event);

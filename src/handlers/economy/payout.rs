@@ -5,7 +5,7 @@ use surrealdb::{Connection, RecordId, Surreal};
 use thiserror::Error;
 
 use super::wallet::{Wallet, WalletError};
-use crate::MuniBotError;
+use crate::MunibotError;
 
 const GUILD_PAYOUT_TABLE: &str = "guild_payout";
 
@@ -146,8 +146,8 @@ pub enum PayoutError {
     NothingToClaim,
 }
 
-impl From<PayoutError> for MuniBotError {
+impl From<PayoutError> for MunibotError {
     fn from(e: PayoutError) -> Self {
-        MuniBotError::Other(format!("{e}"))
+        MunibotError::Other(format!("{e}"))
     }
 }

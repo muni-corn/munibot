@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use surrealdb::{Connection, RecordId, Surreal};
 use thiserror::Error;
 
-use crate::MuniBotError;
+use crate::MunibotError;
 
 pub const GUILD_WALLET_TABLE: &str = "guild_wallet";
 
@@ -116,8 +116,8 @@ pub enum WalletError {
     InsufficientFunds,
 }
 
-impl From<WalletError> for MuniBotError {
+impl From<WalletError> for MunibotError {
     fn from(e: WalletError) -> Self {
-        MuniBotError::Other(format!("{e}"))
+        MunibotError::Other(format!("{e}"))
     }
 }

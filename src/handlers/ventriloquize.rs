@@ -5,7 +5,7 @@ use poise::{Command, CreateReply, serenity_prelude::CreateMessage};
 use tokio::time::sleep;
 
 use crate::{
-    MuniBotError,
+    MunibotError,
     discord::{DiscordContext, commands::DiscordCommandProvider, state::DiscordState},
 };
 
@@ -15,7 +15,7 @@ pub struct VentriloquizeProvider;
 async fn ventriloquize<'a, 'b: 'a>(
     ctx: DiscordContext<'b>,
     message: String,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     let channel_id = ctx.channel_id();
     let http = ctx.serenity_context().http.to_owned();
 
@@ -44,12 +44,12 @@ async fn ventriloquize<'a, 'b: 'a>(
 }
 
 impl DiscordCommandProvider for VentriloquizeProvider {
-    fn commands(&self) -> Vec<Command<DiscordState, MuniBotError>> {
+    fn commands(&self) -> Vec<Command<DiscordState, MunibotError>> {
         vec![ventriloquize()]
     }
 }
 
-async fn is_ventriloquist(ctx: DiscordContext<'_>) -> Result<bool, MuniBotError> {
+async fn is_ventriloquist(ctx: DiscordContext<'_>) -> Result<bool, MunibotError> {
     Ok(ctx
         .data()
         .config

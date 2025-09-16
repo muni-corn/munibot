@@ -13,7 +13,7 @@ use surrealdb::{Connection, RecordId, Surreal};
 use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 
 use super::state::GlobalAccess;
-use crate::{MuniBotError, handlers::logging::LoggingHandler};
+use crate::{MunibotError, handlers::logging::LoggingHandler};
 
 const TABLE_NAME: &str = "autodelete_timer";
 
@@ -31,7 +31,7 @@ impl AutoDeleteHandler {
     pub async fn new(
         global_access: GlobalAccess,
         logging: Arc<Mutex<LoggingHandler>>,
-    ) -> Result<Self, MuniBotError> {
+    ) -> Result<Self, MunibotError> {
         let mut timers = HashMap::new();
 
         let db_records: Vec<AutoDeleteTimer> = global_access

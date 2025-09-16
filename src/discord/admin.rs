@@ -7,7 +7,7 @@ use super::{
     DiscordCommand, DiscordCommandProvider, DiscordContext, autodelete::AutoDeleteHandler,
 };
 use crate::{
-    MuniBotError, db::DbItem, discord::autodelete::AutoDeleteMode,
+    MunibotError, db::DbItem, discord::autodelete::AutoDeleteMode,
     handlers::logging::LoggingChannel,
 };
 
@@ -27,7 +27,7 @@ impl DiscordCommandProvider for AdminCommandProvider {
     subcommands("set_log_channel", "stop_logging", "set_autodelete", "stop_autodelete"),
     ephemeral
 )]
-async fn admin(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn admin(ctx: DiscordContext<'_>) -> Result<(), MunibotError> {
     let mut msg = String::from(
         "hi :3 this command has subcommands for managing my server administration tools.",
     );
@@ -54,7 +54,7 @@ async fn set_log_channel(
 
     #[description = "the channel to log messages to. if omitted, use the current channel instead."]
     channel: Option<ChannelId>,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     let db = &ctx.data().access().db();
 
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
@@ -88,7 +88,7 @@ async fn set_log_channel(
     guild_only,
     ephemeral
 )]
-async fn stop_logging(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn stop_logging(ctx: DiscordContext<'_>) -> Result<(), MunibotError> {
     let db = &ctx.data().access().db();
 
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
@@ -126,7 +126,7 @@ async fn set_autodelete(
     #[description = "whether to always clean any message that is old or only clean messages after the channel is silent"]
     #[rename = "clean_mode"]
     specified_clean_mode: Option<AutoDeleteMode>,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     let clean_mode = specified_clean_mode.unwrap_or_default();
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
         let mut msg = MessageBuilder::new();
@@ -192,7 +192,7 @@ async fn set_autodelete(
     guild_only,
     ephemeral
 )]
-async fn stop_autodelete(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn stop_autodelete(ctx: DiscordContext<'_>) -> Result<(), MunibotError> {
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
         let did_exist = ctx
             .framework()

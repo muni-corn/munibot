@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 use super::{autodelete::AutoDeleteHandler, handler::DiscordEventHandler};
 use crate::{
-    MuniBotError,
+    MunibotError,
     config::{Config, DiscordConfig},
     handlers::{DiscordMessageHandlerCollection, logging::LoggingHandler},
 };
@@ -57,7 +57,7 @@ impl DiscordState {
         db: Arc<Surreal<ws::Client>>,
         http: Arc<Http>,
         cache: Arc<Cache>,
-    ) -> Result<Self, MuniBotError> {
+    ) -> Result<Self, MunibotError> {
         let global_access = GlobalAccess { db, http, cache };
 
         // add the logging handler to the list of handlers

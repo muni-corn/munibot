@@ -5,7 +5,7 @@ use wallet::Wallet;
 
 use self::wallet::WalletError;
 use crate::{
-    MuniBotError,
+    MunibotError,
     discord::{
         DiscordCommand, DiscordContext, DiscordFrameworkContext,
         commands::{DiscordCommandError, DiscordCommandProvider},
@@ -90,7 +90,7 @@ impl DiscordCommandProvider for EconomyProvider {
 
 /// check how much money you have.
 #[poise::command(slash_command, prefix_command)]
-async fn wallet(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn wallet(ctx: DiscordContext<'_>) -> Result<(), MunibotError> {
     if let Some(guild_id) = ctx.guild_id() {
         let author_name = display_name_from_command_context(ctx).await;
 
@@ -118,7 +118,7 @@ async fn wallet(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 
 /// claim your monies!
 #[poise::command(slash_command, prefix_command)]
-async fn claim(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn claim(ctx: DiscordContext<'_>) -> Result<(), MunibotError> {
     if let Some(guild_id) = ctx.guild_id() {
         let db = &ctx.data().access().db();
 
@@ -169,7 +169,7 @@ async fn transfer(
     ctx: DiscordContext<'_>,
     #[description = "the amount you want to send"] amount: u64,
     #[description = "ping who you want to send funds to"] to: UserId,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     if let Some(guild_id) = ctx.guild_id() {
         // ensure the author is sending anything at all
         if amount == 0 {

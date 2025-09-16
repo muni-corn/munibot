@@ -8,7 +8,7 @@ use chrono::Local;
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    MuniBotError,
+    MunibotError,
     config::Config,
     discord::{
         DiscordCommand, DiscordContext, commands::DiscordCommandProvider,
@@ -88,7 +88,7 @@ impl TwitchMessageHandler for MagicalHandler {
 
 /// Check your magicalness today.
 #[poise::command(prefix_command, slash_command)]
-async fn magical(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn magical(ctx: DiscordContext<'_>) -> Result<(), MunibotError> {
     let nick = display_name_from_command_context(ctx).await;
 
     ctx.say(MagicalHandler::get_message(

@@ -2,7 +2,7 @@ use poise::serenity_prelude::MessageBuilder;
 use rand::{Rng, seq::SliceRandom};
 
 use crate::{
-    MuniBotError,
+    MunibotError,
     discord::{
         DiscordCommand, DiscordContext,
         commands::{DiscordCommandError, DiscordCommandProvider},
@@ -38,7 +38,7 @@ async fn roll(
     ctx: DiscordContext<'_>,
     #[description = "number of sides on the die you want to roll"] sides: u8,
     #[description = "specify what you're rolling for"] purpose: Option<String>,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     let mut builder = MessageBuilder::new();
     if let Some(p) = purpose {
         builder.push(format!("rolling {p}: "));

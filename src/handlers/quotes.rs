@@ -12,7 +12,7 @@ use surrealdb::{
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    MuniBotError,
+    MunibotError,
     config::{Config, DbConfig},
     twitch::{
         agent::TwitchAgent,
@@ -40,7 +40,7 @@ pub struct QuotesHandler {
 
 impl QuotesHandler {
     /// Create a new QuotesHandler, connecting to the database.
-    pub async fn new(db_config: &DbConfig) -> Result<Self, MuniBotError> {
+    pub async fn new(db_config: &DbConfig) -> Result<Self, MunibotError> {
         dotenv().ok(); // TODO: map to MuniBotError::DotenvError
 
         let db = Surreal::new::<Ws>(&db_config.url).await?;

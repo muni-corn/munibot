@@ -17,7 +17,7 @@ pub mod handlers;
 pub mod twitch;
 
 #[derive(Error, Debug)]
-pub enum MuniBotError {
+pub enum MunibotError {
     #[error("parsing failure :< {0}")]
     ParseError(#[from] serde_json::Error),
 
@@ -49,13 +49,13 @@ pub enum MuniBotError {
     Other(String),
 }
 
-impl From<DiscordCommandError> for MuniBotError {
+impl From<DiscordCommandError> for MunibotError {
     fn from(e: DiscordCommandError) -> Self {
         Self::DiscordCommand(e.command_identifier.to_string(), format!("{e}"))
     }
 }
 
-impl From<anyhow::Error> for MuniBotError {
+impl From<anyhow::Error> for MunibotError {
     fn from(value: anyhow::Error) -> Self {
         Self::Other(value.to_string())
     }

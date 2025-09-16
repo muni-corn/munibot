@@ -4,7 +4,7 @@ use log::{info, warn};
 use poise::serenity_prelude::UserId;
 use serde::{Deserialize, Serialize};
 
-use crate::MuniBotError;
+use crate::MunibotError;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
@@ -40,7 +40,7 @@ pub struct TwitchConfig {
 impl Config {
     /// Reads the config from the file if it exists, otherwise writes the
     /// default config to the file and loads that.
-    pub fn read_or_write_default_from<P: AsRef<Path>>(path: P) -> Result<Self, Box<MuniBotError>> {
+    pub fn read_or_write_default_from<P: AsRef<Path>>(path: P) -> Result<Self, Box<MunibotError>> {
         let p = path.as_ref();
 
         // check if the path exists
@@ -50,7 +50,7 @@ impl Config {
 
             // format it into a toml string
             let toml_string = toml::to_string_pretty(&default).map_err(|e| {
-                MuniBotError::LoadConfig(
+                MunibotError::LoadConfig(
                     "couldn't format default config with toml".to_owned(),
                     e.into(),
                 )
@@ -84,7 +84,7 @@ impl Config {
         } else {
             // read the file to a string
             let raw_string = fs::read_to_string(p).map_err(|e| {
-                MuniBotError::LoadConfig(
+                MunibotError::LoadConfig(
                     format!("couldn't read contents of {}", p.display()),
                     e.into(),
                 )
@@ -92,7 +92,7 @@ impl Config {
 
             // parse the string as toml
             let config = toml::from_str(&raw_string).map_err(|e| {
-                MuniBotError::LoadConfig(
+                MunibotError::LoadConfig(
                     format!("couldn't parse toml from {}", p.display()),
                     e.into(),
                 )

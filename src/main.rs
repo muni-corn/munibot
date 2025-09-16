@@ -4,7 +4,7 @@ use clap::Parser;
 use env_logger::Env;
 use log::{error, info, warn};
 use munibot::{
-    MuniBotError,
+    MunibotError,
     config::Config,
     discord::{
         simple::SimpleCommandProvider, start_discord_integration, vc_greeter::VoiceChannelGreeter,
@@ -27,7 +27,7 @@ struct Args {
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
-async fn main() -> Result<(), Box<MuniBotError>> {
+async fn main() -> Result<(), Box<MunibotError>> {
     dotenvy::dotenv().ok();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 

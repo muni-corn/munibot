@@ -2,7 +2,7 @@ use poise::serenity_prelude::MessageBuilder;
 use rand::seq::SliceRandom;
 
 use crate::{
-    MuniBotError,
+    MunibotError,
     discord::{
         DiscordCommand, DiscordContext,
         commands::{DiscordCommandError, DiscordCommandProvider},
@@ -32,7 +32,7 @@ impl EightBallProvider {
 async fn eight_ball(
     ctx: DiscordContext<'_>,
     #[description = "A yes-or-no question about the future."] question: String,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotError> {
     let shake_message = EightBallProvider::get_shake_message();
     let eight_ball_response = EightBallProvider::get_response();
     let message = MessageBuilder::new()
