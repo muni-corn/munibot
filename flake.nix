@@ -90,18 +90,21 @@
               targets = [ "wasm32-unknown-unknown" ];
             };
 
-            packages = [
-              config.treefmt.build.wrapper
-              pkgs.bacon
-              pkgs.cargo-edit
-              pkgs.cargo-outdated
-              pkgs.cargo-release
-              pkgs.cargo-watch
-              pkgs.flyctl
-            ]
-            ++ buildInputs
-            ++ nativeBuildInputs
-            ++ (builtins.attrValues config.treefmt.build.programs);
+            packages =
+              with pkgs;
+              [
+                config.treefmt.build.wrapper
+                bacon
+                cargo-edit
+                cargo-outdated
+                cargo-release
+                cargo-watch
+                flyctl
+                surrealdb-migrations
+              ]
+              ++ buildInputs
+              ++ nativeBuildInputs
+              ++ (builtins.attrValues config.treefmt.build.programs);
 
             # git hooks
             git-hooks.hooks = {
