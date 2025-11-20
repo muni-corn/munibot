@@ -1,4 +1,5 @@
-/target
+target/
+.devenv/
 .direnv/
 client_id.txt
 client_secret.txt
@@ -7,3 +8,4 @@ raid_msg_subs.txt
 raid_msg_normal.txt
 .env
 *.orig
+.pre-commit-config.yaml
