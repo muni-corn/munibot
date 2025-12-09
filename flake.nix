@@ -33,6 +33,11 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    devenv-root = {
+      url = "file+file:///dev/null";
+      flake = false;
+    };
   };
 
   outputs =
@@ -84,7 +89,7 @@
 
             languages.rust = {
               enable = true;
-              channel = "stable";
+              channel = "nightly";
               mold.enable = true;
               # Add WASM target for Leptos
               targets = [ "wasm32-unknown-unknown" ];
