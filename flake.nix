@@ -63,7 +63,7 @@
           name = "munibot";
 
           # Leptos/Rust dependencies
-          buildInputs = with pkgs; [ libressl_4_0 ];
+          buildInputs = with pkgs; [ libressl_4_2 ];
           # Additional build inputs for Leptos
           nativeBuildInputs = with pkgs; [
             clang
