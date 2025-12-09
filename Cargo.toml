@@ -1,5 +1,6 @@
 [package]
 name = "munibot"
+description = "the cutest bot for Discord and Twitch, personality included"
 version = "0.2.4"
 edition = "2024"
 authors = ["municorn <municorn@musicaloft.com>"]
@@ -33,7 +34,13 @@ tokio = { version = "1.22", features = ["full"] }
 tokio-tungstenite = { version = "0.20.1", features = ["native-tls"] }
 toml = "0.8.12"
 twitch-irc = { version = "5.0", features = ["refreshing-token-native-tls"] }
-twitch_api = { version = "0.7", features = ["client", "helix", "eventsub", "hmac", "reqwest"] }
+twitch_api = { version = "0.7", features = [
+  "client",
+  "helix",
+  "eventsub",
+  "hmac",
+  "reqwest",
+] }
 twitch_oauth2 = "0.15"
 url = "2.4"
 
