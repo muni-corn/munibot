@@ -117,11 +117,24 @@
                 cargo-release
                 cargo-watch
                 flyctl
-                surrealdb-migrations
               ]
               ++ buildInputs
               ++ nativeBuildInputs
               ++ (builtins.attrValues config.treefmt.build.programs);
+
+            services.mysql = {
+              enable = true;
+              ensureUsers = [
+                {
+                  name = "munibot";
+                  password = "sillylittlepassword";
+                  ensurePermissions."munibot.*" = "ALL PRIVILEGES";
+                }
+              ];
+              initialDatabases = [
+                { name = "munibot"; }
+              ];
+            };
           };
 
           # setup rust packages
