@@ -91,6 +91,9 @@
           ];
         in
         {
+          # unfree packages are required for surrealdb
+          nixpkgs.config.allowUnfree = true;
+
           # rust setup
           devenv.shells.default = {
             env = {
@@ -117,6 +120,7 @@
                 cargo-release
                 cargo-watch
                 flyctl
+                surrealdb
                 surrealdb-migrations
               ]
               ++ buildInputs
