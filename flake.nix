@@ -79,15 +79,15 @@
         let
           name = "munibot";
 
-          # Leptos/Rust dependencies
+          # runtime dependencies
           buildInputs = with pkgs; [ libressl_4_2 ];
-          # Additional build inputs for Leptos
+
+          # native build-time dependencies
           nativeBuildInputs = with pkgs; [
             clang
             glibc
-            leptosfmt
+            dioxus-cli
             pkg-config
-            trunk
           ];
         in
         {
@@ -103,7 +103,7 @@
               enable = true;
               channel = "nightly";
               mold.enable = true;
-              # Add WASM target for Leptos
+              # add wasm target for web gui
               targets = [ "wasm32-unknown-unknown" ];
             };
 
