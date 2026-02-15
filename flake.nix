@@ -116,6 +116,7 @@
                 cargo-outdated
                 cargo-release
                 cargo-watch
+                diesel-cli
                 flyctl
               ]
               ++ buildInputs
