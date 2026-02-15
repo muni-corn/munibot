@@ -162,14 +162,6 @@
             };
           };
 
-          # formatting
-          treefmt.programs = {
-            leptosfmt.enable = true;
-            nixfmt.enable = true;
-            rustfmt.enable = true;
-            taplo.enable = true;
-          };
-
           packages.default = config.rust-project.crates.${name}.crane.outputs.packages.${name};
 
           # `nix flake check`
