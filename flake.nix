@@ -80,7 +80,10 @@
           name = "munibot";
 
           # runtime dependencies
-          buildInputs = with pkgs; [ libressl_4_2 ];
+          buildInputs = with pkgs; [
+            libressl_4_2
+            libmysqlclient
+          ];
 
           # native build-time dependencies
           nativeBuildInputs = with pkgs; [
