@@ -1,6 +1,6 @@
-# Munibot Development Commands
+# munibot development commands
 
-## Build & Test
+## build and test
 
 - `cargo build` - Build the project
 - `cargo test` - Run all tests
@@ -10,40 +10,40 @@
 - `cargo clippy` - Run linter
 - `cargo clippy --fix` - Auto-fix linting issues
 
-## Formatting
+## formatting
 
 - `treefmt` - Format all code (Rust, TOML, Markdown)
 - `rustfmt src/main.rs` - Format specific file
 - `rustfmt --check src/main.rs` - Check formatting without changes
 
-## Code Style Guidelines
+## code style guidelines
 
-### Error Handling
+### error handling
 
 - Use `MuniBotError` enum for application errors (src/lib.rs:19-50)
 - Use `thiserror` for error derivation
 - Error messages use friendly, lowercase language with plain-text emoticons
 
-### Imports & Structure
+### imports and structure
 
 - Group imports: std -> external crates -> internal modules
 - Use `use` statements at top of files
 - Module structure: `src/handlers/`, `src/discord/`, `src/twitch/`
 
-### Naming Conventions
+### naming conventions
 
 - Snake_case for functions and variables
 - PascalCase for types and structs
 - UPPER_SNAKE_CASE for constants
 - Descriptive names: `DiscordCommandProvider`, `TwitchMessageHandler`
 
-### Async Patterns
+### async patterns
 
 - Use `async-trait` for trait async methods
 - Tokio runtime with `#[tokio::main]`
 - Error handling with `Result<T, MuniBotError>`
 
-### Testing
+### testing
 
 - Tests in `#[cfg(test)]` modules
 - Use `assert!` and `assert_eq!` for assertions
