@@ -60,6 +60,7 @@ impl Wallet {
                 balance,
             })
             .await
+            .map_err(Box::new)
             .map_err(WalletError::Database)
             .and_then(|opt| opt.ok_or_else(|| WalletError::NotCreated(user_id, guild_id)))
     }
@@ -107,7 +108,7 @@ impl Wallet {
 #[derive(Error, Debug)]
 pub enum WalletError {
     #[error("error in wallet database: {0}")]
-    Database(#[from] surrealdb::Error),
+    Database(#[from] Box<surrealdb::Error>),
 
     #[error("wallet for user {0} in guild {1} not created :<")]
     NotCreated(UserId, GuildId),
@@ -119,5 +120,11 @@ pub enum WalletError {
 impl From<WalletError> for MuniBotError {
     fn from(e: WalletError) -> Self {
         MuniBotError::Other(format!("{e}"))
+    }
+}
+
+impl From<surrealdb::Error> for WalletError {
+    fn from(e: surrealdb::Error) -> Self {
+        Self::Database(Box::new(e))
     }
 }

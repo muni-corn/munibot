@@ -32,10 +32,10 @@ pub enum MuniBotError {
     MissingToken,
 
     #[error("error with database :< {0}")]
-    DbError(#[from] surrealdb::Error),
+    DbError(#[from] Box<surrealdb::Error>),
 
     #[error("error in discord framework :< {0}")]
-    SerenityError(#[from] serenity::Error),
+    SerenityError(#[from] Box<serenity::Error>),
 
     #[error("error loading config :< {0}, {1}")]
     LoadConfig(String, anyhow::Error),
@@ -56,5 +56,17 @@ impl From<DiscordCommandError> for MuniBotError {
 impl From<anyhow::Error> for MuniBotError {
     fn from(value: anyhow::Error) -> Self {
         Self::Other(value.to_string())
+    }
+}
+
+impl From<serenity::Error> for MuniBotError {
+    fn from(e: serenity::Error) -> Self {
+        Self::SerenityError(Box::new(e))
+    }
+}
+
+impl From<surrealdb::Error> for MuniBotError {
+    fn from(e: surrealdb::Error) -> Self {
+        Self::DbError(Box::new(e))
     }
 }

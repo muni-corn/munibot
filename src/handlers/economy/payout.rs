@@ -70,6 +70,7 @@ impl Payout {
                 last_payout: chrono::Local::now() - PAYOUT_INTERVAL,
             })
             .await
+            .map_err(Box::new)
             .map_err(PayoutError::Database)
             .and_then(|opt| opt.ok_or_else(|| PayoutError::NotCreated(user_id, guild_id)))
     }
@@ -131,7 +132,7 @@ impl Payout {
 #[derive(Error, Debug)]
 pub enum PayoutError {
     #[error("error in payout database: {0}")]
-    Database(#[from] surrealdb::Error),
+    Database(#[from] Box<surrealdb::Error>),
 
     #[error("error with wallet: {0}")]
     Wallet(#[from] WalletError),
@@ -149,5 +150,11 @@ pub enum PayoutError {
 impl From<PayoutError> for MuniBotError {
     fn from(e: PayoutError) -> Self {
         MuniBotError::Other(format!("{e}"))
+    }
+}
+
+impl From<surrealdb::Error> for PayoutError {
+    fn from(e: surrealdb::Error) -> Self {
+        Self::Database(Box::new(e))
     }
 }
