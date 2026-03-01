@@ -66,18 +66,14 @@ impl TwitchMessageHandler for MagicalHandler {
         _config: &Config,
     ) -> Result<bool, TwitchHandlerError> {
         let handled = match message {
-            ServerMessage::Privmsg(msg) => {
-                if msg.message_text.starts_with("!magical") {
-                    self.send_twitch_message(
-                        client,
-                        &msg.channel_login,
-                        &Self::get_message(&msg.sender.id, &msg.sender.name),
-                    )
-                    .await?;
-                    true
-                } else {
-                    false
-                }
+            ServerMessage::Privmsg(msg) if msg.message_text.starts_with("!magical") => {
+                self.send_twitch_message(
+                    client,
+                    &msg.channel_login,
+                    &Self::get_message(&msg.sender.id, &msg.sender.name),
+                )
+                .await?;
+                true
             }
             _ => false,
         };
