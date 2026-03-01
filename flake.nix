@@ -102,7 +102,13 @@
               LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
             };
 
-            git-hooks.hooks.clippy.enable = true;
+            git-hooks.hooks.clippy = {
+              enable = true;
+              packageOverrides = {
+                cargo = config.rust-project.toolchain;
+                clippy = config.rust-project.toolchain;
+              };
+            };
 
             languages.rust = {
               enable = true;
