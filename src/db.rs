@@ -6,6 +6,7 @@ use diesel_async::{
 use serde::{Serialize, de::DeserializeOwned};
 use surrealdb::{Connection, RecordIdKey, Surreal, opt::IntoResource};
 
+pub mod models;
 pub mod schema;
 
 /// Async MySQL connection pool backed by bb8.
