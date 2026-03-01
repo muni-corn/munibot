@@ -102,6 +102,8 @@
               LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
             };
 
+            git-hooks.hooks.clippy.enable = true;
+
             languages.rust = {
               enable = true;
               channel = "nightly";
