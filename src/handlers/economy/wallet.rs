@@ -30,7 +30,7 @@ impl Wallet {
         guild_id: GuildId,
         user_id: UserId,
     ) -> Result<Self, WalletError> {
-        match db
+        if let Some(w) = db
             .query(format!(
                 "SELECT * FROM {GUILD_WALLET_TABLE}
                  WHERE guild_id = $guild AND user_id = $user;"
@@ -40,8 +40,9 @@ impl Wallet {
             .await?
             .take::<Option<Self>>(0)?
         {
-            Some(w) => Ok(w),
-            None => Self::create_in_db(db, guild_id, user_id, 0).await,
+            Ok(w)
+        } else {
+            Self::create_in_db(db, guild_id, user_id, 0).await
         }
     }
 

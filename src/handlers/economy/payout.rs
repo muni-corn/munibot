@@ -40,7 +40,7 @@ impl Payout {
         guild_id: GuildId,
         user_id: UserId,
     ) -> Result<Self, PayoutError> {
-        match db
+        if let Some(w) = db
             .query(format!(
                 "SELECT * FROM {GUILD_PAYOUT_TABLE}
                  WHERE guild_id = $guild AND user_id = $user;"
@@ -50,8 +50,9 @@ impl Payout {
             .await?
             .take::<Option<Self>>(0)?
         {
-            Some(w) => Ok(w),
-            None => Self::create_in_db(db, guild_id, user_id).await,
+            Ok(w)
+        } else {
+            Self::create_in_db(db, guild_id, user_id).await
         }
     }
 
