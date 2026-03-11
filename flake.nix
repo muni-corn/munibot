@@ -107,6 +107,10 @@
 
           # rust setup
           devenv.shells.default = {
+            enterTest = ''
+              cargo test
+            '';
+
             env = {
               RUST_LOG = "error,munibot=debug";
               LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
