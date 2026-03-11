@@ -36,11 +36,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    rust-flake = {
-      url = "github:juspay/rust-flake";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -70,8 +65,6 @@
       imports = [
         inputs.git-hooks-nix.flakeModule
         inputs.musicaloft-style.flakeModule
-        inputs.rust-flake.flakeModules.default
-        inputs.rust-flake.flakeModules.nixpkgs
         inputs.treefmt-nix.flakeModule
       ];
 
@@ -84,7 +77,7 @@
           ...
         }:
         let
-          name = "munibot";
+          pname = "munibot";
 
           # runtime dependencies
           buildInputs = with pkgs; [
@@ -99,6 +92,8 @@
             dioxus-cli
             pkg-config
           ];
+
+          toolchain = config.devenv.shells.default.languages.rust.toolchainPackage;
         in
         {
           # rust setup
@@ -112,8 +107,8 @@
             git-hooks.hooks.clippy = {
               enable = true;
               packageOverrides = {
-                cargo = config.rust-project.toolchain;
-                clippy = config.rust-project.toolchain;
+                cargo = toolchain;
+                clippy = toolchain;
               };
             };
 
@@ -123,6 +118,8 @@
               mold.enable = true;
               # add wasm target for web gui
               targets = [ "wasm32-unknown-unknown" ];
+              # embed rpath so dev binaries find dynamic libs without LD_LIBRARY_PATH
+              rustflags = "-C link-args=-Wl,-rpath,${pkgs.lib.makeLibraryPath buildInputs}";
             };
 
             packages =
@@ -156,32 +153,64 @@
             };
           };
 
-          # setup rust packages
-          rust-project = {
-            # ensure assets and style files are included with build
-            src = pkgs.lib.cleanSourceWith {
-              src = inputs.self;
-              filter =
-                path: type:
-                (pkgs.lib.hasInfix "/assets/" path)
-                || (pkgs.lib.hasInfix "/style/" path)
-                || (pkgs.lib.hasSuffix "tailwind.config.js" path)
-                || (config.rust-project.crane-lib.filterCargoSources path type);
+          packages.default =
+            let
+              crate2nixTools = pkgs.callPackage "${inputs.crate2nix}/tools.nix" { };
+              # Use generatedCargoNix + callPackage so we can pass buildRustCrateForPkgs
+              # and wire in the nightly toolchain. languages.rust.import (appliedCargoNix)
+              # always defaults to pkgs.buildRustCrate; its .override only exposes
+              # { features, crateOverrides } and cannot change the underlying toolchain.
+              cargoNix =
+                pkgs.callPackage
+                  (crate2nixTools.generatedCargoNix {
+                    inherit pname;
+                    src = ./.;
+                  })
+                  {
+                    buildRustCrateForPkgs =
+                      _pkgs:
+                      pkgs.buildRustCrate.override {
+                        rustc = toolchain;
+                        cargo = toolchain;
+                      };
+                  };
+            in
+            cargoNix.rootCrate.build.override {
+              crateOverrides = pkgs.defaultCrateOverrides // {
+                # libressl provides openssl.pc; give openssl-sys explicit access
+                openssl-sys = _attrs: {
+                  buildInputs = [ pkgs.libressl_4_2.dev ];
+                  nativeBuildInputs = [ pkgs.pkg-config ];
+                };
+                # mysql client bindings need libmysqlclient via pkg-config
+                mysqlclient-sys = _attrs: {
+                  buildInputs = [ pkgs.libmysqlclient ];
+                  nativeBuildInputs = [ pkgs.pkg-config ];
+                };
+
+                # customize munibot's build inputs
+                ${pname} = attrs: {
+                  # include assets and style files alongside rust sources for dioxus
+                  src = pkgs.lib.cleanSourceWith {
+                    src = inputs.self;
+                    filter =
+                      path: type:
+                      (pkgs.lib.hasInfix "/assets/" path)
+                      || (pkgs.lib.hasInfix "/style/" path)
+                      || (pkgs.lib.hasSuffix "tailwind.config.js" path)
+                      || (pkgs.lib.cleanSourceFilter path type);
+                  };
+
+                  inherit buildInputs nativeBuildInputs;
+
+                  # embed rpath so the installed binary finds its dynamic libraries
+                  runtimeDependencies = buildInputs;
+
+                  # required by bindgen (mysql, openssl build scripts)
+                  LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+                };
+              };
             };
-
-            # use the same rust toolchain from the dev shell for consistency
-            toolchain = config.devenv.shells.default.languages.rust.toolchainPackage;
-
-            # specify dependencies
-            defaults.perCrate.crane.args = {
-              inherit nativeBuildInputs buildInputs;
-              # Additional environment variables for Leptos
-              LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-              LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
-            };
-          };
-
-          packages.default = config.rust-project.crates.${name}.crane.outputs.packages.${name};
 
           # `nix flake check`
           checks = {
