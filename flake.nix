@@ -96,6 +96,15 @@
           toolchain = config.devenv.shells.default.languages.rust.toolchainPackage;
         in
         {
+          # unfree packages are required for surrealdb
+          # ~~yet another reason to switch away to mysql/mariadb~~
+          _module.args.pkgs = lib.mkForce (
+            import inputs.nixpkgs {
+              inherit system;
+              config.allowUnfree = true;
+            }
+          );
+
           # rust setup
           devenv.shells.default = {
             env = {
@@ -137,6 +146,11 @@
               ++ buildInputs
               ++ nativeBuildInputs
               ++ (builtins.attrValues config.treefmt.build.programs);
+
+            processes.surrealdb = {
+              exec = "${pkgs.surrealdb}/bin/surreal start --user root --pass root --bind 0.0.0.0:8000 memory";
+              process-compose.is_elevated = true;
+            };
 
             services.mysql = {
               enable = true;
