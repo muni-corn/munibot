@@ -137,7 +137,6 @@
             packages =
               with pkgs;
               [
-                config.treefmt.build.wrapper
                 bacon
                 cargo-edit
                 cargo-outdated
@@ -148,7 +147,7 @@
               ]
               ++ buildInputs
               ++ nativeBuildInputs
-              ++ (builtins.attrValues config.treefmt.build.programs);
+              ++ (builtins.attrValues config.devenv.shells.default.treefmt.config.build.programs);
 
             processes.surrealdb = {
               exec = "${pkgs.surrealdb}/bin/surreal start --user root --pass root --bind 0.0.0.0:8000 memory";
@@ -230,10 +229,7 @@
             };
 
           # `nix flake check`
-          checks = {
-            clippy = config.rust-project.crates.${name}.crane.outputs.clippy;
-            formatting = config.treefmt.build.check inputs.self;
-          };
+          checks.treefmt = config.devenv.shells.default.treefmt.config.build.check inputs.self;
         };
 
       flake = {
