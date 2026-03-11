@@ -6,6 +6,7 @@ use diesel_async::{
 use serde::{Serialize, de::DeserializeOwned};
 use surrealdb::{Connection, RecordIdKey, Surreal, opt::IntoResource};
 
+pub mod migration;
 pub mod models;
 pub mod operations;
 pub mod schema;
