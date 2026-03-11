@@ -109,7 +109,6 @@
           devenv.shells.default = {
             env = {
               RUST_LOG = "error,munibot=debug";
-              LEPTOS_TAILWIND_VERSION = "v3.4.14";
               LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
             };
 
