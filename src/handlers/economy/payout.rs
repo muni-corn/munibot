@@ -1,30 +1,22 @@
-use chrono::Local;
+use chrono::{Local, NaiveDateTime, Utc};
 use poise::serenity_prelude::{GuildId, UserId};
-use serde::{Deserialize, Serialize};
-use surrealdb::{Connection, RecordId, Surreal};
 use thiserror::Error;
 
 use super::wallet::{Wallet, WalletError};
-use crate::MuniBotError;
-
-const GUILD_PAYOUT_TABLE: &str = "guild_payout";
+use crate::{
+    MuniBotError,
+    db::{DbPool, operations},
+};
 
 const PAYOUT_INTERVAL: chrono::Duration = chrono::Duration::milliseconds(1000 * 60 * 5);
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PayoutData {
+#[derive(Debug)]
+pub struct Payout {
+    id: i64,
     guild_id: GuildId,
     user_id: UserId,
     balance: u64,
-    last_payout: chrono::DateTime<Local>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Payout {
-    id: RecordId,
-
-    #[serde(flatten)]
-    data: PayoutData,
+    last_payout: NaiveDateTime,
 }
 
 pub struct ClaimResult {
@@ -35,77 +27,54 @@ pub struct ClaimResult {
 impl Payout {
     /// Retrieves a payout entry from the database. If it exists, the existing
     /// one is returned. If it doesn't, a new one is created.
-    pub async fn get_from_db<C: Connection>(
-        db: &Surreal<C>,
+    pub async fn get_from_db(
+        db: &DbPool,
         guild_id: GuildId,
         user_id: UserId,
     ) -> Result<Self, PayoutError> {
-        if let Some(w) = db
-            .query(format!(
-                "SELECT * FROM {GUILD_PAYOUT_TABLE}
-                 WHERE guild_id = $guild AND user_id = $user;"
-            ))
-            .bind(("guild", guild_id))
-            .bind(("user", user_id))
-            .await?
-            .take::<Option<Self>>(0)?
-        {
-            Ok(w)
-        } else {
-            Self::create_in_db(db, guild_id, user_id).await
-        }
-    }
+        // set initial last_payout to one interval in the past so the user can
+        // claim immediately after joining
+        let initial_last_payout = (Utc::now() - PAYOUT_INTERVAL).naive_utc();
 
-    /// Creates a new payout in the given database and returns it.
-    async fn create_in_db<C: Connection>(
-        db: &Surreal<C>,
-        guild_id: GuildId,
-        user_id: UserId,
-    ) -> Result<Self, PayoutError> {
-        // insert the payout into the payout table
-        db.create::<Option<Self>>(GUILD_PAYOUT_TABLE)
-            .content(PayoutData {
-                guild_id,
-                user_id,
-                balance: 0,
-                last_payout: chrono::Local::now() - PAYOUT_INTERVAL,
-            })
-            .await
-            .map_err(Box::new)
-            .map_err(PayoutError::Database)
-            .and_then(|opt| opt.ok_or_else(|| PayoutError::NotCreated(user_id, guild_id)))
-    }
+        let row = operations::get_or_create_payout(
+            db,
+            guild_id.get() as i64,
+            user_id.get() as i64,
+            initial_last_payout,
+        )
+        .await
+        .map_err(PayoutError::Database)?;
 
-    /// Updates this payout in the database.
-    async fn update_in_db<C: Connection>(&self, db: &Surreal<C>) -> Result<(), PayoutError> {
-        let data = self.data.clone();
-        db.update::<Option<Self>>((GUILD_PAYOUT_TABLE, self.id.key().clone()))
-            .content(data)
-            .await?;
-        Ok(())
+        Ok(Self {
+            id: row.id,
+            guild_id,
+            user_id,
+            balance: row.balance,
+            last_payout: row.last_payout,
+        })
     }
 
     /// Drains the payout into the corresponding user's guild wallet. Returns
     /// the amount claimed as a receipt.
-    pub async fn claim_to_wallet<C: Connection>(
-        &mut self,
-        db: &Surreal<C>,
-    ) -> Result<ClaimResult, PayoutError> {
-        if chrono::Local::now() < self.next_payout_time() {
+    pub async fn claim_to_wallet(&mut self, db: &DbPool) -> Result<ClaimResult, PayoutError> {
+        if Local::now().naive_local() < self.next_payout_time().naive_local() {
             Err(PayoutError::TooSoon)
-        } else if self.data.balance == 0 {
+        } else if self.balance == 0 {
             Err(PayoutError::NothingToClaim)
         } else {
-            let mut wallet = Wallet::get_from_db(db, self.data.guild_id, self.data.user_id).await?;
+            let mut wallet = Wallet::get_from_db(db, self.guild_id, self.user_id).await?;
 
             // deposit the payout into the user's wallet
-            let amount_claimed = self.data.balance;
-            wallet.deposit(db, self.data.balance).await?;
+            let amount_claimed = self.balance;
+            wallet.deposit(db, self.balance).await?;
 
             // clear this payout
-            self.data.balance = 0;
-            self.data.last_payout = chrono::Local::now();
-            self.update_in_db(db).await?;
+            let claimed_at = Utc::now().naive_utc();
+            operations::claim_payout(db, self.id, claimed_at)
+                .await
+                .map_err(PayoutError::Database)?;
+            self.balance = 0;
+            self.last_payout = claimed_at;
 
             Ok(ClaimResult {
                 amount_claimed,
@@ -116,24 +85,23 @@ impl Payout {
 
     /// Returns the time at which a user can claim their payout.
     pub fn next_payout_time(&self) -> chrono::DateTime<Local> {
-        self.data.last_payout + PAYOUT_INTERVAL
+        self.last_payout.and_utc().with_timezone(&Local) + PAYOUT_INTERVAL
     }
 
     /// Adds the given amount to the pending payout.
-    pub async fn deposit<C: Connection>(
-        &mut self,
-        db: &Surreal<C>,
-        amount: u64,
-    ) -> Result<(), PayoutError> {
-        self.data.balance += amount;
-        self.update_in_db(db).await
+    pub async fn deposit(&mut self, db: &DbPool, amount: u64) -> Result<(), PayoutError> {
+        self.balance += amount;
+        operations::update_payout(db, self.id, self.balance)
+            .await
+            .map_err(PayoutError::Database)?;
+        Ok(())
     }
 }
 
 #[derive(Error, Debug)]
 pub enum PayoutError {
     #[error("error in payout database: {0}")]
-    Database(#[from] Box<surrealdb::Error>),
+    Database(#[from] diesel::result::Error),
 
     #[error("error with wallet: {0}")]
     Wallet(#[from] WalletError),
@@ -151,11 +119,5 @@ pub enum PayoutError {
 impl From<PayoutError> for MuniBotError {
     fn from(e: PayoutError) -> Self {
         MuniBotError::Other(format!("{e}"))
-    }
-}
-
-impl From<surrealdb::Error> for PayoutError {
-    fn from(e: surrealdb::Error) -> Self {
-        Self::Database(Box::new(e))
     }
 }

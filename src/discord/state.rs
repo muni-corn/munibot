@@ -1,29 +1,29 @@
 use std::sync::Arc;
 
 use poise::serenity_prelude::{Cache, Http, Result};
-use surrealdb::{Surreal, engine::remote::ws};
 use tokio::sync::Mutex;
 
 use super::{autodelete::AutoDeleteHandler, handler::DiscordEventHandler};
 use crate::{
     MuniBotError,
     config::{Config, DiscordConfig},
+    db::DbPool,
     handlers::{DiscordMessageHandlerCollection, logging::LoggingHandler},
 };
 
 #[derive(Clone, Debug)]
 pub struct GlobalAccess {
-    db: Arc<Surreal<ws::Client>>,
+    db: DbPool,
     http: Arc<Http>,
     cache: Arc<Cache>,
 }
 
 impl GlobalAccess {
-    pub fn new(http: Arc<Http>, cache: Arc<Cache>, db: Arc<Surreal<ws::Client>>) -> Self {
+    pub fn new(http: Arc<Http>, cache: Arc<Cache>, db: DbPool) -> Self {
         Self { http, cache, db }
     }
 
-    pub fn db(&self) -> &Surreal<ws::Client> {
+    pub fn db(&self) -> &DbPool {
         &self.db
     }
 
@@ -49,12 +49,12 @@ pub struct DiscordState {
     autodeletion: Arc<Mutex<AutoDeleteHandler>>,
 }
 impl DiscordState {
-    /// creates a new `DiscordState` struct. the `LoggingHandler` and
+    /// Creates a new `DiscordState` struct. The `LoggingHandler` and
     /// `AutoDeleteHandler` are added for you.
     pub async fn new(
         mut handlers: DiscordMessageHandlerCollection,
         config: &Config,
-        db: Arc<Surreal<ws::Client>>,
+        db: DbPool,
         http: Arc<Http>,
         cache: Arc<Cache>,
     ) -> Result<Self, MuniBotError> {

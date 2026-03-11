@@ -39,7 +39,7 @@ pub trait TwitchMessageHandler: Send {
 pub enum TwitchHandlerError {
     SendMessage(MuniBotTwitchIRCError),
     TwitchIRCError(MuniBotTwitchIRCError),
-    DbError(surrealdb::Error),
+    DbError(diesel::result::Error),
     AgentError(TwitchAgentError),
     Other(String),
 }
@@ -50,8 +50,8 @@ impl From<MuniBotTwitchIRCError> for TwitchHandlerError {
     }
 }
 
-impl From<surrealdb::Error> for TwitchHandlerError {
-    fn from(e: surrealdb::Error) -> Self {
+impl From<diesel::result::Error> for TwitchHandlerError {
+    fn from(e: diesel::result::Error) -> Self {
         Self::DbError(e)
     }
 }

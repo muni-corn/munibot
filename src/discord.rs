@@ -7,7 +7,7 @@ pub mod state;
 pub mod utils;
 pub mod vc_greeter;
 
-use std::{env, sync::Arc};
+use std::env;
 
 use autodelete::AutoDeleteHandler;
 use dotenvy::dotenv;
@@ -21,7 +21,12 @@ use state::DiscordState;
 use surrealdb::{Surreal, engine::remote::ws, opt::auth::Database};
 
 use self::{admin::AdminCommandProvider, commands::DiscordCommandProvider};
-use crate::{MuniBotError, config::Config, handlers::DiscordMessageHandlerCollection};
+use crate::{
+    MuniBotError,
+    config::Config,
+    db::{DbPool, establish_pool, migration},
+    handlers::DiscordMessageHandlerCollection,
+};
 
 pub type DiscordCommand = poise::Command<DiscordState, MuniBotError>;
 pub type DiscordContext<'a> = poise::Context<'a, DiscordState, MuniBotError>;
@@ -34,19 +39,42 @@ pub async fn start_discord_integration(
 ) {
     dotenv().ok();
 
-    // login to the database first
-    let database_url = config.db.url.clone();
-    let db = Surreal::new::<ws::Ws>(&database_url)
+    // establish the MySQL connection pool
+    let pool = establish_pool()
         .await
-        .expect("couldn't connect to database");
-    db.signin(Database {
-        namespace: "muni_bot",
-        database: "muni_bot",
-        username: &config.db.user,
-        password: &std::env::var("DATABASE_PASS").expect("expected DATABASE_PASS to be set"),
-    })
-    .await
-    .expect("couldn't log in to database");
+        .expect("couldn't establish database connection pool");
+
+    // connect to SurrealDB and run the one-time data migration
+    let surreal_url = env::var("SURREAL_URL").unwrap_or_else(|_| "ws://localhost:8000".to_owned());
+    let surreal_user = env::var("SURREAL_USER").unwrap_or_else(|_| "root".to_owned());
+    let surreal_pass = env::var("SURREAL_PASS").unwrap_or_else(|_| "root".to_owned());
+
+    match Surreal::new::<ws::Ws>(surreal_url.as_str()).await {
+        Ok(surreal) => {
+            let sign_in_result = surreal
+                .signin(Database {
+                    namespace: "muni_bot",
+                    database: "muni_bot",
+                    username: &surreal_user,
+                    password: &surreal_pass,
+                })
+                .await;
+
+            match sign_in_result {
+                Ok(_) => {
+                    if let Err(e) = migration::migrate_from_surrealdb(&pool, &surreal).await {
+                        log::error!("data migration failed: {e}");
+                    }
+                }
+                Err(e) => {
+                    info!("discord: couldn't sign in to SurrealDB (migration skipped): {e}");
+                }
+            }
+        }
+        Err(e) => {
+            info!("discord: couldn't connect to SurrealDB (migration skipped): {e}");
+        }
+    }
 
     let mut commands: Vec<DiscordCommand> = command_providers
         .iter()
@@ -77,14 +105,7 @@ pub async fn start_discord_integration(
 
     let framework = poise::Framework::<DiscordState, MuniBotError>::builder()
         .setup(move |ctx, ready, framework| {
-            Box::pin(on_ready(
-                ctx,
-                ready,
-                framework,
-                handlers,
-                config,
-                Arc::new(db),
-            ))
+            Box::pin(on_ready(ctx, ready, framework, handlers, config, pool))
         })
         .options(options)
         .build();
@@ -109,7 +130,7 @@ async fn on_ready(
     framework: &poise::Framework<DiscordState, MuniBotError>,
     handlers: DiscordMessageHandlerCollection,
     config: Config,
-    db: Arc<Surreal<ws::Client>>,
+    pool: DbPool,
 ) -> Result<DiscordState, MuniBotError> {
     register_globally(ctx, &framework.options().commands)
         .await
@@ -120,7 +141,7 @@ async fn on_ready(
     info!("discord: logged in as {}", ready.user.name);
 
     let new_state =
-        DiscordState::new(handlers, &config, db, ctx.http.clone(), ctx.cache.clone()).await?;
+        DiscordState::new(handlers, &config, pool, ctx.http.clone(), ctx.cache.clone()).await?;
 
     // start the autodeletion handler
     AutoDeleteHandler::start(new_state.autodeletion().clone());

@@ -8,15 +8,8 @@ use crate::MuniBotError;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
-    pub db: DbConfig,
     pub discord: DiscordConfig,
     pub twitch: TwitchConfig,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct DbConfig {
-    pub url: String,
-    pub user: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -110,10 +103,6 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            db: DbConfig {
-                url: "127.0.0.1:7654".to_owned(),
-                user: "muni_bot".to_owned(),
-            },
             discord: DiscordConfig {
                 invite_link: None,
                 ventriloquists: vec![],

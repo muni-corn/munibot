@@ -13,6 +13,7 @@ use super::{
 };
 use crate::{
     config::Config,
+    db::DbPool,
     handlers::{
         TwitchHandlerCollection, affection::AffectionHandler, autoban::AutoBanHandler,
         bonk::BonkHandler, greeting::GreetingHandler, lift::LiftHandler, lurk::LurkHandler,
@@ -31,11 +32,14 @@ pub struct TwitchBot {
 }
 
 impl TwitchBot {
-    pub async fn new(config: Config) -> Self {
+    pub async fn new(pool: DbPool, config: &Config) -> Self {
+        // the twitch channel ID for muni_corn — used to look up (or create) the
+        // community link so quotes are scoped to the right community
+        let twitch_streamer_id = &config.twitch.twitch_user;
         Self {
             auto_ban_handler: AutoBanHandler,
             message_handlers: vec![
-                Box::new(QuotesHandler::new(&config.db).await.unwrap()),
+                Box::new(QuotesHandler::new(pool, twitch_streamer_id).await.unwrap()),
                 Box::new(BonkHandler),
                 Box::new(SocialsHandler),
                 Box::new(LurkHandler),

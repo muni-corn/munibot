@@ -7,8 +7,9 @@ use super::{
     DiscordCommand, DiscordCommandProvider, DiscordContext, autodelete::AutoDeleteHandler,
 };
 use crate::{
-    MuniBotError, db::DbItem, discord::autodelete::AutoDeleteMode,
-    handlers::logging::LoggingChannel,
+    MuniBotError,
+    db::{models::GuildConfig, operations},
+    discord::autodelete::AutoDeleteMode,
 };
 
 pub struct AdminCommandProvider;
@@ -55,12 +56,19 @@ async fn set_log_channel(
     #[description = "the channel to log messages to. if omitted, use the current channel instead."]
     channel: Option<ChannelId>,
 ) -> Result<(), MuniBotError> {
-    let db = &ctx.data().access().db();
+    let db = ctx.data().access().db();
 
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
         let channel_id = channel.unwrap_or_else(|| ctx.channel_id());
-        let lc = LoggingChannel::new(guild_id, channel_id);
-        lc.upsert_in_db(db, lc.clone()).await?;
+        operations::upsert_guild_config(
+            db,
+            GuildConfig {
+                guild_id: guild_id.get() as i64,
+                logging_channel: Some(channel_id.get() as i64),
+            },
+        )
+        .await
+        .map_err(|e| MuniBotError::Other(format!("error saving log channel: {e}")))?;
 
         format!(
             "done! log messages will be sent to {}.",
@@ -89,11 +97,18 @@ async fn set_log_channel(
     ephemeral
 )]
 async fn stop_logging(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
-    let db = &ctx.data().access().db();
+    let db = ctx.data().access().db();
 
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
-        if let Some(logging_entry) = LoggingChannel::get_from_db(db, guild_id).await? {
-            logging_entry.delete_from_db(db).await?;
+        let guild_id_i64 = guild_id.get() as i64;
+        let existing = operations::get_guild_config(db, guild_id_i64)
+            .await
+            .map_err(|e| MuniBotError::Other(format!("error reading guild config: {e}")))?;
+
+        if existing.is_some_and(|c| c.logging_channel.is_some()) {
+            operations::delete_guild_config(db, guild_id_i64)
+                .await
+                .map_err(|e| MuniBotError::Other(format!("error deleting log channel: {e}")))?;
             "done! logging has been disabled for this server."
         } else {
             "no logging channel is set for this server! nothing was done."

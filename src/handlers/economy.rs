@@ -61,7 +61,7 @@ impl DiscordEventHandler for EconomyProvider {
             let msg = new_message;
             if let Some(guild_id) = msg.guild_id {
                 let salary = Self::calc_salary(msg);
-                let db = &framework.user_data().await.access().db();
+                let db = framework.user_data().await.access().db();
 
                 Payout::get_from_db(db, guild_id, msg.author.id)
                     .await
@@ -94,7 +94,7 @@ async fn wallet(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
     if let Some(guild_id) = ctx.guild_id() {
         let author_name = display_name_from_command_context(ctx).await;
 
-        let db = &ctx.data().access().db();
+        let db = ctx.data().access().db();
         let wallet = Wallet::get_from_db(db, guild_id, ctx.author().id).await?;
 
         // send the wallet balance
@@ -120,7 +120,7 @@ async fn wallet(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 #[poise::command(slash_command, prefix_command)]
 async fn claim(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
     if let Some(guild_id) = ctx.guild_id() {
-        let db = &ctx.data().access().db();
+        let db = ctx.data().access().db();
 
         let mut payout = Payout::get_from_db(db, guild_id, ctx.author().id).await?;
 
@@ -186,7 +186,7 @@ async fn transfer(
         }
 
         // get the author and recipient wallets
-        let db = &ctx.data().access().db();
+        let db = ctx.data().access().db();
         let mut author_wallet = Wallet::get_from_db(db, guild_id, ctx.author().id).await?;
         let mut recipient_wallet = Wallet::get_from_db(db, guild_id, to).await?;
 

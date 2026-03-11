@@ -1,19 +1,11 @@
-use std::env;
-
 use async_trait::async_trait;
-use chrono::{DateTime, Local};
-use dotenvy::dotenv;
-use serde::{Deserialize, Serialize};
-use surrealdb::{
-    Surreal,
-    engine::remote::ws::{self, Ws},
-    opt::auth::Database,
-};
+use chrono::Local;
 use twitch_irc::message::ServerMessage;
 
 use crate::{
     MuniBotError,
-    config::{Config, DbConfig},
+    config::Config,
+    db::{DbPool, operations},
     twitch::{
         agent::TwitchAgent,
         bot::MuniBotTwitchIRCClient,
@@ -21,82 +13,69 @@ use crate::{
     },
 };
 
-const QUOTE_TABLE: &str = "quote";
-
-/// A quote.
-#[derive(Deserialize, Serialize)]
-pub struct Quote {
-    pub created_at: DateTime<Local>,
-    pub quote: String,
-    pub invoker: String,
-    pub stream_category: String,
-    pub stream_title: String,
-}
-
-/// A handler for the `!quote` command.
+/// A handler for the `!quote` and `!addquote` commands.
 pub struct QuotesHandler {
-    db: Surreal<ws::Client>,
+    pool: DbPool,
+    community_id: i64,
 }
 
 impl QuotesHandler {
-    /// Create a new QuotesHandler, connecting to the database.
-    pub async fn new(db_config: &DbConfig) -> Result<Self, MuniBotError> {
-        dotenv().ok(); // TODO: map to MuniBotError::DotenvError
+    /// Creates a new `QuotesHandler`. Looks up (or creates) the community link
+    /// for the given Twitch streamer ID to obtain the `community_id` used for
+    /// all quote queries.
+    pub async fn new(pool: DbPool, twitch_streamer_id: &str) -> Result<Self, MuniBotError> {
+        let link = operations::get_or_create_community_link_by_twitch_id(&pool, twitch_streamer_id)
+            .await
+            .map_err(|e| MuniBotError::Other(e.to_string()))?;
 
-        let db = Surreal::new::<Ws>(&db_config.url).await?;
-        db.signin(Database {
-            namespace: "muni_bot",
-            database: "muni_bot",
-            username: &db_config.user,
-            password: &env::var("DATABASE_PASS").expect("expected DATABASE_PASS to be set"),
+        Ok(Self {
+            pool,
+            community_id: link.id,
         })
-        .await?;
-
-        Ok(Self { db })
     }
 
-    /// Add a new quote to the database, returning the new count of quotes
-    pub async fn add_new_quote(&mut self, new_quote: Quote) -> Result<u32, TwitchHandlerError> {
-        self.db
-            .create::<Option<Quote>>(QUOTE_TABLE)
-            .content(new_quote)
-            .await?;
+    /// Adds a new quote to the database, returning the new per-community quote
+    /// number.
+    async fn add_new_quote(
+        &self,
+        quote: String,
+        invoker: String,
+        stream_category: String,
+        stream_title: String,
+    ) -> Result<i32, TwitchHandlerError> {
+        let created_at = Local::now().naive_local();
+        let saved = operations::add_quote(
+            &self.pool,
+            self.community_id,
+            created_at,
+            quote,
+            invoker,
+            stream_category,
+            stream_title,
+        )
+        .await
+        .map_err(|e| TwitchHandlerError::Other(e.to_string()))?;
 
-        let count = self
-            .db
-            .query(format!("SELECT count() FROM {QUOTE_TABLE} GROUP ALL;"))
-            .await?
-            .take::<Option<u32>>((0, "count"))?
-            .unwrap_or(0);
-
-        Ok(count)
+        Ok(saved.sequential_id)
     }
 
-    /// Recall a quote from the database and send it in chat.
-    pub async fn recall_quote(
+    /// Recalls a quote from the database and sends it in chat.
+    async fn recall_quote(
         &mut self,
         client: &MuniBotTwitchIRCClient,
         recipient_channel: &str,
         n_requested: Option<i32>,
     ) -> Result<(), TwitchHandlerError> {
         if let Some(n) = n_requested {
-            // recall specific quote
-            let mut response = self
-                .db
-                .query(format!(
-                    "SELECT * FROM {QUOTE_TABLE}
-                     ORDER BY created_at
-                     LIMIT 1
-                     START $n;",
-                ))
-                .bind(("n", n - 1))
-                .await?;
+            let quote = operations::get_quote_by_number(&self.pool, self.community_id, n)
+                .await
+                .map_err(|e| TwitchHandlerError::Other(e.to_string()))?;
 
-            if let Some(quote) = response.take::<Option<Quote>>(0)? {
+            if let Some(q) = quote {
                 self.send_twitch_message(
                     client,
                     recipient_channel,
-                    &format!(r#"here's quote #{}: "{}""#, n, quote.quote),
+                    &format!(r#"here's quote #{}: "{}""#, q.sequential_id, q.quote),
                 )
                 .await
             } else {
@@ -108,21 +87,15 @@ impl QuotesHandler {
                 .await
             }
         } else {
-            // recall random quote
-            let mut response = self
-                .db
-                .query(format!(
-                    "SELECT * FROM {QUOTE_TABLE}
-                     ORDER BY rand()
-                     LIMIT 1;",
-                ))
-                .await?;
+            let quote = operations::get_random_quote(&self.pool, self.community_id)
+                .await
+                .map_err(|e| TwitchHandlerError::Other(e.to_string()))?;
 
-            if let Some(quote) = response.take::<Option<Quote>>(0)? {
+            if let Some(q) = quote {
                 self.send_twitch_message(
                     client,
                     recipient_channel,
-                    &format!(r#"random quote: "{}""#, quote.quote),
+                    &format!(r#"random quote: "{}""#, q.quote),
                 )
                 .await
             } else {
@@ -152,20 +125,19 @@ impl TwitchMessageHandler for QuotesHandler {
                     )
                     .await?;
                 } else if let Some(channel_info) = agent.get_channel_info(&m.channel_id).await? {
-                    let new_quote = Quote {
-                        created_at: Local::now(),
-                        quote: content.to_string(),
-                        invoker: m.sender.id.to_string(),
-                        stream_category: channel_info.game_name.take(),
-                        stream_title: channel_info.title,
-                    };
-
-                    let quote_count = self.add_new_quote(new_quote).await?;
+                    let quote_number = self
+                        .add_new_quote(
+                            content.to_string(),
+                            m.sender.id.to_string(),
+                            channel_info.game_name.take(),
+                            channel_info.title,
+                        )
+                        .await?;
                     self.send_twitch_message(
                         client,
                         &m.channel_login,
                         &format!(
-                            "quote #{quote_count} is in! recorded in the muni history books forever"
+                            "quote #{quote_number} is in! recorded in the muni history books forever"
                         ),
                     )
                     .await?;

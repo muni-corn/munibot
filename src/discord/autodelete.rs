@@ -7,15 +7,15 @@ use poise::serenity_prelude::{
     MessageId, PartialGuild, Result,
     futures::{StreamExt, stream},
 };
-use serde::{Deserialize, Serialize};
 use strum::EnumString;
-use surrealdb::{Connection, RecordId, Surreal};
 use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 
 use super::state::GlobalAccess;
-use crate::{MuniBotError, handlers::logging::LoggingHandler};
-
-const TABLE_NAME: &str = "autodelete_timer";
+use crate::{
+    MuniBotError,
+    db::{DbPool, models::AutoDeleteTimerRow, operations},
+    handlers::logging::LoggingHandler,
+};
 
 #[derive(Debug)]
 pub struct AutoDeleteHandler {
@@ -34,15 +34,13 @@ impl AutoDeleteHandler {
     ) -> Result<Self, MuniBotError> {
         let mut timers = HashMap::new();
 
-        let db_records: Vec<AutoDeleteTimer> = global_access
-            .db()
-            .query("SELECT * FROM type::table($table)")
-            .bind(("table", TABLE_NAME))
-            .await?
-            .take(0)?;
+        let db_records = operations::get_all_autodelete_timers(global_access.db())
+            .await
+            .map_err(|e| MuniBotError::Other(format!("error loading autodelete timers: {e}")))?;
 
-        for record in db_records {
-            timers.insert(record.data.channel_id, record);
+        for row in db_records {
+            let channel_id = ChannelId::new(row.channel_id as u64);
+            timers.insert(channel_id, AutoDeleteTimer::from_row(row));
         }
 
         debug!("loaded timers: {:?}", timers);
@@ -61,59 +59,50 @@ impl AutoDeleteHandler {
         duration: Duration,
         mode: AutoDeleteMode,
     ) -> Result<(), anyhow::Error> {
-        let new_maybe: Option<AutoDeleteTimer> = self
-            .access
-            .db()
-            .upsert((TABLE_NAME, channel_id.get() as i64))
-            .content(PartialAutoDeleteTimer {
-                guild_id,
-                channel_id,
-                duration,
-                mode,
-                last_cleaned: DateTime::from_timestamp_nanos(0),
-                last_message_id_cleaned: 1.into(),
-            })
+        let row = AutoDeleteTimerRow {
+            channel_id: channel_id.get() as i64,
+            guild_id: guild_id.get() as i64,
+            duration_secs: duration.as_secs() as i64,
+            last_cleaned: DateTime::from_timestamp_nanos(0).naive_utc(),
+            last_message_id_cleaned: 1,
+            mode: mode.to_db_str().to_owned(),
+        };
+
+        let saved = operations::upsert_autodelete_timer(self.access.db(), row)
+            .await
+            .map_err(|e| anyhow::anyhow!("error saving autodelete timer: {e}"))?;
+
+        let timer = AutoDeleteTimer::from_row(saved);
+        self.timers.insert(channel_id, timer);
+        debug!("new timers map: {:?}", self.timers);
+
+        // build log message
+        let mut msg = MessageBuilder::default();
+        msg.push("messages in ")
+            .push(channel_id.mention().to_string())
+            .push("will be deleted ");
+
+        match mode {
+            AutoDeleteMode::Always => msg
+                .push("when they are older than ")
+                .push_bold(humantime::format_duration(duration).to_string())
+                .push('.'),
+
+            AutoDeleteMode::AfterSilence => msg
+                .push("after ")
+                .push_bold(humantime::format_duration(duration).to_string())
+                .push(" of silence."),
+        };
+
+        self.logging
+            .lock()
+            .await
+            .send_simple_log(guild_id, "autodelete timer set", &msg.build())
             .await?;
-
-        if let Some(new) = new_maybe {
-            self.timers.insert(channel_id, new);
-            debug!("new timers map: {:?}", self.timers);
-
-            // build log message
-            let mut msg = MessageBuilder::default();
-            msg.push("messages in ")
-                .push(channel_id.mention().to_string())
-                .push("will be deleted ");
-
-            match mode {
-                AutoDeleteMode::Always => msg
-                    .push("when they are older than ")
-                    .push_bold(humantime::format_duration(duration).to_string())
-                    .push('.'),
-
-                AutoDeleteMode::AfterSilence => msg
-                    .push("after ")
-                    .push_bold(humantime::format_duration(duration).to_string())
-                    .push(" of silence."),
-            };
-
-            self.logging
-                .lock()
-                .await
-                .send_simple_log(guild_id, "autodelete timer set", &msg.build())
-                .await?;
-            Ok(())
-        } else {
-            log::warn!(
-                "tried to save an autodelete timer (channel id {channel_id}) but it doesn't seem to have been persisted in the database"
-            );
-            Err(anyhow::anyhow!(
-                "tried to set an autodelete timer, but i don't think i was able to save it..."
-            ))
-        }
+        Ok(())
     }
 
-    /// returns true if there was a timer to delete, and false if nothing was
+    /// Returns true if there was a timer to delete, and false if nothing was
     /// deleted.
     pub async fn clear_autodelete(
         &mut self,
@@ -123,11 +112,9 @@ impl AutoDeleteHandler {
         if !self.timers.contains_key(&channel_id) {
             return Ok(false);
         }
-        let _: Option<AutoDeleteTimer> = self
-            .access
-            .db()
-            .delete((TABLE_NAME, channel_id.get() as i64))
-            .await?;
+        operations::delete_autodelete_timer(self.access.db(), channel_id.get() as i64)
+            .await
+            .map_err(|e| anyhow::anyhow!("error deleting autodelete timer: {e}"))?;
         self.timers.remove(&channel_id);
 
         self.logging
@@ -155,7 +142,7 @@ impl AutoDeleteHandler {
                     && let Err(e) = timer
                         .clean_now(
                             self.access.as_cache_http(),
-                            self.access.db().clone(),
+                            self.access.db(),
                             self.logging.clone(),
                         )
                         .await
@@ -188,7 +175,7 @@ impl AutoDeleteHandler {
                         "timer for {} should not be checked",
                         timer.get_full_name(cache_http).await
                     );
-                    timer.data.duration.min(smallest)
+                    timer.duration().min(smallest)
                 }
             })
             .await
@@ -216,46 +203,38 @@ impl AutoDeleteHandler {
     }
 }
 
-#[derive(
-    Copy, Clone, Debug, Default, Deserialize, Serialize, EnumString, poise::ChoiceParameter,
-)]
+#[derive(Copy, Clone, Debug, Default, EnumString, poise::ChoiceParameter)]
 pub enum AutoDeleteMode {
-    /// deletes any message older than some duration.
+    /// Deletes any message older than some duration.
     #[name = "always"]
     Always,
 
-    /// deletes all messages after a channel has not received activity in some
+    /// Deletes all messages after a channel has not received activity in some
     /// time.
     #[default]
     #[name = "after silence"]
     AfterSilence,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
-pub struct PartialAutoDeleteTimer {
-    /// id of the channel this timer runs in.
-    channel_id: ChannelId,
+impl AutoDeleteMode {
+    fn to_db_str(self) -> &'static str {
+        match self {
+            AutoDeleteMode::Always => "Always",
+            AutoDeleteMode::AfterSilence => "AfterSilence",
+        }
+    }
 
-    /// guild this timer runs in.
-    guild_id: GuildId,
-
-    #[serde(with = "humantime_serde")]
-    duration: Duration,
-
-    last_cleaned: DateTime<Utc>,
-
-    #[serde(default)]
-    last_message_id_cleaned: MessageId,
-
-    mode: AutoDeleteMode,
+    fn from_db_str(s: &str) -> Self {
+        match s {
+            "Always" => AutoDeleteMode::Always,
+            _ => AutoDeleteMode::AfterSilence,
+        }
+    }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct AutoDeleteTimer {
-    id: RecordId,
-
-    #[serde(flatten)]
-    data: PartialAutoDeleteTimer,
+    row: AutoDeleteTimerRow,
 }
 
 struct DeleteMessagesResult {
@@ -266,18 +245,46 @@ struct DeleteMessagesResult {
 }
 
 impl AutoDeleteTimer {
-    /// returns true if this timer should read messages and decide whether to
-    /// clean
-    pub fn should_check(&self) -> bool {
-        self.data.last_cleaned + self.data.duration <= Utc::now()
+    fn from_row(row: AutoDeleteTimerRow) -> Self {
+        Self { row }
     }
 
-    /// cleans channels by deleting messages according to this timer's deletion
+    fn channel_id(&self) -> ChannelId {
+        ChannelId::new(self.row.channel_id as u64)
+    }
+
+    fn guild_id(&self) -> GuildId {
+        GuildId::new(self.row.guild_id as u64)
+    }
+
+    fn duration(&self) -> Duration {
+        Duration::from_secs(self.row.duration_secs as u64)
+    }
+
+    fn mode(&self) -> AutoDeleteMode {
+        AutoDeleteMode::from_db_str(&self.row.mode)
+    }
+
+    fn last_cleaned_utc(&self) -> DateTime<Utc> {
+        self.row.last_cleaned.and_utc()
+    }
+
+    fn last_message_id_cleaned(&self) -> MessageId {
+        MessageId::new(self.row.last_message_id_cleaned as u64)
+    }
+
+    /// Returns true if this timer should read messages and decide whether to
+    /// clean.
+    pub fn should_check(&self) -> bool {
+        self.last_cleaned_utc() + self.duration() <= Utc::now()
+    }
+
+    /// Cleans channels by deleting messages according to this timer's deletion
     /// mode.
-    pub async fn clean_now<C: Connection>(
+    pub async fn clean_now(
         &mut self,
         cache_http: impl CacheHttp,
-        db: Surreal<C>,
+        db: &DbPool,
         logging: Arc<Mutex<LoggingHandler>>,
     ) -> Result<(), anyhow::Error> {
         log::debug!(
@@ -288,11 +295,11 @@ impl AutoDeleteTimer {
         let (guild, channel) = self.get_guild_channel(&cache_http).await?;
 
         if let Some(last_message_id) = channel.last_message_id
-            && last_message_id.get() != self.data.last_message_id_cleaned.get()
+            && last_message_id.get() != self.last_message_id_cleaned().get()
         {
             // abort if this is an AfterSilence timer that is firing too early
-            if let AutoDeleteMode::AfterSilence = self.data.mode
-                && last_message_id.created_at().to_utc() > Utc::now() - self.data.duration
+            if let AutoDeleteMode::AfterSilence = self.mode()
+                && last_message_id.created_at().to_utc() > Utc::now() - self.duration()
             {
                 log::warn!(
                     "autodelete: timer with AfterSilence attempted to fire before its duration was met"
@@ -353,9 +360,9 @@ impl AutoDeleteTimer {
                 // record last message id if needed
                 if let Some(last_deleted_id) = last_message_deleted.map(|m| m.id) {
                     debug!("setting new latest message: {:?}", last_deleted_id);
-                    self.data.last_message_id_cleaned = last_deleted_id
+                    self.row.last_message_id_cleaned = last_deleted_id.get() as i64;
                 } else {
-                    debug!("not changing latest message id for channel clean-up",);
+                    debug!("not changing latest message id for channel clean-up");
                 }
 
                 debug!("cleanup is done");
@@ -369,14 +376,16 @@ impl AutoDeleteTimer {
         }
 
         // update last time this channel was cleaned
-        self.data.last_cleaned = Utc::now();
-        let _: Option<Self> = db
-            .upsert((TABLE_NAME, self.data.channel_id.get() as i64))
-            .merge(LastCleanedUpdate {
-                last_cleaned: self.data.last_cleaned,
-                last_message_id_cleaned: self.data.last_message_id_cleaned,
-            })
-            .await?;
+        let now_utc: DateTime<Utc> = Utc::now();
+        self.row.last_cleaned = now_utc.naive_utc();
+        operations::update_autodelete_last_cleaned(
+            db,
+            self.row.channel_id,
+            self.row.last_cleaned,
+            self.row.last_message_id_cleaned,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("error updating autodelete timer: {e}"))?;
 
         Ok(())
     }
@@ -386,14 +395,13 @@ impl AutoDeleteTimer {
         cache_http_arc: &Arc<impl CacheHttp>,
         stream_failures: &Mutex<i32>,
     ) -> Vec<Message> {
-        let chopping_block: Vec<Message> = self
-            .data
-            .channel_id
+        let duration = self.duration();
+        self.channel_id()
             .messages_iter(cache_http_arc.http())
             .filter_map(|result| async {
                 match result {
                     Ok(m) => {
-                        if !m.pinned && m.timestamp.to_utc() <= Utc::now() - self.data.duration {
+                        if !m.pinned && m.timestamp.to_utc() <= Utc::now() - duration {
                             Some(m)
                         } else {
                             None
@@ -407,8 +415,7 @@ impl AutoDeleteTimer {
                 }
             })
             .collect()
-            .await;
-        chopping_block
+            .await
     }
 
     async fn delete_messages(
@@ -433,8 +440,7 @@ impl AutoDeleteTimer {
                             stats.failures += 1;
                             stats
                         } else {
-                            // message deletion was successful
-                            // set latest message deleted
+                            // message deletion was successful; set latest message deleted
                             if let Some(latest_deleted_message) = stats.last_message_deleted {
                                 stats.last_message_deleted =
                                     if m.timestamp >= latest_deleted_message.timestamp {
@@ -453,7 +459,7 @@ impl AutoDeleteTimer {
             .await
     }
 
-    /// checks the messages in a channel and calculates the next time this timer
+    /// Checks the messages in a channel and calculates the next time this timer
     /// should clean.
     pub async fn check_messages(
         &self,
@@ -462,13 +468,12 @@ impl AutoDeleteTimer {
         let (guild, channel) = self.get_guild_channel(&cache_http).await?;
 
         if let Some(last_message_id) = channel.last_message_id {
-            let duration_to_next_clean = match self.data.mode {
+            let duration = self.duration();
+            let duration_to_next_clean = match self.mode() {
                 AutoDeleteMode::Always => {
                     // get the oldest message's timestamp
-                    // there's gotta be a better way to do this, right?
                     let oldest_time = self
-                        .data
-                        .channel_id
+                        .channel_id()
                         .messages_iter(&cache_http.http())
                         .filter_map(|r| async {
                             match r {
@@ -485,13 +490,13 @@ impl AutoDeleteTimer {
                         )
                         .await;
 
-                    (oldest_time.to_utc() + self.data.duration - Utc::now())
+                    (oldest_time.to_utc() + duration - Utc::now())
                         .to_std()
                         .unwrap_or(Duration::ZERO)
                 }
                 AutoDeleteMode::AfterSilence => {
                     // use the time of the last message sent plus this timer's duration
-                    (last_message_id.created_at().to_utc() + self.data.duration - Utc::now())
+                    (last_message_id.created_at().to_utc() + duration - Utc::now())
                         .to_std()
                         .unwrap_or(Duration::ZERO)
                 }
@@ -505,15 +510,16 @@ impl AutoDeleteTimer {
             Ok(duration_to_next_clean)
         } else {
             // probably no messages to clean up, so we can exit now
+            let duration = self.duration();
             debug!(
                 "channel {} (id {}) in {} (id {}) has no messages. we'll check back in after this timer's duration ({})",
                 channel.name,
                 channel.id,
                 guild.name,
                 guild.id,
-                humantime::Duration::from(self.data.duration)
+                humantime::Duration::from(duration)
             );
-            Ok(self.data.duration)
+            Ok(duration)
         }
     }
 
@@ -521,15 +527,18 @@ impl AutoDeleteTimer {
         &self,
         cache_http: impl CacheHttp,
     ) -> Result<(PartialGuild, GuildChannel), anyhow::Error> {
+        let channel_id = self.channel_id();
+        let guild_id = self.guild_id();
+
         let guild_channel = match cache_http
             .cache()
-            .and_then(|cache| cache.guild(self.data.guild_id))
-            .and_then(|g| g.channels.get(&self.data.channel_id).cloned())
+            .and_then(|cache| cache.guild(guild_id))
+            .and_then(|g| g.channels.get(&channel_id).cloned())
         {
             Some(cached_channel) => cached_channel.clone(),
             None => cache_http
                 .http()
-                .get_channel(self.data.channel_id)
+                .get_channel(channel_id)
                 .await?
                 .guild()
                 .ok_or(anyhow::anyhow!("provided channel is not in a guild"))?,
@@ -549,16 +558,14 @@ impl AutoDeleteTimer {
     }
 
     async fn channel_name(&self, cache_http: impl CacheHttp) -> String {
-        self.data
-            .channel_id
+        self.channel_id()
             .name(cache_http)
             .await
             .unwrap_or_else(|_| "<failed to fetch channel name>".to_string())
     }
 
     fn guild_name(&self, cache: impl AsRef<Cache>) -> String {
-        self.data
-            .guild_id
+        self.guild_id()
             .name(cache)
             .unwrap_or_else(|| "<no guild name in cache>".to_string())
     }
@@ -574,10 +581,4 @@ impl AutoDeleteTimer {
 
         format!("#{channel_name} in \"{guild_name}\"")
     }
-}
-
-#[derive(Deserialize, Serialize)]
-struct LastCleanedUpdate {
-    last_cleaned: DateTime<Utc>,
-    last_message_id_cleaned: MessageId,
 }

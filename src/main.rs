@@ -6,6 +6,7 @@ use log::{error, info, warn};
 use munibot::{
     MuniBotError,
     config::Config,
+    db::establish_pool,
     discord::{
         simple::SimpleCommandProvider, start_discord_integration, vc_greeter::VoiceChannelGreeter,
     },
@@ -39,8 +40,13 @@ async fn main() -> Result<(), Box<MuniBotError>> {
     // ensure credentials exist
     let twitch_handle = match std::env::var("TWITCH_TOKEN") {
         Ok(twitch_token) => {
+            // establish pool for the twitch bot
+            let pool = establish_pool()
+                .await
+                .expect("couldn't establish database connection pool for twitch");
+
             // start twitch
-            match TwitchBot::new(config.clone())
+            match TwitchBot::new(pool, &config)
                 .await
                 .launch(twitch_token, &config)
                 .await

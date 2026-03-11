@@ -10,11 +10,9 @@ use poise::serenity_prelude::{
     MessageBuilder, MessageId, MessageUpdateEvent, PartialGuild, ReactionType, Result, Role,
     async_trait,
 };
-use serde::{Deserialize, Serialize};
-use surrealdb::{Connection, RecordId, Surreal};
 
 use crate::{
-    db::DbItem,
+    db::{DbPool, operations},
     discord::{
         DiscordFrameworkContext,
         handler::{DiscordEventHandler, DiscordHandlerError},
@@ -691,75 +689,23 @@ impl LoggingHandler {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct LoggingChannel {
-    /// The guild id that owns this logging channel.
-    #[serde(skip)]
-    guild_id: GuildId,
-
-    /// The actual channel id to which logs will be sent.
-    channel_id: ChannelId,
-}
-
-const LOGGING_CHANNEL_TABLE: &str = "logging_channel";
-
-#[async_trait]
-impl<C: Connection> DbItem<C> for LoggingChannel {
-    type GetQuery = GuildId;
-    type Id = i64;
-    type UpsertContent = Self;
-
-    const NAME: &'static str = LOGGING_CHANNEL_TABLE;
-
-    fn get_id(&self) -> Self::Id {
-        self.guild_id.get() as i64
-    }
-
-    async fn get_from_db(
-        db: &Surreal<C>,
-        guild_id: Self::GetQuery,
-    ) -> Result<Option<Self>, surrealdb::Error> {
-        let mut result = db
-            .query("SELECT * FROM $thing;")
-            .bind((
-                "thing",
-                RecordId::from_table_key(LOGGING_CHANNEL_TABLE, guild_id.get() as i64),
-            ))
-            .await?;
-
-        Ok(result.take::<Option<Self>>(0)?.map(|mut r| {
-            r.guild_id = guild_id;
-            r
-        }))
-    }
-}
-
-impl LoggingChannel {
-    pub fn new(guild_id: GuildId, channel_id: ChannelId) -> Self {
-        Self {
-            guild_id,
-            channel_id,
-        }
-    }
-}
-
-async fn get_logging_channel_for_guild<C: Connection>(
-    db: &Surreal<C>,
+async fn get_logging_channel_for_guild(
+    db: &DbPool,
     guild_id: GuildId,
 ) -> Result<Option<ChannelId>, DiscordHandlerError> {
-    let logging_channel = LoggingChannel::get_from_db(db, guild_id)
+    let config = operations::get_guild_config(db, guild_id.get() as i64)
         .await
         .map_err(|e| DiscordHandlerError {
             message: format!("error getting logging channel from db: {e}"),
             handler_name: "logging",
         })?;
 
-    Ok(logging_channel.map(|l| l.channel_id))
+    Ok(config.and_then(|c| c.logging_channel.map(|id| ChannelId::new(id as u64))))
 }
 
-async fn send_message<C: Connection>(
+async fn send_message(
     cache_http: impl CacheHttp,
-    db: &Surreal<C>,
+    db: &DbPool,
     guild_id: GuildId,
     message: CreateMessage,
 ) -> anyhow::Result<()> {
