@@ -65,7 +65,6 @@
       imports = [
         inputs.git-hooks-nix.flakeModule
         inputs.musicaloft-style.flakeModule
-        inputs.treefmt-nix.flakeModule
       ];
 
       perSystem =
