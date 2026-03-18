@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local, Utc};
 use log::{info, warn};
 use serde::Deserialize;
-use surrealdb::{Surreal, engine::remote::ws};
+use surrealdb::{Connection, Surreal};
 
 use crate::{
     MuniBotError,
@@ -74,9 +74,9 @@ struct SurrealQuote {
 ///
 /// After migration is verified, call this function's call site can be removed
 /// together with this module.
-pub async fn migrate_from_surrealdb(
+pub async fn migrate_from_surrealdb<C: Connection>(
     pool: &DbPool,
-    surreal: &Surreal<ws::Client>,
+    surreal: &Surreal<C>,
 ) -> Result<(), MuniBotError> {
     use diesel::prelude::*;
     use diesel_async::RunQueryDsl;
