@@ -78,10 +78,12 @@ in
         name = "munibot";
         password = "sillylittlepassword";
         ensurePermissions."munibot.*" = "ALL PRIVILEGES";
+        ensurePermissions."munibot_test.*" = "ALL PRIVILEGES";
       }
     ];
     initialDatabases = [
       { name = "munibot"; }
+      { name = "munibot_test"; }
     ];
   };
 
