@@ -1,9 +1,10 @@
 //! Integration test for the SurrealDB -> MySQL migration.
 //!
-//! Requires both databases running via devenv:
-//!   - SurrealDB on ws://localhost:8000 (credentials: root/root, in-memory)
-//!   - MySQL on localhost:3306 (credentials: munibot/sillylittlepassword,
-//!     database: munibot_test)
+//! SurrealDB runs fully in-process (kv-mem engine) -- no external server
+//! required.
+//!
+//! MySQL still requires the devenv database to be running:
+//!   mysql://munibot:sillylittlepassword@127.0.0.1:3306/munibot_test
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
@@ -15,16 +16,16 @@ use munibot::db::{
         autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets, quotes,
     },
 };
-use surrealdb::{Surreal, engine::remote::ws::Ws, opt::auth::Root};
+use surrealdb::{
+    Surreal,
+    engine::local::{Db, Mem},
+};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 // use 127.0.0.1 (not localhost) to force TCP -- the native MySQL C library
 // used by diesel's sync MysqlConnection interprets "localhost" as a Unix socket
 const TEST_DB_URL: &str = "mysql://munibot:sillylittlepassword@127.0.0.1:3306/munibot_test";
-const SURREAL_WS_URL: &str = "ws://localhost:8000";
-const SURREAL_NS: &str = "muni_bot_test";
-const SURREAL_DB: &str = "muni_bot_test";
 
 /// Runs all pending Diesel migrations on the test database using a
 /// synchronous connection (required by the `MigrationHarness` API).
@@ -47,20 +48,15 @@ async fn build_test_pool() -> DbPool {
         .expect("couldn't build test database pool")
 }
 
-async fn connect_surreal() -> Surreal<surrealdb::engine::remote::ws::Client> {
-    let db = Surreal::new::<Ws>(SURREAL_WS_URL)
+/// Creates a fresh in-process SurrealDB instance using the memory engine.
+async fn connect_surreal() -> Surreal<Db> {
+    let db = Surreal::new::<Mem>(())
         .await
-        .expect("couldn't connect to surrealdb");
-    db.signin(Root {
-        username: "root",
-        password: "root",
-    })
-    .await
-    .expect("couldn't sign into surrealdb");
-    db.use_ns(SURREAL_NS)
-        .use_db(SURREAL_DB)
+        .expect("couldn't start in-memory surrealdb");
+    db.use_ns("test")
+        .use_db("test")
         .await
-        .expect("couldn't select surrealdb namespace/database");
+        .expect("couldn't select ns/db");
     db
 }
 
@@ -94,23 +90,8 @@ async fn truncate_mysql(pool: &DbPool) {
         .expect("delete guild_payouts");
 }
 
-/// Deletes all SurrealDB records from the test namespace.
-async fn clear_surreal(db: &Surreal<surrealdb::engine::remote::ws::Client>) {
-    for table in &[
-        "logging_channel",
-        "autodelete_timer",
-        "guild_wallet",
-        "guild_payout",
-        "quote",
-    ] {
-        db.query(format!("DELETE {table}"))
-            .await
-            .unwrap_or_else(|_| panic!("couldn't clear surrealdb table: {table}"));
-    }
-}
-
 /// Seeds SurrealDB with known test data for each migrated table.
-async fn seed_surreal(db: &Surreal<surrealdb::engine::remote::ws::Client>) {
+async fn seed_surreal(db: &Surreal<Db>) {
     // 2 logging channels: record ID key is the guild_id (integer)
     db.query("CREATE logging_channel:111111111 SET channel_id = 222222222")
         .await
@@ -160,7 +141,7 @@ async fn seed_surreal(db: &Surreal<surrealdb::engine::remote::ws::Client>) {
     .expect("seed guild_payout 2");
 
     // 3 quotes with explicit created_at timestamps so sequential_id order is
-    // deterministic
+    // deterministic (migration orders by created_at ASC when assigning ids)
     db.query(
         "CREATE quote SET \
          created_at = '2024-01-01T00:00:00Z', quote = 'first quote', \
@@ -191,11 +172,12 @@ async fn test_migration_migrates_and_is_idempotent() {
     // run diesel schema migrations on the test database
     run_diesel_migrations();
     let pool = build_test_pool().await;
+
+    // in-memory surrealdb -- always starts clean, no external server needed
     let surreal = connect_surreal().await;
 
-    // start from a known-clean state in case a previous run failed partway
+    // start mysql from a known-clean state in case a previous run failed partway
     truncate_mysql(&pool).await;
-    clear_surreal(&surreal).await;
 
     // seed source data into surrealdb
     seed_surreal(&surreal).await;
@@ -314,5 +296,4 @@ async fn test_migration_migrates_and_is_idempotent() {
     // cleanup so the test is re-runnable
     drop(conn);
     truncate_mysql(&pool).await;
-    clear_surreal(&surreal).await;
 }
