@@ -47,6 +47,9 @@ twitch_api = { version = "0.7", features = [
 twitch_oauth2 = "0.15"
 url = "2.4"
 
+[dev-dependencies]
+surrealdb = { version = "2.0", features = ["kv-mem"] }
+
 [package.metadata.release]
 sign-commit = true
 sign-tag = true
