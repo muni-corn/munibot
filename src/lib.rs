@@ -1,4 +1,3 @@
-#![feature(decl_macro)]
 #![feature(never_type)]
 
 use poise::serenity_prelude as serenity;
