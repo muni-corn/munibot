@@ -24,5 +24,6 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+
 imports:
   - musicaloft-shell

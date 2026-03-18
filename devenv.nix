@@ -66,11 +66,6 @@ in
     ++ nativeBuildInputs
     ++ (builtins.attrValues config.treefmt.config.build.programs);
 
-  processes.surrealdb = {
-    exec = "${pkgs.surrealdb}/bin/surreal start --user root --pass root --bind 0.0.0.0:8000 memory";
-    process-compose.is_elevated = true;
-  };
-
   services.mysql = {
     enable = true;
     ensureUsers = [

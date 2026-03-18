@@ -45,11 +45,6 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-
-    devenv-root = {
-      url = "file+file:///dev/null";
-      flake = false;
-    };
   };
 
   outputs =
@@ -67,20 +62,9 @@
       perSystem =
         {
           config,
-          lib,
-          system,
           ...
         }:
         {
-          # unfree packages are required for surrealdb
-          # ~~yet another reason to switch away to mysql/mariadb~~
-          _module.args.pkgs = lib.mkForce (
-            import inputs.nixpkgs {
-              inherit system;
-              config.allowUnfree = true;
-            }
-          );
-
           devenv.shells.default.imports = [
             "${inputs.musicaloft-shell}/devenv.nix"
             ./devenv.nix
