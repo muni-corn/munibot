@@ -266,12 +266,17 @@ async fn test_migration_migrates_and_is_idempotent() {
     assert_eq!(migrated_quotes[0].quote, "first quote");
     assert_eq!(migrated_quotes[0].invoker, "user_a");
     assert_eq!(migrated_quotes[0].stream_category, "gaming");
+    assert_eq!(migrated_quotes[0].stream_title, "playing stuff");
     assert_eq!(migrated_quotes[1].sequential_id, 2);
     assert_eq!(migrated_quotes[1].quote, "second quote");
     assert_eq!(migrated_quotes[1].invoker, "user_b");
+    assert_eq!(migrated_quotes[1].stream_category, "music");
+    assert_eq!(migrated_quotes[1].stream_title, "making music");
     assert_eq!(migrated_quotes[2].sequential_id, 3);
     assert_eq!(migrated_quotes[2].quote, "third quote");
     assert_eq!(migrated_quotes[2].invoker, "user_c");
+    assert_eq!(migrated_quotes[2].stream_category, "art");
+    assert_eq!(migrated_quotes[2].stream_title, "drawing things");
     drop(conn);
 
     // --- idempotency: second run should detect existing data and skip ---
