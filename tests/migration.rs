@@ -3,10 +3,9 @@
 //! SurrealDB runs fully in-process (kv-mem engine) -- no external server
 //! required.
 //!
-//! MySQL still requires the devenv database to be running:
-//!   mysql://munibot:sillylittlepassword@127.0.0.1:3306/munibot_test
-
-use std::sync::OnceLock;
+//! MySQL still requires the devenv database to be running. Two users are used:
+//!   munibot      -- global CREATE/DROP to manage per-test databases
+//!   munibot_test -- ALL PRIVILEGES on `munibot_test_%` for table operations
 
 use chrono::{NaiveDateTime, Timelike, Utc};
 use diesel::prelude::*;
@@ -19,6 +18,7 @@ use munibot::db::{
         autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets, quotes,
     },
 };
+use rand::Rng;
 use surrealdb::{
     Surreal,
     engine::local::{Db, Mem},
@@ -26,37 +26,91 @@ use surrealdb::{
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
-// all tests share the same mysql instance, so serialize them to prevent
-// concurrent truncate/insert races
-static DB_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-
-fn db_lock() -> &'static tokio::sync::Mutex<()> {
-    DB_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
-}
-
 // use 127.0.0.1 (not localhost) to force TCP -- the native MySQL C library
 // used by diesel's sync MysqlConnection interprets "localhost" as a Unix socket
-const TEST_DB_URL: &str = "mysql://munibot:sillylittlepassword@127.0.0.1:3306/munibot_test";
+//
+// root has global CREATE/DROP to manage per-test databases.
+// munibot_test has ALL PRIVILEGES on the `munibot_test_%` wildcard pattern,
+// so it is used for all table-level operations (migrations, pool connections).
+//
+// don't panic: these credentials are only and SHOULD ONLY be used for local
+// development servers.
+const ROOT_DB_URL: &str = "mysql://root:sillylittlepassword@127.0.0.1:3306/mysql";
+const TEST_DB_BASE_URL: &str = "mysql://munibot_test:sillylittlepassword@127.0.0.1:3306";
 
-/// Runs all pending Diesel migrations on the test database using a
-/// synchronous connection (required by the `MigrationHarness` API).
-fn run_diesel_migrations() {
-    let mut conn = diesel::MysqlConnection::establish(TEST_DB_URL)
-        .expect("couldn't connect to munibot_test for migrations");
-    conn.run_pending_migrations(MIGRATIONS)
-        .expect("couldn't run diesel migrations on test database");
+/// Owns a temporary MySQL database for the duration of a single test.
+///
+/// The database is created on construction (with a random name to guarantee
+/// isolation), all Diesel migrations are applied immediately, and the database
+/// is dropped automatically when this value is dropped -- even if the test
+/// panics.
+struct TestDb {
+    db_name: String,
+    pub pool: DbPool,
 }
 
-async fn build_test_pool() -> DbPool {
-    use diesel_async::{
-        AsyncMysqlConnection,
-        pooled_connection::{AsyncDieselConnectionManager, bb8::Pool},
-    };
-    let manager = AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(TEST_DB_URL);
-    Pool::builder()
-        .build(manager)
-        .await
-        .expect("couldn't build test database pool")
+impl TestDb {
+    async fn new() -> Self {
+        // generate a random 12-char hex suffix to make the name unique across
+        // concurrent nextest processes
+        let suffix: String = rand::thread_rng()
+            .sample_iter(rand::distributions::Alphanumeric)
+            .take(12)
+            .map(char::from)
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+        let db_name = format!("munibot_test_{suffix}");
+
+        // create the database via a sync management connection
+        {
+            let mut conn = diesel::MysqlConnection::establish(ROOT_DB_URL)
+                .expect("couldn't connect to mysql for test db creation");
+            diesel::RunQueryDsl::execute(
+                diesel::sql_query(format!("CREATE DATABASE `{db_name}`")),
+                &mut conn,
+            )
+            .expect("couldn't create per-test database");
+        }
+
+        // run diesel migrations on the new database
+        {
+            let db_url = format!("{TEST_DB_BASE_URL}/{db_name}");
+            let mut conn = diesel::MysqlConnection::establish(&db_url)
+                .expect("couldn't connect to per-test database for migrations");
+            conn.run_pending_migrations(MIGRATIONS)
+                .expect("couldn't run diesel migrations on per-test database");
+        }
+
+        // build an async pool pointing at the new database
+        let pool = {
+            use diesel_async::{
+                AsyncMysqlConnection,
+                pooled_connection::{AsyncDieselConnectionManager, bb8::Pool},
+            };
+            let db_url = format!("{TEST_DB_BASE_URL}/{db_name}");
+            let manager = AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(db_url);
+            Pool::builder()
+                .build(manager)
+                .await
+                .expect("couldn't build per-test database pool")
+        };
+
+        TestDb { db_name, pool }
+    }
+}
+
+impl Drop for TestDb {
+    fn drop(&mut self) {
+        // drop the database using a fresh sync connection -- this runs even on
+        // test panic so we don't leave stale databases behind
+        let mut conn = diesel::MysqlConnection::establish(ROOT_DB_URL)
+            .expect("couldn't connect to mysql for test db cleanup");
+        diesel::RunQueryDsl::execute(
+            diesel::sql_query(format!("DROP DATABASE IF EXISTS `{}`", self.db_name)),
+            &mut conn,
+        )
+        .expect("couldn't drop per-test database");
+    }
 }
 
 /// Creates a fresh in-process SurrealDB instance using the memory engine.
@@ -69,36 +123,6 @@ async fn connect_surreal() -> Surreal<Db> {
         .await
         .expect("couldn't select ns/db");
     db
-}
-
-/// Deletes all rows from MySQL test tables in FK-safe order.
-async fn truncate_mysql(pool: &DbPool) {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    // quotes references community_links via FK -- must be deleted first
-    diesel::delete(quotes::table)
-        .execute(&mut conn)
-        .await
-        .expect("delete quotes");
-    diesel::delete(community_links::table)
-        .execute(&mut conn)
-        .await
-        .expect("delete community_links");
-    diesel::delete(guild_configs::table)
-        .execute(&mut conn)
-        .await
-        .expect("delete guild_configs");
-    diesel::delete(autodelete_timers::table)
-        .execute(&mut conn)
-        .await
-        .expect("delete autodelete_timers");
-    diesel::delete(guild_wallets::table)
-        .execute(&mut conn)
-        .await
-        .expect("delete guild_wallets");
-    diesel::delete(guild_payouts::table)
-        .execute(&mut conn)
-        .await
-        .expect("delete guild_payouts");
 }
 
 /// Seeds SurrealDB with known test data for each migrated table.
@@ -188,17 +212,10 @@ async fn seed_surreal(db: &Surreal<Db>) {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_migration_migrates_and_is_idempotent() {
     let _ = env_logger::try_init();
-    let _lock = db_lock().lock().await;
-
-    // run diesel schema migrations on the test database
-    run_diesel_migrations();
-    let pool = build_test_pool().await;
+    let db = TestDb::new().await;
 
     // in-memory surrealdb -- always starts clean, no external server needed
     let surreal = connect_surreal().await;
-
-    // start mysql from a known-clean state in case a previous run failed partway
-    truncate_mysql(&pool).await;
 
     // seed source data into surrealdb
     seed_surreal(&surreal).await;
@@ -215,7 +232,7 @@ async fn test_migration_migrates_and_is_idempotent() {
         .expect("zero nanoseconds is always valid");
 
     // run the migration
-    munibot::db::migration::migrate_from_surrealdb(&pool, &surreal)
+    munibot::db::migration::migrate_from_surrealdb(&db.pool, &surreal)
         .await
         .expect("migration should succeed");
 
@@ -223,7 +240,7 @@ async fn test_migration_migrates_and_is_idempotent() {
     // and a truncated timestamp is always <= the real current time
     let after_migration = Utc::now().naive_utc();
 
-    let mut conn = pool.get().await.unwrap();
+    let mut conn = db.pool.get().await.unwrap();
 
     // --- guild_configs ---
     let configs: Vec<GuildConfig> = guild_configs::table
@@ -384,12 +401,12 @@ async fn test_migration_migrates_and_is_idempotent() {
     drop(conn);
 
     // --- idempotency: second run should detect existing data and skip ---
-    munibot::db::migration::migrate_from_surrealdb(&pool, &surreal)
+    munibot::db::migration::migrate_from_surrealdb(&db.pool, &surreal)
         .await
         .expect("second migration run should succeed (no-op)");
 
     // all counts must be unchanged -- no duplicates inserted
-    let mut conn = pool.get().await.unwrap();
+    let mut conn = db.pool.get().await.unwrap();
 
     let config_count: i64 = guild_configs::table
         .count()
@@ -439,30 +456,20 @@ async fn test_migration_migrates_and_is_idempotent() {
         "idempotency: community_links count unchanged"
     );
     assert_eq!(quote_count, 3, "idempotency: quotes count unchanged");
-
-    // cleanup so the test is re-runnable
-    drop(conn);
-    truncate_mysql(&pool).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_migration_with_empty_source() {
     let _ = env_logger::try_init();
-    let _lock = db_lock().lock().await;
-
-    run_diesel_migrations();
-    let pool = build_test_pool().await;
+    let db = TestDb::new().await;
     let surreal = connect_surreal().await;
 
-    // start from a clean state -- no seeding, surreal is empty
-    truncate_mysql(&pool).await;
-
-    // migration with empty source should succeed and produce zero rows
-    munibot::db::migration::migrate_from_surrealdb(&pool, &surreal)
+    // no seeding -- surreal is empty, migration should produce zero rows
+    munibot::db::migration::migrate_from_surrealdb(&db.pool, &surreal)
         .await
         .expect("migration of empty source should succeed");
 
-    let mut conn = pool.get().await.unwrap();
+    let mut conn = db.pool.get().await.unwrap();
 
     let config_count: i64 = guild_configs::table
         .count()
@@ -526,11 +533,11 @@ async fn test_migration_with_empty_source() {
     // second run should be a no-op: the idempotency check also inspects
     // community_links count, so the existing default row prevents a re-run
     // (and a unique constraint violation on the community link insert)
-    munibot::db::migration::migrate_from_surrealdb(&pool, &surreal)
+    munibot::db::migration::migrate_from_surrealdb(&db.pool, &surreal)
         .await
         .expect("second migration run on empty source should succeed");
 
-    let mut conn = pool.get().await.unwrap();
+    let mut conn = db.pool.get().await.unwrap();
     let config_count: i64 = guild_configs::table
         .count()
         .get_result(&mut conn)
@@ -548,21 +555,13 @@ async fn test_migration_with_empty_source() {
         "community_link unchanged after second run"
     );
     assert_eq!(quote_count, 0, "still empty after second run");
-
-    drop(conn);
-    truncate_mysql(&pool).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_migration_skips_non_numeric_logging_channel_id() {
     let _ = env_logger::try_init();
-    let _lock = db_lock().lock().await;
-
-    run_diesel_migrations();
-    let pool = build_test_pool().await;
+    let db = TestDb::new().await;
     let surreal = connect_surreal().await;
-
-    truncate_mysql(&pool).await;
 
     // one valid numeric-keyed logging channel and one with a string key --
     // the string-keyed one should be skipped with a warning, not cause a failure
@@ -575,11 +574,11 @@ async fn test_migration_skips_non_numeric_logging_channel_id() {
         .await
         .expect("seed invalid logging_channel");
 
-    munibot::db::migration::migrate_from_surrealdb(&pool, &surreal)
+    munibot::db::migration::migrate_from_surrealdb(&db.pool, &surreal)
         .await
         .expect("migration should succeed even with a non-numeric logging channel id");
 
-    let mut conn = pool.get().await.unwrap();
+    let mut conn = db.pool.get().await.unwrap();
     let configs: Vec<GuildConfig> = guild_configs::table
         .order(guild_configs::guild_id.asc())
         .load(&mut conn)
@@ -593,7 +592,4 @@ async fn test_migration_skips_non_numeric_logging_channel_id() {
     );
     assert_eq!(configs[0].guild_id, 111);
     assert_eq!(configs[0].logging_channel, Some(222));
-
-    drop(conn);
-    truncate_mysql(&pool).await;
 }
