@@ -24,6 +24,8 @@ let
   toolchain = config.languages.rust.toolchainPackage;
 in
 {
+  dotenv.enable = true;
+
   enterTest = ''
     cargo test
   '';
