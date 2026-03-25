@@ -57,10 +57,18 @@ in
     enable = true;
     ensureUsers = [
       {
+        name = "root";
+        password = "sillylittlepassword";
+      }
+      {
         name = "munibot";
         password = "sillylittlepassword";
         ensurePermissions."munibot.*" = "ALL PRIVILEGES";
-        ensurePermissions."munibot_test.*" = "ALL PRIVILEGES";
+      }
+      {
+        name = "munibot_test";
+        password = "sillylittlepassword";
+        ensurePermissions."`munibot\\_test\\_%`.*" = "ALL PRIVILEGES";
       }
     ];
     initialDatabases = [
