@@ -20,8 +20,6 @@ let
     dioxus-cli
     pkg-config
   ];
-
-  toolchain = config.languages.rust.toolchainPackage;
 in
 {
   dotenv.enable = true;
@@ -33,14 +31,6 @@ in
   env = {
     RUST_LOG = "error,munibot=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-  };
-
-  git-hooks.hooks.clippy = {
-    enable = true;
-    packageOverrides = {
-      cargo = toolchain;
-      clippy = toolchain;
-    };
   };
 
   languages.rust = {
@@ -56,11 +46,6 @@ in
   packages =
     with pkgs;
     [
-      bacon
-      cargo-edit
-      cargo-outdated
-      cargo-release
-      cargo-watch
       diesel-cli
       flyctl
     ]
