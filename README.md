@@ -1,7 +1,6 @@
 # hi! i'm munibot!
 
-the friendliest, cutest, most lovable bot for Discord and Twitch, personality
-included!
+the friendliest, cutest, most lovable bot for Discord and Twitch, personality included!
 
 # runtime setup
 
@@ -33,14 +32,12 @@ TWITCH_TOKEN=
 
 ## surrealdb
 
-here are some SurrealQL commands to run on your SurrealDB instance to set things
-up.
+here are some SurrealQL commands to run on your SurrealDB instance to set things up.
 
 ### configuring an admin user
 
-if your surrealdb instance doesn't have a root user yet, ensure the instance is
-started with the flags `-u root -p root`, then login with
-`surreal sql -e ws://127.0.0.1:7654 -u root -p root`.
+if your surrealdb instance doesn't have a root user yet, ensure the instance is started with the
+flags `-u root -p root`, then login with `surreal sql -e ws://127.0.0.1:7654 -u root -p root`.
 
 if you want, you can create a root user:
 
@@ -77,15 +74,13 @@ The GPLv3 License (GPLv3)
 munibot, municorn's Discord and Twitch bot\
 Copyright (c) 2023-2025 municorn
 
-this program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
+this program is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
 
-this program is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE. see the GNU General Public License for more details.
+this program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. see the GNU
+General Public License for more details.
 
-a copy of the GNU General Public License is included along with this source code
-as the LICENSE file. if it's lost for some reason, see
-<http://www.gnu.org/licenses/>.
+a copy of the GNU General Public License is included along with this source code as the LICENSE
+file. if it's lost for some reason, see <http://www.gnu.org/licenses/>.
