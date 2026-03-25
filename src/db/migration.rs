@@ -82,15 +82,27 @@ pub async fn migrate_from_surrealdb<C: Connection>(
     use diesel_async::RunQueryDsl;
 
     // idempotency check: skip if mysql already has data
-    let count: i64 = {
+    //
+    // both guild_configs and community_links are checked because a run with
+    // zero logging channels would leave guild_configs empty while still
+    // creating the default community link -- checking only guild_configs would
+    // allow the migration to re-run and fail on the community link unique
+    // constraint
+    let (config_count, community_count): (i64, i64) = {
         let mut conn = pool.get().await.expect("couldn't get db connection");
-        guild_configs::table
+        let c = guild_configs::table
             .count()
             .get_result(&mut conn)
             .await
-            .map_err(MuniBotError::DbError)?
+            .map_err(MuniBotError::DbError)?;
+        let cl = community_links::table
+            .count()
+            .get_result(&mut conn)
+            .await
+            .map_err(MuniBotError::DbError)?;
+        (c, cl)
     };
-    if count > 0 {
+    if config_count > 0 || community_count > 0 {
         info!("migration: mysql already has data, skipping migration");
         return Ok(());
     }
@@ -109,6 +121,9 @@ pub async fn migrate_from_surrealdb<C: Connection>(
         "migration: migrating {} logging channels",
         surreal_log_channels.len()
     );
+    // track only the records that were actually inserted; non-numeric ids are
+    // skipped with a warning and must not count toward the verification total
+    let mut migrated_log_count: i64 = 0;
     for row in &surreal_log_channels {
         let guild_id = match i64::try_from(row.id.key().clone()) {
             Ok(n) => n,
@@ -129,6 +144,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
         )
         .await
         .map_err(MuniBotError::DbError)?;
+        migrated_log_count += 1;
     }
 
     // --- 2. migrate autodelete_timer -> autodelete_timers ---
@@ -313,7 +329,9 @@ pub async fn migrate_from_surrealdb<C: Connection>(
             .map_err(MuniBotError::DbError)?
     };
 
-    let surreal_log_count = surreal_log_channels.len() as i64;
+    // use migrated_log_count (not raw surreal count) so that skipped
+    // non-numeric ids do not cause a spurious count mismatch
+    let surreal_log_count = migrated_log_count;
     let surreal_timer_count = surreal_timers.len() as i64;
     let surreal_wallet_count = surreal_wallets.len() as i64;
     let surreal_payout_count = surreal_payouts.len() as i64;
