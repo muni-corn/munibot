@@ -71,13 +71,13 @@ struct SurrealQuote {
 ///
 /// Performs four categories of checks against all migrated tables:
 ///
-/// 1. **Spot-check field values** — loads all MySQL rows and compares key
-///    fields against the in-memory SurrealDB source data.
-/// 2. **Aggregate checksums** — compares numeric column sums (balance,
-///    duration) between source and destination.
-/// 3. **Null/empty field validation** — warns on rows with empty strings or
-///    zero values in fields that should always be populated.
-/// 4. **Referential integrity** — verifies every migrated quote references the
+/// 1. **Spot-check field values:** loads all MySQL rows and compares key fields
+///    against the in-memory SurrealDB source data.
+/// 2. **Aggregate checksums:** compares numeric column sums (balance, duration)
+///    between source and destination.
+/// 3. **Null/empty field validation:** warns on rows with empty strings or zero
+///    values in fields that should always be populated.
+/// 4. **Referential integrity:** verifies every migrated quote references the
 ///    correct `community_id`.
 ///
 /// All failures are logged as warnings; this function never returns an error.
