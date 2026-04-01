@@ -34,7 +34,7 @@ impl TwitchMessageHandler for SocialsHandler {
                     self.send_twitch_message(
                         client,
                         &m.channel_login,
-                        "the discord comand is enabled, but no invite link has been configured >.>",
+                        "the discord command is enabled, but no invite link has been configured >.>",
                     )
                     .await?;
                 }
