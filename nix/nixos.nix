@@ -86,9 +86,7 @@ in
         ensureUsers = [
           {
             name = cfg.user;
-            ensurePermissions = {
-              "munibot.*" = "ALL PRIVILEGES";
-            };
+            ensurePermissions."munibot.*" = "ALL PRIVILEGES";
           }
         ];
       };
