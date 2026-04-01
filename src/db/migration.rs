@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, SubsecRound, Utc};
+use chrono::{DateTime, SubsecRound, Utc};
 use log::{info, warn};
 use serde::Deserialize;
 use surrealdb::{Connection, Surreal};
@@ -58,7 +58,7 @@ pub struct SurrealGuildPayout {
     pub guild_id: i64,
     pub user_id: i64,
     pub balance: u64,
-    pub last_payout: DateTime<Local>,
+    pub last_payout: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -517,7 +517,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
 
     // --- 1. migrate logging_channel -> guild_configs ---
     let surreal_log_channels: Vec<SurrealLoggingChannel> = surreal
-        .query("SELECT * FROM logging_channel")
+        .query("SELECT id, <int>channel_id AS channel_id FROM logging_channel")
         .await
         .map_err(|e| MuniBotError::Other(format!("surreal query failed: {e}")))?
         .take(0)
@@ -570,7 +570,16 @@ pub async fn migrate_from_surrealdb<C: Connection>(
 
     // --- 2. migrate autodelete_timer -> autodelete_timers ---
     let surreal_timers: Vec<SurrealAutoDeleteTimer> = surreal
-        .query("SELECT * FROM autodelete_timer")
+        .query(
+            "SELECT \
+             <int>channel_id AS channel_id, \
+             <int>guild_id AS guild_id, \
+             duration, \
+             <datetime>last_cleaned AS last_cleaned, \
+             <int>(last_message_id_cleaned ?? 0) AS last_message_id_cleaned, \
+             mode \
+             FROM autodelete_timer",
+        )
         .await
         .map_err(|e| MuniBotError::Other(format!("surreal query failed: {e}")))?
         .take(0)
@@ -622,7 +631,10 @@ pub async fn migrate_from_surrealdb<C: Connection>(
 
     // --- 3. migrate guild_wallet -> guild_wallets ---
     let surreal_wallets: Vec<SurrealGuildWallet> = surreal
-        .query("SELECT * FROM guild_wallet")
+        .query(
+            "SELECT <int>guild_id AS guild_id, <int>user_id AS user_id, balance \
+             FROM guild_wallet",
+        )
         .await
         .map_err(|e| MuniBotError::Other(format!("surreal query failed: {e}")))?
         .take(0)
@@ -674,7 +686,14 @@ pub async fn migrate_from_surrealdb<C: Connection>(
 
     // --- 4. migrate guild_payout -> guild_payouts ---
     let surreal_payouts: Vec<SurrealGuildPayout> = surreal
-        .query("SELECT * FROM guild_payout")
+        .query(
+            "SELECT \
+             <int>guild_id AS guild_id, \
+             <int>user_id AS user_id, \
+             balance, \
+             <datetime>last_payout AS last_payout \
+             FROM guild_payout",
+        )
         .await
         .map_err(|e| MuniBotError::Other(format!("surreal query failed: {e}")))?
         .take(0)
@@ -748,7 +767,13 @@ pub async fn migrate_from_surrealdb<C: Connection>(
     // --- 6. migrate quote -> quotes ---
     // order by created_at to assign sequential_id in chronological order
     let surreal_quotes: Vec<SurrealQuote> = surreal
-        .query("SELECT * FROM quote ORDER BY created_at ASC")
+        .query(
+            "SELECT \
+             <datetime>created_at AS created_at, \
+             quote, invoker, stream_category, stream_title \
+             FROM quote \
+             ORDER BY created_at ASC",
+        )
         .await
         .map_err(|e| MuniBotError::Other(format!("surreal query failed: {e}")))?
         .take(0)
