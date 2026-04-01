@@ -121,7 +121,7 @@ in
 
           environment = {
             RUST_LOG = "error,munibot=info";
-            DATABASE_URL = "mysql://${cfg.user}@${mysqlHost}:${mysqlPort}";
+            DATABASE_URL = "mysql://${cfg.user}@${mysqlHost}:${toString mysqlPort}";
           };
 
           serviceConfig = {
