@@ -753,6 +753,207 @@ async fn test_migration_with_empty_source() {
     assert_eq!(quote_count, 0, "still empty after second run");
 }
 
+/// Loads the real SurrealDB export from tests/export.surql into the in-memory
+/// SurrealDB instance.
+///
+/// Some statements (OPTION IMPORT, DEFINE USER) may produce non-fatal errors in
+/// the in-memory test context; we only assert on table contents afterward.
+async fn seed_surreal_from_export(db: &Surreal<Db>) {
+    let sql = include_str!("export.surql");
+    // ignore per-statement errors -- the INSERT data is what matters
+    let _ = db.query(sql).await;
+}
+
+/// Verifies that the migration correctly handles real SurrealDB export data,
+/// where IDs and datetimes are stored as quoted strings rather than native
+/// types.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_migration_real_export_data() {
+    let _ = env_logger::try_init();
+    let db = TestDb::new().await;
+    let surreal = connect_surreal().await;
+
+    seed_surreal_from_export(&surreal).await;
+
+    let migrated = migration::migrate_from_surrealdb(&db.pool, &surreal)
+        .await
+        .expect("migration with real export data should succeed");
+
+    // the real export contains 13 logging channels and 3 autodelete timers
+    assert_eq!(
+        migrated.surreal_log_channels.len(),
+        13,
+        "should have migrated 13 logging channels"
+    );
+    assert_eq!(
+        migrated.surreal_timers.len(),
+        3,
+        "should have migrated 3 autodelete timers"
+    );
+    assert!(
+        !migrated.surreal_wallets.is_empty(),
+        "should have migrated some guild wallets"
+    );
+    assert!(
+        !migrated.surreal_payouts.is_empty(),
+        "should have migrated some guild payouts"
+    );
+    assert!(
+        !migrated.surreal_quotes.is_empty(),
+        "should have migrated some quotes"
+    );
+
+    let mut conn = db.pool.get().await.unwrap();
+
+    // guild_configs: all 13 logging channels become guild_config rows
+    let config_count: i64 = guild_configs::table
+        .count()
+        .get_result(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(config_count, 13, "should have 13 guild_config rows");
+
+    // spot-check: logging_channel:800836865187119124 -> channel_id
+    // 1303483863229792276
+    let configs: Vec<GuildConfig> = guild_configs::table
+        .filter(guild_configs::guild_id.eq(800_836_865_187_119_124_i64))
+        .load(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(
+        configs.len(),
+        1,
+        "guild 800836865187119124 should be present"
+    );
+    assert_eq!(
+        configs[0].logging_channel,
+        Some(1_303_483_863_229_792_276_i64),
+        "logging_channel for guild 800836865187119124 should be 1303483863229792276"
+    );
+
+    // autodelete_timers: 3 timers from the export
+    let timer_count: i64 = autodelete_timers::table
+        .count()
+        .get_result(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(timer_count, 3, "should have 3 autodelete_timer rows");
+
+    // spot-check: channel 1053051012312727654 -- 1day, AfterSilence
+    let timers: Vec<AutoDeleteTimerRow> = autodelete_timers::table
+        .filter(autodelete_timers::channel_id.eq(1_053_051_012_312_727_654_i64))
+        .load(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(
+        timers.len(),
+        1,
+        "autodelete timer for channel 1053051012312727654 should be present"
+    );
+    assert_eq!(
+        timers[0].guild_id, 1_029_200_256_753_217_626_i64,
+        "guild_id for channel 1053051012312727654 should match"
+    );
+    assert_eq!(
+        timers[0].duration_secs, 86_400,
+        "1day should be 86400 seconds"
+    );
+    assert_eq!(
+        timers[0].mode, "AfterSilence",
+        "mode for channel 1053051012312727654 should be AfterSilence"
+    );
+    assert_eq!(
+        timers[0].last_message_id_cleaned, 1,
+        "last_message_id_cleaned for channel 1053051012312727654 should be 1"
+    );
+
+    // spot-check: channel 1231828484255649872 -- 12h, Always
+    let timers2: Vec<AutoDeleteTimerRow> = autodelete_timers::table
+        .filter(autodelete_timers::channel_id.eq(1_231_828_484_255_649_872_i64))
+        .load(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(
+        timers2.len(),
+        1,
+        "autodelete timer for channel 1231828484255649872 should be present"
+    );
+    assert_eq!(
+        timers2[0].duration_secs, 43_200,
+        "12h should be 43200 seconds"
+    );
+    assert_eq!(
+        timers2[0].mode, "Always",
+        "mode for channel 1231828484255649872 should be Always"
+    );
+
+    // spot-check: channel 1482494607789916202 -- 1h, AfterSilence
+    let timers3: Vec<AutoDeleteTimerRow> = autodelete_timers::table
+        .filter(autodelete_timers::channel_id.eq(1_482_494_607_789_916_202_i64))
+        .load(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(
+        timers3.len(),
+        1,
+        "autodelete timer for channel 1482494607789916202 should be present"
+    );
+    assert_eq!(timers3[0].duration_secs, 3_600, "1h should be 3600 seconds");
+    assert_eq!(
+        timers3[0].mode, "AfterSilence",
+        "mode for channel 1482494607789916202 should be AfterSilence"
+    );
+
+    // quotes: all migrated quotes must belong to the default community
+    let quote_rows: Vec<Quote> = quotes::table.load(&mut conn).await.unwrap();
+    assert!(!quote_rows.is_empty(), "quotes should have been migrated");
+    for q in &quote_rows {
+        assert_eq!(
+            q.community_id, migrated.default_community_id,
+            "quote {} should belong to the default community",
+            q.sequential_id
+        );
+    }
+
+    // spot-check: first quote text from the export (after sorting by created_at)
+    // quote:3d88i2x5with1xr56y336 was created 2023-12-04 and is alphabetically early
+    let found = quote_rows
+        .iter()
+        .find(|q| q.quote == "I've mounted so many things.");
+    assert!(
+        found.is_some(),
+        "quote \"I've mounted so many things.\" should have been migrated"
+    );
+
+    drop(conn);
+
+    // idempotency: second run should not insert any new rows
+    let migrated_second = migration::migrate_from_surrealdb(&db.pool, &surreal)
+        .await
+        .expect("second migration run with real export should succeed");
+
+    assert!(
+        migrated_second.surreal_log_channels.is_empty(),
+        "idempotency: no new log channels on second run"
+    );
+    assert!(
+        migrated_second.surreal_timers.is_empty(),
+        "idempotency: no new timers on second run"
+    );
+    assert!(
+        migrated_second.surreal_wallets.is_empty(),
+        "idempotency: no new wallets on second run"
+    );
+    assert!(
+        migrated_second.surreal_payouts.is_empty(),
+        "idempotency: no new payouts on second run"
+    );
+    assert!(
+        migrated_second.surreal_quotes.is_empty(),
+        "idempotency: no new quotes on second run"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_migration_skips_non_numeric_logging_channel_id() {
     let _ = env_logger::try_init();
