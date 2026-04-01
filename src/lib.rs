@@ -11,6 +11,7 @@ pub mod config;
 pub mod db;
 pub mod discord;
 pub mod handlers;
+pub mod passing;
 pub mod twitch;
 
 #[derive(Error, Debug)]
