@@ -102,7 +102,6 @@ in
 
           mysqlCfg = config.services.mysql;
           mysqlHost = mysqlCfg.settings.mysqld.bind-address or "localhost";
-          mysqlPort = mysqlCfg.settings.mysqld.port or 3306;
           mysqlName = config.systemd.services.mysql.name;
           surrealName = config.systemd.services.surrealdb.name;
 
@@ -121,7 +120,7 @@ in
 
           environment = {
             RUST_LOG = "error,munibot=info";
-            DATABASE_URL = "mysql://${cfg.user}@${mysqlHost}:${toString mysqlPort}";
+            DATABASE_URL = "mysql://${cfg.user}@${mysqlHost}";
           };
 
           serviceConfig = {
