@@ -14,13 +14,6 @@ let
     ;
 
   toml = pkgs.formats.toml { };
-
-  defaultSettings = {
-    db = {
-      url = "127.0.0.1:7654";
-      user = "muni_bot";
-    };
-  };
 in
 {
   options.services.munibot = {
@@ -30,11 +23,7 @@ in
       description = "The munibot package to use.";
       default = self.packages.${pkgs.stdenv.system}.default;
     };
-    settings = mkOption {
-      type = toml.type;
-      description = "Settings for munibot.";
-      default = defaultSettings;
-    };
+
     environmentFile = mkOption {
       type = types.str;
       description = ''
@@ -47,11 +36,19 @@ in
         Note: when using the MariaDB service enabled by this module, DATABASE_URL should use unix socket authentication — e.g. mysql://munibot@localhost/munibot — since the munibot system user is granted passwordless access via the unix_socket plugin.
       '';
     };
+
+    settings = mkOption {
+      type = toml.type;
+      description = "Settings for munibot.";
+      default = { };
+    };
+
     createDatabase = mkOption {
       type = types.bool;
       description = "Whether to create a local MySQL/MariaDB database automatically.";
       default = true;
     };
+
     surrealdb = {
       enable =
         mkEnableOption "SurrealDB during munibot's migration stages. munibot has moved to MySQL/MariaDB, but can automatically migrate data over from a legacy SurrealDB database automatically if specified"
@@ -96,7 +93,7 @@ in
 
       systemd.services.munibot =
         let
-          configFile = toml.generate "munibot.toml" (lib.recursiveUpdate defaultSettings cfg.settings);
+          configFile = toml.generate "munibot.toml" cfg.settings;
 
           mysqlName = config.systemd.services.mysql.name;
           surrealName = config.systemd.services.surrealdb.name;
