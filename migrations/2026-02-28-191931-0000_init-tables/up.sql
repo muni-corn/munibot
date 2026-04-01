@@ -1,10 +1,10 @@
 -- Your SQL goes here
-CREATE TABLE `guild_configs` (
+CREATE TABLE IF NOT EXISTS `guild_configs` (
 `guild_id` BIGINT NOT NULL PRIMARY KEY,
 `logging_channel` BIGINT
 ) ;
 
-CREATE TABLE `autodelete_timers` (
+CREATE TABLE IF NOT EXISTS `autodelete_timers` (
 `channel_id` BIGINT NOT NULL PRIMARY KEY,
 `guild_id` BIGINT NOT NULL,
 `duration_secs` BIGINT NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE `autodelete_timers` (
 `mode` VARCHAR (32) NOT NULL
 ) ;
 
-CREATE TABLE `guild_wallets` (
+CREATE TABLE IF NOT EXISTS `guild_wallets` (
 `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 `guild_id` BIGINT NOT NULL,
 `user_id` BIGINT NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE `guild_wallets` (
 UNIQUE KEY `guild_wallets_guild_user` (`guild_id`, `user_id`)
 ) ;
 
-CREATE TABLE `guild_payouts` (
+CREATE TABLE IF NOT EXISTS `guild_payouts` (
 `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 `guild_id` BIGINT NOT NULL,
 `user_id` BIGINT NOT NULL,
@@ -31,13 +31,13 @@ UNIQUE KEY `guild_payouts_guild_user` (`guild_id`, `user_id`)
 ) ;
 
 -- must be created before quotes (FK dependency)
-CREATE TABLE `community_links` (
+CREATE TABLE IF NOT EXISTS `community_links` (
 `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 `twitch_streamer_id` VARCHAR (64) UNIQUE,
 `discord_guild_id` BIGINT UNIQUE
 ) ;
 
-CREATE TABLE `quotes` (
+CREATE TABLE IF NOT EXISTS `quotes` (
 `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 `community_id` BIGINT NOT NULL,
 `sequential_id` INTEGER NOT NULL,
