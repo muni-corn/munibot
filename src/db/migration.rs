@@ -16,6 +16,7 @@ use crate::{
             autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets, quotes,
         },
     },
+    passing::Passing,
 };
 
 /// The Twitch streamer ID used for the default community that existing quotes
@@ -542,6 +543,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
         "migration: migrating {} logging channels",
         surreal_log_channels.len()
     );
+
     // track only the records that were actually inserted; non-numeric ids are
     // skipped with a warning and must not count toward the verification total
     let mut migrated_log_count: i64 = 0;
@@ -556,16 +558,20 @@ pub async fn migrate_from_surrealdb<C: Connection>(
                 continue;
             }
         };
-        operations::upsert_guild_config(
+        let result = operations::upsert_guild_config(
             pool,
             GuildConfig {
                 guild_id,
                 logging_channel: Some(row.channel_id),
             },
         )
-        .await
-        .map_err(MuniBotError::DbError)?;
-        migrated_log_count += 1;
+        .await;
+
+        if result.is_ok() {
+            migrated_log_count += 1;
+        } else {
+            result.pass();
+        }
     }
 
     // --- 2. migrate autodelete_timer -> autodelete_timers ---
@@ -593,7 +599,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
             },
         )
         .await
-        .map_err(MuniBotError::DbError)?;
+        .pass();
     }
 
     // --- 3. migrate guild_wallet -> guild_wallets ---
@@ -619,7 +625,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
                 })
                 .execute(&mut conn)
                 .await
-                .map_err(MuniBotError::DbError)?;
+                .pass();
         }
     }
 
@@ -647,7 +653,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
                 })
                 .execute(&mut conn)
                 .await
-                .map_err(MuniBotError::DbError)?;
+                .pass();
         }
     }
 
@@ -661,7 +667,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
             })
             .execute(&mut conn)
             .await
-            .map_err(MuniBotError::DbError)?;
+            .pass();
 
         community_links::table
             .filter(community_links::twitch_streamer_id.eq(DEFAULT_TWITCH_STREAMER_ID))
@@ -696,7 +702,7 @@ pub async fn migrate_from_surrealdb<C: Connection>(
                 })
                 .execute(&mut conn)
                 .await
-                .map_err(MuniBotError::DbError)?;
+                .pass();
         }
     }
 
