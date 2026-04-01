@@ -45,7 +45,7 @@ pub async fn start_discord_integration(
         .expect("couldn't establish database connection pool");
 
     // connect to SurrealDB and run the one-time data migration
-    let surreal_url = env::var("SURREAL_URL").unwrap_or_else(|_| "ws://localhost:8000".to_owned());
+    let surreal_url = env::var("SURREAL_URL").unwrap_or_else(|_| "localhost:8000".to_owned());
     let surreal_user = env::var("SURREAL_USER").unwrap_or_else(|_| "root".to_owned());
     let surreal_pass = env::var("SURREAL_PASS").unwrap_or_else(|_| "root".to_owned());
 
