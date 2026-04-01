@@ -111,7 +111,10 @@ in
           ++ surrealdbDeps;
           requires = [ mysqlName ] ++ surrealdbDeps;
 
-          environment.RUST_LOG = "error,munibot=info";
+          environment = {
+            RUST_LOG = "error,munibot=info";
+            DATABASE_URL = lib.mkIf cfg.createDatabase "mysql://${cfg.user}@localhost/munibot?socket=/run/mysqld/mysqld.sock";
+          };
 
           serviceConfig = {
             EnvironmentFile = cfg.environmentFile;
