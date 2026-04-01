@@ -383,6 +383,22 @@ pub async fn get_quote_by_number(
         .optional()
 }
 
+/// Returns a quote by its content, if found.
+pub async fn get_quote_by_content(
+    pool: &DbPool,
+    community_id: i64,
+    content: &str,
+) -> QueryResult<Option<Quote>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    quotes::table
+        .filter(quotes::community_id.eq(community_id))
+        .filter(quotes::quote.like(content))
+        .select(Quote::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+}
+
 /// Returns a random quote for the given community, if any exist.
 pub async fn get_random_quote(pool: &DbPool, community_id: i64) -> QueryResult<Option<Quote>> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
