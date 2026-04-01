@@ -100,8 +100,6 @@ in
         let
           configFile = toml.generate "munibot.toml" (lib.recursiveUpdate defaultSettings cfg.settings);
 
-          mysqlCfg = config.services.mysql;
-          mysqlHost = mysqlCfg.settings.mysqld.bind-address or "localhost";
           mysqlName = config.systemd.services.mysql.name;
           surrealName = config.systemd.services.surrealdb.name;
 
@@ -118,10 +116,7 @@ in
           ++ surrealdbDeps;
           requires = [ mysqlName ] ++ surrealdbDeps;
 
-          environment = {
-            RUST_LOG = "error,munibot=info";
-            DATABASE_URL = "mysql://${cfg.user}@${mysqlHost}";
-          };
+          environment.RUST_LOG = "error,munibot=info";
 
           serviceConfig = {
             EnvironmentFile = cfg.environmentFile;
