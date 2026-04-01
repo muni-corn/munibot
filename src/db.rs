@@ -1,7 +1,9 @@
+use diesel::Connection;
 use diesel_async::{
     AsyncMysqlConnection,
     pooled_connection::{AsyncDieselConnectionManager, bb8::Pool},
 };
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 pub mod migration;
 pub mod models;
@@ -15,11 +17,27 @@ pub mod schema;
 /// `AsyncMysqlConnection`.
 pub type DbPool = Pool<AsyncMysqlConnection>;
 
+/// Embedded migrations to run on the database.
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+
 /// Creates a new database connection pool using the `DATABASE_URL` environment
 /// variable.
 pub async fn establish_pool() -> Result<DbPool, Box<dyn std::error::Error + Send + Sync>> {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    // run migrations
+    {
+        let mut conn = diesel::MysqlConnection::establish(&database_url)
+            .expect("couldn't connect mysql database for migrations :(");
+        conn.run_pending_migrations(MIGRATIONS)
+            .expect("couldn't run mysql database migrations :(");
+    }
+
+    log::info!("database migrations complete!");
+
+    // then establish the pool
     let config = AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(&database_url);
     let pool = Pool::builder().build(config).await?;
+
     Ok(pool)
 }
