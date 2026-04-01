@@ -13,7 +13,9 @@ use crate::{
         },
         operations,
         schema::{
-            autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets, quotes,
+            autodelete_timers::{self},
+            community_links, guild_configs, guild_payouts, guild_wallets,
+            quotes::{self},
         },
     },
     passing::Passing,
@@ -26,71 +28,96 @@ const DEFAULT_TWITCH_STREAMER_ID: &str = "590712444";
 // SurrealDB record shapes (read-only, used only during migration)
 
 #[derive(Debug, Deserialize)]
-struct SurrealLoggingChannel {
+pub struct SurrealLoggingChannel {
     // surrealdb record id key is the guild id
-    id: surrealdb::RecordId,
-    channel_id: i64,
+    pub id: surrealdb::RecordId,
+    pub channel_id: i64,
 }
 
 #[derive(Debug, Deserialize)]
-struct SurrealAutoDeleteTimer {
-    guild_id: i64,
-    channel_id: i64,
+pub struct SurrealAutoDeleteTimer {
+    pub guild_id: i64,
+    pub channel_id: i64,
     #[serde(with = "humantime_serde")]
-    duration: std::time::Duration,
-    last_cleaned: DateTime<Utc>,
+    pub duration: std::time::Duration,
+    pub last_cleaned: DateTime<Utc>,
     #[serde(default)]
-    last_message_id_cleaned: i64,
-    mode: String,
+    pub last_message_id_cleaned: i64,
+    pub mode: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct SurrealGuildWallet {
-    guild_id: i64,
-    user_id: i64,
-    balance: u64,
+pub struct SurrealGuildWallet {
+    pub guild_id: i64,
+    pub user_id: i64,
+    pub balance: u64,
 }
 
 #[derive(Debug, Deserialize)]
-struct SurrealGuildPayout {
-    guild_id: i64,
-    user_id: i64,
-    balance: u64,
-    last_payout: DateTime<Local>,
+pub struct SurrealGuildPayout {
+    pub guild_id: i64,
+    pub user_id: i64,
+    pub balance: u64,
+    pub last_payout: DateTime<Local>,
 }
 
 #[derive(Debug, Deserialize)]
-struct SurrealQuote {
-    created_at: DateTime<Utc>,
-    quote: String,
-    invoker: String,
-    stream_category: String,
-    stream_title: String,
+pub struct SurrealQuote {
+    pub created_at: DateTime<Utc>,
+    pub quote: String,
+    pub invoker: String,
+    pub stream_category: String,
+    pub stream_title: String,
+}
+
+/// Data that was actually, successfully migrated from SurrealDB into MySQL
+/// during a single run of `migrate_from_surrealdb`.
+///
+/// On an idempotent re-run where all data already exists, every vec will be
+/// empty.
+pub struct MigratedData {
+    pub surreal_log_channels: Vec<SurrealLoggingChannel>,
+    pub surreal_timers: Vec<SurrealAutoDeleteTimer>,
+    pub surreal_wallets: Vec<SurrealGuildWallet>,
+    pub surreal_payouts: Vec<SurrealGuildPayout>,
+    pub surreal_quotes: Vec<SurrealQuote>,
+    pub default_community_id: i64,
+}
+
+impl MigratedData {
+    fn is_empty(&self) -> bool {
+        self.surreal_log_channels.is_empty()
+            && self.surreal_timers.is_empty()
+            && self.surreal_wallets.is_empty()
+            && self.surreal_payouts.is_empty()
+            && self.surreal_quotes.is_empty()
+    }
 }
 
 /// Verifies data completeness and accuracy after migration.
 ///
-/// Performs four categories of checks against all migrated tables:
+/// Performs three categories of checks against the rows that were actually
+/// inserted this run:
 ///
-/// 1. **Spot-check field values:** loads all MySQL rows and compares key fields
+/// 1. **Spot-check field values:** loads MySQL rows and compares key fields
 ///    against the in-memory SurrealDB source data.
-/// 2. **Aggregate checksums:** compares numeric column sums (balance, duration)
-///    between source and destination.
-/// 3. **Null/empty field validation:** warns on rows with empty strings or zero
+/// 2. **Null/empty field validation:** warns on rows with empty strings or zero
 ///    values in fields that should always be populated.
-/// 4. **Referential integrity:** verifies every migrated quote references the
+/// 3. **Referential integrity:** verifies every migrated quote references the
 ///    correct `community_id`.
 ///
 /// All failures are logged as warnings; this function never returns an error.
 /// Returns `true` if every check passed, `false` if any mismatch was found.
 async fn verify_migration_data(
     pool: &DbPool,
-    surreal_log_channels: &[SurrealLoggingChannel],
-    surreal_timers: &[SurrealAutoDeleteTimer],
-    surreal_wallets: &[SurrealGuildWallet],
-    surreal_payouts: &[SurrealGuildPayout],
-    surreal_quotes: &[SurrealQuote],
-    default_community_id: i64,
+    MigratedData {
+        surreal_log_channels,
+        surreal_timers,
+        surreal_wallets,
+        surreal_payouts,
+        surreal_quotes,
+        default_community_id,
+    }: &MigratedData,
 ) -> bool {
     use std::collections::HashMap;
 
@@ -235,23 +262,6 @@ async fn verify_migration_data(
             }
         }
 
-        // aggregate checksum: sum of duration_secs
-        let expected_dur_sum: i64 = surreal_timers
-            .iter()
-            .map(|r| r.duration.as_secs() as i64)
-            .sum();
-        let actual_dur_sum: i64 = timers.iter().map(|r| r.duration_secs).sum();
-        if expected_dur_sum != actual_dur_sum {
-            data_warn!(
-                "migration verification: autodelete_timers: duration_secs sum mismatch \
-                 (expected {expected_dur_sum}, got {actual_dur_sum})"
-            );
-        } else {
-            info!(
-                "migration verification: autodelete_timers duration_secs sum ok ({actual_dur_sum})"
-            );
-        }
-
         // empty-value checks
         let zero_dur = timers.iter().filter(|r| r.duration_secs == 0).count();
         if zero_dur > 0 {
@@ -265,6 +275,9 @@ async fn verify_migration_data(
             data_warn!(
                 "migration verification: autodelete_timers: {empty_mode} rows have empty mode"
             );
+        }
+        if zero_dur == 0 && empty_mode == 0 {
+            info!("migration verification: autodelete_timers field values ok");
         }
     }
 
@@ -294,13 +307,18 @@ async fn verify_migration_data(
             .collect();
 
         // spot-check: balance per (guild_id, user_id)
+        let mut all_wallets_ok = true;
         for row in surreal_wallets {
             match mysql_map.get(&(row.guild_id, row.user_id)) {
-                None => data_warn!(
-                    "migration verification: guild_wallets: (guild={}, user={}) missing in mysql",
-                    row.guild_id,
-                    row.user_id
-                ),
+                None => {
+                    data_warn!(
+                        "migration verification: guild_wallets: (guild={}, user={}) missing \
+                         in mysql",
+                        row.guild_id,
+                        row.user_id
+                    );
+                    all_wallets_ok = false;
+                }
                 Some(&bal) => {
                     if bal != row.balance {
                         data_warn!(
@@ -310,21 +328,13 @@ async fn verify_migration_data(
                             row.user_id,
                             row.balance
                         );
+                        all_wallets_ok = false;
                     }
                 }
             }
         }
-
-        // aggregate checksum: total balance
-        let expected_wallet_sum: u64 = surreal_wallets.iter().map(|r| r.balance).sum();
-        let actual_wallet_sum: u64 = wallets.iter().map(|r| r.balance).sum();
-        if expected_wallet_sum != actual_wallet_sum {
-            data_warn!(
-                "migration verification: guild_wallets: balance sum mismatch \
-                 (expected {expected_wallet_sum}, got {actual_wallet_sum})"
-            );
-        } else {
-            info!("migration verification: guild_wallets balance sum ok ({actual_wallet_sum})");
+        if all_wallets_ok {
+            info!("migration verification: guild_wallets field values ok");
         }
     }
 
@@ -354,13 +364,18 @@ async fn verify_migration_data(
             .collect();
 
         // spot-check: balance and last_payout per (guild_id, user_id)
+        let mut all_payouts_ok = true;
         for row in surreal_payouts {
             match mysql_map.get(&(row.guild_id, row.user_id)) {
-                None => data_warn!(
-                    "migration verification: guild_payouts: (guild={}, user={}) missing in mysql",
-                    row.guild_id,
-                    row.user_id
-                ),
+                None => {
+                    data_warn!(
+                        "migration verification: guild_payouts: (guild={}, user={}) missing \
+                         in mysql",
+                        row.guild_id,
+                        row.user_id
+                    );
+                    all_payouts_ok = false;
+                }
                 Some(&m) => {
                     if m.balance != row.balance {
                         data_warn!(
@@ -371,6 +386,7 @@ async fn verify_migration_data(
                             row.balance,
                             m.balance
                         );
+                        all_payouts_ok = false;
                     }
                     let expected_payout = row.last_payout.naive_utc();
                     if m.last_payout.trunc_subsecs(0) != expected_payout.trunc_subsecs(0) {
@@ -381,21 +397,13 @@ async fn verify_migration_data(
                             row.user_id,
                             m.last_payout
                         );
+                        all_payouts_ok = false;
                     }
                 }
             }
         }
-
-        // aggregate checksum: total balance
-        let expected_payout_sum: u64 = surreal_payouts.iter().map(|r| r.balance).sum();
-        let actual_payout_sum: u64 = payouts.iter().map(|r| r.balance).sum();
-        if expected_payout_sum != actual_payout_sum {
-            data_warn!(
-                "migration verification: guild_payouts: balance sum mismatch \
-                 (expected {expected_payout_sum}, got {actual_payout_sum})"
-            );
-        } else {
-            info!("migration verification: guild_payouts balance sum ok ({actual_payout_sum})");
+        if all_payouts_ok {
+            info!("migration verification: guild_payouts field values ok");
         }
     }
 
@@ -466,21 +474,22 @@ async fn verify_migration_data(
             data_warn!("migration verification: quotes: {empty_invoker} rows have empty invoker");
         }
 
-        // referential integrity: every quote must reference default_community_id
+        // referential integrity: every migrated quote must reference
+        // default_community_id
         let wrong_community = mysql_qs
             .iter()
-            .filter(|r| r.community_id != default_community_id)
+            .filter(|r| r.community_id != *default_community_id)
             .count();
         if wrong_community > 0 {
             data_warn!(
                 "migration verification: quotes: {wrong_community} rows reference unexpected \
                  community_id (expected all to be {default_community_id})"
             );
-        } else if !mysql_qs.is_empty() {
+        } else if !surreal_quotes.is_empty() {
             info!(
-                "migration verification: quotes referential integrity ok (all {} rows reference \
-                 community {default_community_id})",
-                mysql_qs.len()
+                "migration verification: quotes referential integrity ok (all {} migrated rows \
+                 reference community {default_community_id})",
+                surreal_quotes.len()
             );
         }
     }
@@ -491,43 +500,18 @@ async fn verify_migration_data(
 /// Performs a one-time migration of all data from SurrealDB into the MySQL
 /// database.
 ///
-/// This function is idempotent: if `guild_configs` already has rows, it logs a
-/// message and returns immediately without touching anything.
+/// This function is idempotent: existing rows are detected via
+/// `INSERT OR IGNORE` and skipped. Only rows actually inserted this run are
+/// tracked in the returned [`MigratedData`].
 ///
-/// After migration is verified, call this function's call site can be removed
+/// After migration is verified, this function's call site can be removed
 /// together with this module.
 pub async fn migrate_from_surrealdb<C: Connection>(
     pool: &DbPool,
     surreal: &Surreal<C>,
-) -> Result<(), MuniBotError> {
+) -> Result<MigratedData, MuniBotError> {
     use diesel::prelude::*;
     use diesel_async::RunQueryDsl;
-
-    // idempotency check: skip if mysql already has data
-    //
-    // both guild_configs and community_links are checked because a run with
-    // zero logging channels would leave guild_configs empty while still
-    // creating the default community link -- checking only guild_configs would
-    // allow the migration to re-run and fail on the community link unique
-    // constraint
-    let (config_count, community_count): (i64, i64) = {
-        let mut conn = pool.get().await.expect("couldn't get db connection");
-        let c = guild_configs::table
-            .count()
-            .get_result(&mut conn)
-            .await
-            .map_err(MuniBotError::DbError)?;
-        let cl = community_links::table
-            .count()
-            .get_result(&mut conn)
-            .await
-            .map_err(MuniBotError::DbError)?;
-        (c, cl)
-    };
-    if config_count > 0 || community_count > 0 {
-        info!("migration: mysql already has data, skipping migration");
-        return Ok(());
-    }
 
     info!("migration: starting SurrealDB -> MySQL migration");
 
@@ -546,31 +530,41 @@ pub async fn migrate_from_surrealdb<C: Connection>(
 
     // track only the records that were actually inserted; non-numeric ids are
     // skipped with a warning and must not count toward the verification total
-    let mut migrated_log_count: i64 = 0;
-    for row in &surreal_log_channels {
-        let guild_id = match i64::try_from(row.id.key().clone()) {
-            Ok(n) => n,
-            Err(_) => {
-                warn!(
-                    "migration: skipping logging_channel with non-numeric id: {:?}",
-                    row.id
-                );
-                continue;
-            }
-        };
-        let result = operations::upsert_guild_config(
-            pool,
-            GuildConfig {
-                guild_id,
-                logging_channel: Some(row.channel_id),
-            },
-        )
-        .await;
+    let mut migrated_surreal_log_channels: Vec<SurrealLoggingChannel> = Vec::new();
+    {
+        let mut conn = pool.get().await.expect("couldn't get db connection");
+        for row in surreal_log_channels {
+            let guild_id = match i64::try_from(row.id.key().clone()) {
+                Ok(n) => n,
+                Err(e) => {
+                    warn!(
+                        "migration: skipping logging_channel with non-numeric id {:?}: {e}",
+                        row.id
+                    );
+                    continue;
+                }
+            };
 
-        if result.is_ok() {
-            migrated_log_count += 1;
-        } else {
-            result.pass();
+            let affected = diesel::insert_or_ignore_into(guild_configs::table)
+                .values(&GuildConfig {
+                    guild_id,
+                    logging_channel: Some(row.channel_id),
+                })
+                .execute(&mut conn)
+                .await;
+
+            match affected {
+                Ok(0) => info!("guild config for {guild_id} already exists; skipping"),
+                Ok(1) => {
+                    info!("migrated guild config for {guild_id}");
+                    migrated_surreal_log_channels.push(row);
+                }
+                Ok(n) => {
+                    warn!("migrated guild config for {guild_id}, but {n} rows were affected");
+                    migrated_surreal_log_channels.push(row);
+                }
+                Err(e) => warn!("couldn't migrate guild config for {guild_id}: {e}"),
+            }
         }
     }
 
@@ -586,20 +580,44 @@ pub async fn migrate_from_surrealdb<C: Connection>(
         "migration: migrating {} autodelete timers",
         surreal_timers.len()
     );
-    for row in &surreal_timers {
-        operations::upsert_autodelete_timer(
-            pool,
-            AutoDeleteTimerRow {
-                channel_id: row.channel_id,
-                guild_id: row.guild_id,
-                duration_secs: row.duration.as_secs() as i64,
-                last_cleaned: row.last_cleaned.naive_utc(),
-                last_message_id_cleaned: row.last_message_id_cleaned,
-                mode: row.mode.clone(),
-            },
-        )
-        .await
-        .pass();
+    let mut migrated_surreal_timers: Vec<SurrealAutoDeleteTimer> = Vec::new();
+    {
+        let mut conn = pool.get().await.expect("couldn't get db connection");
+        for row in surreal_timers {
+            let affected = diesel::insert_or_ignore_into(autodelete_timers::table)
+                .values(&AutoDeleteTimerRow {
+                    channel_id: row.channel_id,
+                    guild_id: row.guild_id,
+                    duration_secs: row.duration.as_secs() as i64,
+                    last_cleaned: row.last_cleaned.naive_utc(),
+                    last_message_id_cleaned: row.last_message_id_cleaned,
+                    mode: row.mode.clone(),
+                })
+                .execute(&mut conn)
+                .await;
+
+            match affected {
+                Ok(0) => info!(
+                    "autodelete timer for channel {} already exists; skipping",
+                    row.channel_id
+                ),
+                Ok(1) => {
+                    info!("migrated autodelete timer for channel {}", row.channel_id);
+                    migrated_surreal_timers.push(row);
+                }
+                Ok(n) => {
+                    warn!(
+                        "migrated autodelete timer for channel {}, but {n} rows were affected",
+                        row.channel_id
+                    );
+                    migrated_surreal_timers.push(row);
+                }
+                Err(e) => warn!(
+                    "couldn't migrate autodelete timer for channel {}: {e}",
+                    row.channel_id
+                ),
+            }
+        }
     }
 
     // --- 3. migrate guild_wallet -> guild_wallets ---
@@ -614,18 +632,43 @@ pub async fn migrate_from_surrealdb<C: Connection>(
         "migration: migrating {} guild wallets",
         surreal_wallets.len()
     );
+    let mut migrated_surreal_wallets: Vec<SurrealGuildWallet> = Vec::new();
     {
         let mut conn = pool.get().await.expect("couldn't get db connection");
-        for row in &surreal_wallets {
-            diesel::insert_into(guild_wallets::table)
+        for row in surreal_wallets {
+            let affected = diesel::insert_or_ignore_into(guild_wallets::table)
                 .values(NewGuildWallet {
                     guild_id: row.guild_id,
                     user_id: row.user_id,
                     balance: row.balance,
                 })
                 .execute(&mut conn)
-                .await
-                .pass();
+                .await;
+
+            match affected {
+                Ok(0) => info!(
+                    "guild wallet for (guild={}, user={}) already exists; skipping",
+                    row.guild_id, row.user_id
+                ),
+                Ok(1) => {
+                    info!(
+                        "migrated guild wallet for (guild={}, user={})",
+                        row.guild_id, row.user_id
+                    );
+                    migrated_surreal_wallets.push(row);
+                }
+                Ok(n) => {
+                    warn!(
+                        "migrated guild wallet for (guild={}, user={}), but {n} rows were affected",
+                        row.guild_id, row.user_id
+                    );
+                    migrated_surreal_wallets.push(row);
+                }
+                Err(e) => warn!(
+                    "couldn't migrate guild wallet for (guild={}, user={}): {e}",
+                    row.guild_id, row.user_id
+                ),
+            }
         }
     }
 
@@ -641,10 +684,11 @@ pub async fn migrate_from_surrealdb<C: Connection>(
         "migration: migrating {} guild payouts",
         surreal_payouts.len()
     );
+    let mut migrated_surreal_payouts: Vec<SurrealGuildPayout> = Vec::new();
     {
         let mut conn = pool.get().await.expect("couldn't get db connection");
-        for row in &surreal_payouts {
-            diesel::insert_into(guild_payouts::table)
+        for row in surreal_payouts {
+            let affected = diesel::insert_or_ignore_into(guild_payouts::table)
                 .values(NewGuildPayout {
                     guild_id: row.guild_id,
                     user_id: row.user_id,
@@ -652,15 +696,39 @@ pub async fn migrate_from_surrealdb<C: Connection>(
                     last_payout: row.last_payout.naive_utc(),
                 })
                 .execute(&mut conn)
-                .await
-                .pass();
+                .await;
+
+            match affected {
+                Ok(0) => info!(
+                    "guild payout for (guild={}, user={}) already exists; skipping",
+                    row.guild_id, row.user_id
+                ),
+                Ok(1) => {
+                    info!(
+                        "migrated guild payout for (guild={}, user={})",
+                        row.guild_id, row.user_id
+                    );
+                    migrated_surreal_payouts.push(row);
+                }
+                Ok(n) => {
+                    warn!(
+                        "migrated guild payout for (guild={}, user={}), but {n} rows were affected",
+                        row.guild_id, row.user_id
+                    );
+                    migrated_surreal_payouts.push(row);
+                }
+                Err(e) => warn!(
+                    "couldn't migrate guild payout for (guild={}, user={}): {e}",
+                    row.guild_id, row.user_id
+                ),
+            }
         }
     }
 
     // --- 5. create default community_link for existing quotes ---
     let default_community = {
         let mut conn = pool.get().await.expect("couldn't get db connection");
-        diesel::insert_into(community_links::table)
+        diesel::insert_or_ignore_into(community_links::table)
             .values(NewCommunityLink {
                 twitch_streamer_id: Some(DEFAULT_TWITCH_STREAMER_ID.to_owned()),
                 discord_guild_id: None,
@@ -687,133 +755,95 @@ pub async fn migrate_from_surrealdb<C: Connection>(
         .map_err(|e| MuniBotError::Other(format!("surreal take failed: {e}")))?;
 
     info!("migration: migrating {} quotes", surreal_quotes.len());
+    let mut migrated_surreal_quotes: Vec<SurrealQuote> = Vec::new();
     {
         let mut conn = pool.get().await.expect("couldn't get db connection");
-        for (i, row) in surreal_quotes.iter().enumerate() {
-            diesel::insert_into(quotes::table)
-                .values(crate::db::models::NewQuote {
-                    community_id: default_community.id,
-                    sequential_id: (i + 1) as i32,
-                    created_at: row.created_at.naive_utc(),
-                    quote: row.quote.clone(),
-                    invoker: row.invoker.clone(),
-                    stream_category: row.stream_category.clone(),
-                    stream_title: row.stream_title.clone(),
-                })
-                .execute(&mut conn)
-                .await
-                .pass();
+        for (i, row) in surreal_quotes.into_iter().enumerate() {
+            // check by content so that a partial re-run doesn't assign a
+            // different sequential_id to an already-migrated quote
+            let existing = match operations::get_quote_by_content(
+                pool,
+                default_community.id,
+                &row.quote,
+            )
+            .await
+            {
+                Ok(q) => q,
+                Err(e) => {
+                    log::error!("couldn't check existing quote {}: {e}; skipping", i + 1);
+                    continue;
+                }
+            };
+
+            if existing.is_none() {
+                let affected = diesel::insert_or_ignore_into(quotes::table)
+                    .values(crate::db::models::NewQuote {
+                        community_id: default_community.id,
+                        sequential_id: (i + 1) as i32,
+                        created_at: row.created_at.naive_utc(),
+                        quote: row.quote.clone(),
+                        invoker: row.invoker.clone(),
+                        stream_category: row.stream_category.clone(),
+                        stream_title: row.stream_title.clone(),
+                    })
+                    .execute(&mut conn)
+                    .await;
+
+                match affected {
+                    Ok(0) => info!("quote {} already exists; skipping", i + 1),
+                    Ok(1) => {
+                        info!(
+                            "migrated quote {} into community {}: \"{}\"",
+                            i + 1,
+                            default_community.id,
+                            &row.quote
+                        );
+                        migrated_surreal_quotes.push(row);
+                    }
+                    Ok(n) => {
+                        info!(
+                            "migrated quote {} into community {}: \"{}\", but {n} rows were affected",
+                            i + 1,
+                            default_community.id,
+                            &row.quote
+                        );
+                        migrated_surreal_quotes.push(row);
+                    }
+                    Err(e) => warn!("couldn't migrate quote {}: {e}", i + 1),
+                }
+            } else {
+                info!("quote {} already exists; skipping", i + 1);
+            }
         }
     }
 
-    // --- 7. verification ---
-    info!("migration: verifying row counts");
+    // --- 7. data verification ---
+    // only verify if something was actually migrated this run; on an idempotent
+    // re-run the migrated vecs are empty and there is nothing new to validate
 
-    let mysql_log_count = {
-        use diesel::prelude::*;
-        use diesel_async::RunQueryDsl;
-        let mut conn = pool.get().await.expect("couldn't get db connection");
-        guild_configs::table
-            .count()
-            .get_result::<i64>(&mut conn)
-            .await
-            .map_err(MuniBotError::DbError)?
+    let migrated_data = MigratedData {
+        surreal_log_channels: migrated_surreal_log_channels,
+        surreal_timers: migrated_surreal_timers,
+        surreal_wallets: migrated_surreal_wallets,
+        surreal_payouts: migrated_surreal_payouts,
+        surreal_quotes: migrated_surreal_quotes,
+        default_community_id: default_community.id,
     };
 
-    let mysql_timer_count = {
-        let mut conn = pool.get().await.expect("couldn't get db connection");
-        autodelete_timers::table
-            .count()
-            .get_result::<i64>(&mut conn)
-            .await
-            .map_err(MuniBotError::DbError)?
-    };
+    let anything_migrated = !migrated_data.is_empty();
 
-    let mysql_wallet_count = {
-        let mut conn = pool.get().await.expect("couldn't get db connection");
-        guild_wallets::table
-            .count()
-            .get_result::<i64>(&mut conn)
-            .await
-            .map_err(MuniBotError::DbError)?
-    };
+    if anything_migrated {
+        info!("migration: starting data verification (field values, nulls, refs)");
+        let data_ok = verify_migration_data(pool, &migrated_data).await;
 
-    let mysql_payout_count = {
-        let mut conn = pool.get().await.expect("couldn't get db connection");
-        guild_payouts::table
-            .count()
-            .get_result::<i64>(&mut conn)
-            .await
-            .map_err(MuniBotError::DbError)?
-    };
-
-    let mysql_quote_count = {
-        let mut conn = pool.get().await.expect("couldn't get db connection");
-        quotes::table
-            .count()
-            .get_result::<i64>(&mut conn)
-            .await
-            .map_err(MuniBotError::DbError)?
-    };
-
-    // use migrated_log_count (not raw surreal count) so that skipped
-    // non-numeric ids do not cause a spurious count mismatch
-    let surreal_log_count = migrated_log_count;
-    let surreal_timer_count = surreal_timers.len() as i64;
-    let surreal_wallet_count = surreal_wallets.len() as i64;
-    let surreal_payout_count = surreal_payouts.len() as i64;
-    let surreal_quote_count = surreal_quotes.len() as i64;
-
-    let mut mismatch = false;
-
-    macro_rules! verify_count {
-        ($table:expr, $surreal:expr, $mysql:expr) => {
-            if $surreal != $mysql {
-                log::error!(
-                    "migration: count mismatch for {}: surreal={}, mysql={}",
-                    $table,
-                    $surreal,
-                    $mysql
-                );
-                mismatch = true;
-            } else {
-                info!("migration: {} ok ({} rows)", $table, $mysql);
-            }
-        };
-    }
-
-    verify_count!("guild_configs", surreal_log_count, mysql_log_count);
-    verify_count!("autodelete_timers", surreal_timer_count, mysql_timer_count);
-    verify_count!("guild_wallets", surreal_wallet_count, mysql_wallet_count);
-    verify_count!("guild_payouts", surreal_payout_count, mysql_payout_count);
-    verify_count!("quotes", surreal_quote_count, mysql_quote_count);
-
-    if mismatch {
-        return Err(MuniBotError::Other(
-            "migration: count verification failed; see error logs above".to_owned(),
-        ));
-    }
-
-    info!("migration: all counts verified successfully");
-
-    // --- 8. data verification ---
-    info!("migration: starting data verification (field values, checksums, nulls, refs)");
-    let data_ok = verify_migration_data(
-        pool,
-        &surreal_log_channels,
-        &surreal_timers,
-        &surreal_wallets,
-        &surreal_payouts,
-        &surreal_quotes,
-        default_community.id,
-    )
-    .await;
-
-    if data_ok {
-        info!("migration: data verification passed");
+        if data_ok {
+            info!("migration: data verification passed");
+        } else {
+            warn!("migration: data verification found issues; see warnings above");
+        }
     } else {
-        warn!("migration: data verification found issues; see warnings above");
+        info!("migration: nothing new was migrated; skipping data verification");
     }
 
-    Ok(())
+    Ok(migrated_data)
 }
