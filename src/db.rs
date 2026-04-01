@@ -25,6 +25,15 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 pub async fn establish_pool() -> Result<DbPool, Box<dyn std::error::Error + Send + Sync>> {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
+    let config = AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(&database_url);
+    let pool = Pool::builder().build(config).await?;
+
+    Ok(pool)
+}
+
+pub async fn run_pending_migrations() {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
     // run migrations
     {
         let mut conn = diesel::MysqlConnection::establish(&database_url)
@@ -33,11 +42,5 @@ pub async fn establish_pool() -> Result<DbPool, Box<dyn std::error::Error + Send
             .expect("couldn't run mysql database migrations :(");
     }
 
-    log::info!("database migrations complete!");
-
-    // then establish the pool
-    let config = AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(&database_url);
-    let pool = Pool::builder().build(config).await?;
-
-    Ok(pool)
+    log::info!("embedded migrations complete!");
 }

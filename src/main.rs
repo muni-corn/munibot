@@ -6,7 +6,7 @@ use log::{error, info, warn};
 use munibot::{
     MuniBotError,
     config::Config,
-    db::establish_pool,
+    db::{establish_pool, run_pending_migrations},
     discord::{
         simple::SimpleCommandProvider, start_discord_integration, vc_greeter::VoiceChannelGreeter,
     },
@@ -34,6 +34,9 @@ async fn main() -> Result<(), Box<MuniBotError>> {
 
     let args = Args::parse();
     let config = Config::read_or_write_default_from(&args.config_file)?;
+
+    // first things first, perform database migrations
+    run_pending_migrations().await;
 
     let discord_handle = start_discord(config.clone());
 
