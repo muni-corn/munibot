@@ -5,7 +5,6 @@ use diesel_async::{
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
-pub mod migration;
 pub mod models;
 pub mod operations;
 pub mod schema;
