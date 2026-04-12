@@ -1,0 +1,7 @@
+[package]
+name = "munibot_core"
+description = "platform-agnostic core library for munibot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
