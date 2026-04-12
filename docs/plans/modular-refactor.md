@@ -3,8 +3,8 @@
 ## Target structure
 
 ```
-munibot/
-  Cargo.toml              (workspace root)
+munibot/                    (workspace root)
+  Cargo.toml
   munibot_core/
     Cargo.toml
     src/
@@ -95,12 +95,12 @@ munibot (binary)
 
 | #   | Commit                                                  | Description                                                                                                                                                                                                                                                                                                   |
 | --- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3   | `build: convert project to cargo workspace`             | Create `crates/` dir. Convert root `Cargo.toml` to a workspace manifest. Create `crates/munibot/` with the existing binary package. Move `src/` to `crates/munibot/src/`. Update `diesel.toml` schema path. Everything still compiles as a single crate at this point.                                        |
-| 4   | `build(munibot_core): create core crate skeleton`       | Create `crates/munibot_core/` with `Cargo.toml` and empty `src/lib.rs`. Add to workspace members.                                                                                                                                                                                                             |
+| 3   | `build: convert project to cargo workspace`             | Convert root `Cargo.toml` to a workspace manifest. Create `munibot/` with the existing binary package. Move `src/` to `munibot/src/`. Update `diesel.toml` schema path. Everything still compiles as a single crate at this point.                                                                            |
+| 4   | `build(munibot_core): create core crate skeleton`       | Create `munibot_core/` with `Cargo.toml` and empty `src/lib.rs`. Add to workspace members.                                                                                                                                                                                                                    |
 | 5   | `refactor(munibot_core): move error types to core`      | Move `MuniBotError` and core error types to `munibot_core::error`. Keep platform-specific variants (like `DiscordCommand`, `SerenityError`) in the binary or respective crates. The core error only has `ParseError`, `RequestError`, `DbError`, `LoadConfig`, `DurationParseError`, `MissingToken`, `Other`. |
 | 6   | `refactor(munibot_core): move passing trait to core`    | Move `passing.rs` to `munibot_core::passing`.                                                                                                                                                                                                                                                                 |
 | 7   | `refactor(munibot_core): move config module to core`    | Move `config.rs` to `munibot_core::config`.                                                                                                                                                                                                                                                                   |
-| 8   | `refactor(munibot_core): move database layer to core`   | Move `db.rs`, `db/schema.rs`, `db/models.rs`, `db/operations.rs` to `munibot_core::db`. Update `diesel.toml` to point to `crates/munibot_core/src/db/schema.rs`.                                                                                                                                              |
+| 8   | `refactor(munibot_core): move database layer to core`   | Move `db.rs`, `db/schema.rs`, `db/models.rs`, `db/operations.rs` to `munibot_core::db`. Update `diesel.toml` to point to `munibot_core/src/db/schema.rs`.                                                                                                                                                     |
 | 9   | `refactor(munibot_core): extract shared greeting logic` | Extract the greeting regex pattern and matching logic from `handlers/greeting.rs` into `munibot_core::greeting` as a pure function.                                                                                                                                                                           |
 | 10  | `refactor(munibot_core): extract shared magical logic`  | Extract the magicalness hash calculation from `handlers/magical.rs` into `munibot_core::magical` as a pure function.                                                                                                                                                                                          |
 
@@ -108,7 +108,7 @@ munibot (binary)
 
 | #   | Commit                                                       | Description                                                                                                                                                                                                                                                        |
 | --- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 11  | `build(munibot_discord): create discord crate skeleton`      | Create `crates/munibot_discord/` with `Cargo.toml` (depends on `munibot_core`, `poise`, `async-trait`, etc.) and empty `src/lib.rs`. Add to workspace members.                                                                                                     |
+| 11  | `build(munibot_discord): create discord crate skeleton`      | Create `munibot_discord/` with `Cargo.toml` (depends on `munibot_core`, `poise`, `async-trait`, etc.) and empty `src/lib.rs`. Add to workspace members.                                                                                                            |
 | 12  | `refactor(munibot_discord): move discord integration module` | Move `discord.rs`, `discord/handler.rs`, `discord/commands.rs`, `discord/state.rs`, `discord/utils.rs` to `munibot_discord`. Move Discord-specific error variants (`DiscordCommand`, `SerenityError`) into this crate.                                             |
 | 13  | `refactor(munibot_discord): move admin and autodelete`       | Move `discord/admin.rs` and `discord/autodelete.rs` to `munibot_discord`.                                                                                                                                                                                          |
 | 14  | `refactor(munibot_discord): move discord-only handlers`      | Move `handlers/bot_affection.rs`, `handlers/dice.rs`, `handlers/economy/`, `handlers/eight_ball.rs`, `handlers/logging.rs`, `handlers/simple.rs`, `handlers/temperature.rs`, `handlers/ventriloquize.rs`, `handlers/vc_greeter.rs` to `munibot_discord::handlers`. |
@@ -119,7 +119,7 @@ munibot (binary)
 
 | #   | Commit                                                     | Description                                                                                                                                                                                                                                        |
 | --- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 17  | `build(munibot_twitch): create twitch crate skeleton`      | Create `crates/munibot_twitch/` with `Cargo.toml` (depends on `munibot_core`, `twitch-irc`, `twitch_api`, etc.) and empty `src/lib.rs`. Add to workspace members.                                                                                  |
+| 17  | `build(munibot_twitch): create twitch crate skeleton`      | Create `munibot_twitch/` with `Cargo.toml` (depends on `munibot_core`, `twitch-irc`, `twitch_api`, etc.) and empty `src/lib.rs`. Add to workspace members.                                                                                         |
 | 18  | `refactor(munibot_twitch): move twitch integration module` | Move `twitch.rs`, `twitch/bot.rs`, `twitch/handler.rs`, `twitch/tokens.rs`, `twitch/agent.rs` to `munibot_twitch`.                                                                                                                                 |
 | 19  | `refactor(munibot_twitch): move twitch-only handlers`      | Move `handlers/affection.rs`, `handlers/autoban.rs`, `handlers/bonk.rs`, `handlers/content_warning.rs`, `handlers/lift.rs`, `handlers/lurk.rs`, `handlers/quotes.rs`, `handlers/shoutout.rs`, `handlers/socials.rs` to `munibot_twitch::handlers`. |
 | 20  | `refactor(munibot_twitch): add twitch greeting adapter`    | Create thin `munibot_twitch::handlers::greeting` that implements `TwitchMessageHandler` using `munibot_core::greeting`.                                                                                                                            |
@@ -148,9 +148,8 @@ munibot (binary)
    etc.): These currently live in `src/handlers.rs` and reference traits from both platforms. After
    the split, each platform crate defines its own collection type.
 
-3. **`diesel.toml`**: The `print_schema.file` path needs updating to
-   `crates/munibot_core/src/db/schema.rs` and `migrations_directory.dir` stays at the workspace root
-   (`migrations/`).
+3. **`diesel.toml`**: The `print_schema.file` path needs updating to `munibot_core/src/db/schema.rs`
+   and `migrations_directory.dir` stays at the workspace root (`migrations/`).
 
 4. **`Rocket.toml`**: Used for Twitch OAuth redirect. Stays at workspace root or moves to
    `munibot_twitch/`.
