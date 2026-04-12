@@ -12,8 +12,8 @@ you may also contact him on Matrix: `@municorn:matrix.org`.
 
 The GPLv3 License (GPLv3)
 
-munibot, municorn's Discord and Twitch bot\
-Copyright (c) 2023-2025 municorn
+munibot, the universe's most lovable bot\
+Copyright (c) 2023-2026 municorn
 
 this program is free software: you can redistribute it and/or modify it under the terms of the GNU
 General Public License as published by the Free Software Foundation, either version 3 of the
