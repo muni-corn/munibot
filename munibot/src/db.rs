@@ -17,7 +17,7 @@ pub mod schema;
 pub type DbPool = Pool<AsyncMysqlConnection>;
 
 /// Embedded migrations to run on the database.
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
 
 /// Creates a new database connection pool using the `DATABASE_URL` environment
 /// variable.
