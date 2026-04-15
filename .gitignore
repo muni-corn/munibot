@@ -19,6 +19,7 @@ devenv.local.yaml
 .cargo/nextest.toml
 .oxfmtrc.json
 .pre-commit-config.yaml
+.rustfmt.toml
 
 # nix build result
 result
