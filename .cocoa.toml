@@ -1,0 +1,9 @@
+[changelog.sections]
+breaking = "breaking changes"
+feat = "new features"
+fix = "bug fixes"
+perf = "performance"
+docs = "documentation"
+test = "tests"
+build = "build system"
+ci = "continuous integration"
