@@ -5,8 +5,7 @@ use poise::{Command, CreateReply, serenity_prelude::CreateMessage};
 use tokio::time::sleep;
 
 use crate::{
-    MuniBotError,
-    discord::{DiscordContext, commands::DiscordCommandProvider, state::DiscordState},
+    DiscordContext, commands::DiscordCommandProvider, error::MuniBotError, state::DiscordState,
 };
 
 pub struct VentriloquizeProvider;

@@ -2,11 +2,9 @@ use poise::serenity_prelude::MessageBuilder;
 use rand::{Rng, seq::SliceRandom};
 
 use crate::{
-    MuniBotError,
-    discord::{
-        DiscordCommand, DiscordContext,
-        commands::{DiscordCommandError, DiscordCommandProvider},
-    },
+    DiscordCommand, DiscordContext,
+    commands::{DiscordCommandError, DiscordCommandProvider},
+    error::MuniBotError,
 };
 
 pub struct DiceHandler;

@@ -5,14 +5,12 @@ use wallet::Wallet;
 
 use self::wallet::WalletError;
 use crate::{
-    MuniBotError,
-    discord::{
-        DiscordCommand, DiscordContext, DiscordFrameworkContext,
-        commands::{DiscordCommandError, DiscordCommandProvider},
-        handler::{DiscordEventHandler, DiscordHandlerError},
-        utils::display_name_from_command_context,
-    },
+    DiscordCommand, DiscordContext, DiscordFrameworkContext,
+    commands::{DiscordCommandError, DiscordCommandProvider},
+    error::MuniBotError,
+    handler::{DiscordEventHandler, DiscordHandlerError},
     handlers::economy::payout::{ClaimResult, Payout, PayoutError},
+    utils::display_name_from_command_context,
 };
 
 mod payout;
