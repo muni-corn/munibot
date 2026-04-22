@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["munibot", "munibot_core", "munibot_discord"]
+members = ["munibot", "munibot_core", "munibot_discord", "munibot_twitch"]
 
 [workspace.package]
 version = "0.2.4"
