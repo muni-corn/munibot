@@ -50,10 +50,6 @@ impl DiscordCommandProvider for VentriloquizeProvider {
 }
 
 async fn is_ventriloquist(ctx: DiscordContext<'_>) -> Result<bool, MuniBotError> {
-    Ok(ctx
-        .data()
-        .config
-        .ventriloquists
-        .iter()
-        .any(|id| *id == ctx.author().id))
+    let author_id = ctx.author().id.get();
+    Ok(ctx.data().config.ventriloquists.contains(&author_id))
 }
