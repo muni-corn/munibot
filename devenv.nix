@@ -29,7 +29,7 @@ in
   '';
 
   env = {
-    RUST_LOG = "error,munibot=debug";
+    RUST_LOG = "error,munibot=debug,munibot_core=debug,munibot_discord=debug,munibot_twitch=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
   };
 
@@ -92,25 +92,30 @@ in
             nativeBuildInputs = [ pkgs.pkg-config ];
           };
 
-          # customize munibot's build inputs
-          ${pname} = attrs: {
-            # include assets and style files alongside rust sources for dioxus
-            src = pkgs.lib.cleanSourceWith {
-              src = inputs.self;
-              filter =
-                path: type:
-                (pkgs.lib.hasInfix "/assets/" path)
-                || (pkgs.lib.hasInfix "/style/" path)
-                || (pkgs.lib.hasSuffix "tailwind.config.js" path)
-                || (pkgs.lib.cleanSourceFilter path type);
-            };
-
+          # customize munibot binary's build inputs
+          ${pname} = _attrs: {
             inherit buildInputs nativeBuildInputs;
 
             # embed rpath so the installed binary finds its dynamic libraries
             runtimeDependencies = buildInputs;
 
             # required by bindgen (mysql, openssl build scripts)
+            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+          };
+
+          # workspace crates that also need native libs
+          munibot_core = _attrs: {
+            inherit buildInputs nativeBuildInputs;
+            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+          };
+
+          munibot_discord = _attrs: {
+            inherit buildInputs nativeBuildInputs;
+            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+          };
+
+          munibot_twitch = _attrs: {
+            inherit buildInputs nativeBuildInputs;
             LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
           };
         };
