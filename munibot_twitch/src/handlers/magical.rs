@@ -1,21 +1,15 @@
 use async_trait::async_trait;
-use munibot_core::magical::get_magic_message;
+use munibot_core::{config::Config, magical::get_magic_message};
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    MuniBotError,
-    config::Config,
-    discord::{
-        DiscordCommand, DiscordContext, commands::DiscordCommandProvider,
-        utils::display_name_from_command_context,
-    },
-    twitch::{
-        agent::TwitchAgent,
-        bot::MuniBotTwitchIRCClient,
-        handler::{TwitchHandlerError, TwitchMessageHandler},
-    },
+    agent::TwitchAgent,
+    bot::MuniBotTwitchIRCClient,
+    handler::{TwitchHandlerError, TwitchMessageHandler},
 };
 
+/// Twitch magical handler. Uses munibot_core::magical for the calculation,
+/// implementing only the Twitch side.
 pub struct MagicalHandler;
 
 #[async_trait]
@@ -41,22 +35,5 @@ impl TwitchMessageHandler for MagicalHandler {
         };
 
         Ok(handled)
-    }
-}
-
-/// Check your magicalness today.
-#[poise::command(prefix_command, slash_command)]
-async fn magical(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
-    let nick = display_name_from_command_context(ctx).await;
-
-    ctx.say(get_magic_message(&ctx.author().id.to_string(), &nick))
-        .await?;
-
-    Ok(())
-}
-
-impl DiscordCommandProvider for MagicalHandler {
-    fn commands(&self) -> Vec<DiscordCommand> {
-        vec![magical()]
     }
 }

@@ -11,6 +11,7 @@ license.workspace = true
 [dependencies]
 munibot_core = { path = "../munibot_core" }
 munibot_discord = { path = "../munibot_discord" }
+munibot_twitch = { path = "../munibot_twitch" }
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true

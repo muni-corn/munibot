@@ -1,0 +1,11 @@
+pub mod affection;
+pub mod autoban;
+pub mod bonk;
+pub mod content_warning;
+pub mod greeting;
+pub mod lift;
+pub mod lurk;
+pub mod magical;
+pub mod quotes;
+pub mod shoutout;
+pub mod socials;

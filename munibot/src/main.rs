@@ -13,10 +13,13 @@ use munibot::{
     handlers::{
         DiscordCommandProviderCollection, DiscordMessageHandlerCollection,
         bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
-        greeting::GreetingHandler, magical::MagicalHandler,
         temperature::TemperatureConversionProvider, ventriloquize::VentriloquizeProvider,
     },
-    twitch::{bot::TwitchBot, get_basic_auth_url},
+    twitch::{TwitchBot, get_basic_auth_url},
+};
+use munibot_discord::handlers::{
+    greeting::GreetingHandler as DiscordGreetingHandler,
+    magical::MagicalHandler as DiscordMagicalHandler,
 };
 use tokio::sync::Mutex;
 
@@ -104,14 +107,14 @@ async fn main() -> Result<(), Box<MuniBotError>> {
 fn start_discord(config: Config) -> tokio::task::JoinHandle<()> {
     // start discord
     let discord_handlers: DiscordMessageHandlerCollection = vec![
-        Arc::new(Mutex::new(GreetingHandler)),
+        Arc::new(Mutex::new(DiscordGreetingHandler)),
         Arc::new(Mutex::new(EconomyProvider)),
         Arc::new(Mutex::new(VoiceChannelGreeter)),
     ];
     let discord_command_providers: DiscordCommandProviderCollection = vec![
         Box::new(DiceHandler),
         Box::new(BotAffectionProvider),
-        Box::new(MagicalHandler),
+        Box::new(DiscordMagicalHandler),
         Box::new(VentriloquizeProvider),
         Box::new(EconomyProvider),
         Box::new(TemperatureConversionProvider),

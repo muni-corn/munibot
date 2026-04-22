@@ -1548,6 +1548,7 @@ dependencies = [
  "log",
  "munibot_core",
  "munibot_discord",
+ "munibot_twitch",
  "num-format",
  "once_cell",
  "poise",
