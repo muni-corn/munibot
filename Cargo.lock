@@ -1617,6 +1617,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "munibot_twitch"
+version = "0.2.4"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "decancer",
+ "diesel",
+ "diesel-async",
+ "log",
+ "munibot_core",
+ "once_cell",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "strum",
+ "thiserror 1.0.69",
+ "tokio",
+ "twitch-irc",
+ "twitch_api",
+ "twitch_oauth2",
+ "url",
+]
+
+[[package]]
 name = "mysql_async"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
