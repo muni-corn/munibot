@@ -1,15 +1,13 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
+use munibot_core::config::Config;
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    config::Config,
-    twitch::{
-        agent::TwitchAgent,
-        bot::MuniBotTwitchIRCClient,
-        handler::{TwitchHandlerError, TwitchMessageHandler},
-    },
+    agent::TwitchAgent,
+    bot::MuniBotTwitchIRCClient,
+    handler::{TwitchHandlerError, TwitchMessageHandler},
 };
 
 pub struct ContentWarningHandler {

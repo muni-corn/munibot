@@ -1,16 +1,16 @@
 use async_trait::async_trait;
 use chrono::Local;
+use munibot_core::{
+    config::Config,
+    db::{DbPool, operations},
+    error::MuniBotError as CoreError,
+};
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    CoreError, MuniBotError,
-    config::Config,
-    db::{DbPool, operations},
-    twitch::{
-        agent::TwitchAgent,
-        bot::MuniBotTwitchIRCClient,
-        handler::{TwitchHandlerError, TwitchMessageHandler},
-    },
+    agent::TwitchAgent,
+    bot::MuniBotTwitchIRCClient,
+    handler::{TwitchHandlerError, TwitchMessageHandler},
 };
 
 /// A handler for the `!quote` and `!addquote` commands.
@@ -23,7 +23,7 @@ impl QuotesHandler {
     /// Creates a new `QuotesHandler`. Looks up (or creates) the community link
     /// for the given Twitch streamer ID to obtain the `community_id` used for
     /// all quote queries.
-    pub async fn new(pool: DbPool, twitch_streamer_id: &str) -> Result<Self, MuniBotError> {
+    pub async fn new(pool: DbPool, twitch_streamer_id: &str) -> Result<Self, CoreError> {
         let link = operations::get_or_create_community_link_by_twitch_id(&pool, twitch_streamer_id)
             .await
             .map_err(|e| CoreError::Other(e.to_string()))?;

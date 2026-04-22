@@ -1,12 +1,12 @@
 use std::fmt::Display;
 
 use async_trait::async_trait;
+use munibot_core::config::Config;
 use twitch_irc::message::ServerMessage;
 
-use super::agent::{TwitchAgent, TwitchAgentError};
 use crate::{
-    config::Config,
-    twitch::bot::{MuniBotTwitchIRCClient, MuniBotTwitchIRCError},
+    agent::{TwitchAgent, TwitchAgentError},
+    bot::{MuniBotTwitchIRCClient, MuniBotTwitchIRCError},
 };
 
 #[async_trait]
@@ -75,3 +75,6 @@ impl Display for TwitchHandlerError {
 }
 
 impl std::error::Error for TwitchHandlerError {}
+
+/// A collection of Twitch message handlers.
+pub type TwitchHandlerCollection = Vec<Box<dyn TwitchMessageHandler>>;

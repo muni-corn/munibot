@@ -1,26 +1,22 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use log::{error, info, warn};
+use munibot_core::{config::Config, db::DbPool};
 use tokio::task::JoinHandle;
 use twitch_irc::{
     ClientConfig, SecureTCPTransport, TwitchIRCClient, irc, login::StaticLoginCredentials,
     message::ServerMessage,
 };
 
-use super::{
-    agent::TwitchAgent,
-    handler::{TwitchHandlerError, TwitchMessageHandler},
-};
 use crate::{
-    config::Config,
-    db::DbPool,
+    agent::TwitchAgent,
+    handler::{TwitchHandlerCollection, TwitchHandlerError, TwitchMessageHandler},
     handlers::{
-        TwitchHandlerCollection, affection::AffectionHandler, autoban::AutoBanHandler,
-        bonk::BonkHandler, greeting::GreetingHandler, lift::LiftHandler, lurk::LurkHandler,
-        magical::MagicalHandler, quotes::QuotesHandler, shoutout::ShoutoutHandler,
-        socials::SocialsHandler,
+        affection::AffectionHandler, autoban::AutoBanHandler, bonk::BonkHandler,
+        greeting::GreetingHandler, lift::LiftHandler, lurk::LurkHandler, magical::MagicalHandler,
+        quotes::QuotesHandler, shoutout::ShoutoutHandler, socials::SocialsHandler,
     },
-    twitch::tokens::TwitchAuth,
+    tokens::TwitchAuth,
 };
 
 pub type MuniBotTwitchIRCClient = TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>;
