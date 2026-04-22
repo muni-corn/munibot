@@ -529,17 +529,9 @@ impl DiscordEventHandler for LoggingHandler {
                 id,
                 guild_id,
             } => {
-                let old = old
-                    .as_ref()
-                    .and_then(|old| if old.is_empty() { None } else { Some(old) });
+                let old = old.as_ref().filter(|old| !old.is_empty());
 
-                let new = status.as_ref().and_then(|status| {
-                    if status.is_empty() {
-                        None
-                    } else {
-                        Some(status)
-                    }
-                });
+                let new = status.as_ref().filter(|status| !status.is_empty());
 
                 if old == new {
                     return Ok(());
