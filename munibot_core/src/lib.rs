@@ -4,6 +4,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod greeting;
+pub mod magical;
 pub mod passing;
 
 pub use config::{Config, DiscordConfig, TwitchConfig};
