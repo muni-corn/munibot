@@ -12,7 +12,7 @@ use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 
 use super::state::GlobalAccess;
 use crate::{
-    MuniBotError,
+    CoreError, MuniBotError,
     db::{DbPool, models::AutoDeleteTimerRow, operations},
     handlers::logging::LoggingHandler,
 };
@@ -36,7 +36,7 @@ impl AutoDeleteHandler {
 
         let db_records = operations::get_all_autodelete_timers(global_access.db())
             .await
-            .map_err(|e| MuniBotError::Other(format!("error loading autodelete timers: {e}")))?;
+            .map_err(|e| CoreError::Other(format!("error loading autodelete timers: {e}")))?;
 
         for row in db_records {
             let channel_id = ChannelId::new(row.channel_id as u64);

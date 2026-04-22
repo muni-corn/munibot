@@ -2,7 +2,7 @@ use poise::serenity_prelude::{GuildId, UserId};
 use thiserror::Error;
 
 use crate::{
-    MuniBotError,
+    CoreError, MuniBotError,
     db::{DbPool, operations},
 };
 
@@ -72,6 +72,6 @@ pub enum WalletError {
 
 impl From<WalletError> for MuniBotError {
     fn from(e: WalletError) -> Self {
-        MuniBotError::Other(format!("{e}"))
+        Self::Core(CoreError::Other(format!("{e}")))
     }
 }

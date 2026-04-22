@@ -1,5 +1,6 @@
 #![feature(never_type)]
 
+pub use munibot_core::error::MuniBotError as CoreError;
 use poise::serenity_prelude as serenity;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
@@ -16,11 +17,8 @@ pub mod twitch;
 
 #[derive(Error, Debug)]
 pub enum MuniBotError {
-    #[error("parsing failure :< {0}")]
-    ParseError(#[from] serde_json::Error),
-
-    #[error("request failed :< {0}")]
-    RequestError(#[from] reqwest::Error),
+    #[error(transparent)]
+    Core(#[from] CoreError),
 
     #[error("token send failed :< {0}")]
     SendError(#[from] SendError<UserAccessToken>),
@@ -28,23 +26,8 @@ pub enum MuniBotError {
     #[error("discord `{0}` command failed :< `{1}`")]
     DiscordCommand(String, String),
 
-    #[error("missing token :<")]
-    MissingToken,
-
-    #[error("error with database :< {0}")]
-    DbError(#[from] diesel::result::Error),
-
     #[error("error in discord framework :< {0}")]
     SerenityError(#[from] Box<serenity::Error>),
-
-    #[error("error loading config :< {0}, {1}")]
-    LoadConfig(String, anyhow::Error),
-
-    #[error("couldn't parse duration :< {0}")]
-    DurationParseError(#[from] humantime::DurationError),
-
-    #[error("something went wrong :< {0}")]
-    Other(String),
 }
 
 impl From<DiscordCommandError> for MuniBotError {
@@ -55,12 +38,39 @@ impl From<DiscordCommandError> for MuniBotError {
 
 impl From<anyhow::Error> for MuniBotError {
     fn from(value: anyhow::Error) -> Self {
-        Self::Other(value.to_string())
+        Self::Core(CoreError::Other(value.to_string()))
     }
 }
 
 impl From<serenity::Error> for MuniBotError {
     fn from(e: serenity::Error) -> Self {
         Self::SerenityError(Box::new(e))
+    }
+}
+
+// Delegate From impls for core error subtypes so the ? operator works in binary
+// code that still returns MuniBotError directly.
+
+impl From<serde_json::Error> for MuniBotError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Core(e.into())
+    }
+}
+
+impl From<reqwest::Error> for MuniBotError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Core(e.into())
+    }
+}
+
+impl From<diesel::result::Error> for MuniBotError {
+    fn from(e: diesel::result::Error) -> Self {
+        Self::Core(e.into())
+    }
+}
+
+impl From<humantime::DurationError> for MuniBotError {
+    fn from(e: humantime::DurationError) -> Self {
+        Self::Core(e.into())
     }
 }

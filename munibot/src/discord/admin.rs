@@ -7,7 +7,7 @@ use super::{
     DiscordCommand, DiscordCommandProvider, DiscordContext, autodelete::AutoDeleteHandler,
 };
 use crate::{
-    MuniBotError,
+    CoreError, MuniBotError,
     db::{models::GuildConfig, operations},
     discord::autodelete::AutoDeleteMode,
 };
@@ -65,7 +65,7 @@ async fn set_log_channel(
             logging_channel: Some(channel_id.get() as i64),
         })
         .await
-        .map_err(|e| MuniBotError::Other(format!("error saving log channel: {e}")))?;
+        .map_err(|e| CoreError::Other(format!("error saving log channel: {e}")))?;
 
         format!(
             "done! log messages will be sent to {}.",
@@ -100,12 +100,12 @@ async fn stop_logging(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
         let guild_id_i64 = guild_id.get() as i64;
         let existing = operations::get_guild_config(db, guild_id_i64)
             .await
-            .map_err(|e| MuniBotError::Other(format!("error reading guild config: {e}")))?;
+            .map_err(|e| CoreError::Other(format!("error reading guild config: {e}")))?;
 
         if existing.is_some_and(|c| c.logging_channel.is_some()) {
             operations::delete_guild_config(db, guild_id_i64)
                 .await
-                .map_err(|e| MuniBotError::Other(format!("error deleting log channel: {e}")))?;
+                .map_err(|e| CoreError::Other(format!("error deleting log channel: {e}")))?;
             "done! logging has been disabled for this server."
         } else {
             "no logging channel is set for this server! nothing was done."

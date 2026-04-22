@@ -4,7 +4,7 @@ use log::{info, warn};
 use poise::serenity_prelude::UserId;
 use serde::{Deserialize, Serialize};
 
-use crate::MuniBotError;
+use crate::{CoreError, MuniBotError};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 
@@ -45,10 +45,10 @@ impl Config {
 
             // format it into a toml string
             let toml_string = toml::to_string_pretty(&default).map_err(|e| {
-                MuniBotError::LoadConfig(
+                MuniBotError::Core(CoreError::LoadConfig(
                     "couldn't format default config with toml".to_owned(),
                     e.into(),
-                )
+                ))
             })?;
 
             // write the default config string
@@ -80,18 +80,18 @@ impl Config {
         } else {
             // read the file to a string
             let raw_string = fs::read_to_string(p).map_err(|e| {
-                MuniBotError::LoadConfig(
+                MuniBotError::Core(CoreError::LoadConfig(
                     format!("couldn't read contents of {}", p.display()),
                     e.into(),
-                )
+                ))
             })?;
 
             // parse the string as toml
             let config = toml::from_str(&raw_string).map_err(|e| {
-                MuniBotError::LoadConfig(
+                MuniBotError::Core(CoreError::LoadConfig(
                     format!("couldn't parse toml from {}", p.display()),
                     e.into(),
-                )
+                ))
             })?;
 
             // notify we read the config
