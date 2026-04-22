@@ -4,5 +4,6 @@ pub mod economy;
 pub mod eight_ball;
 pub mod greeting;
 pub mod logging;
+pub mod magical;
 pub mod temperature;
 pub mod ventriloquize;
