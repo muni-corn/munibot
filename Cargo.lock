@@ -1570,13 +1570,19 @@ name = "munibot_core"
 version = "0.2.4"
 dependencies = [
  "anyhow",
+ "chrono",
  "diesel",
+ "diesel-async",
+ "diesel_migrations",
+ "dotenvy",
  "humantime",
  "log",
+ "rand 0.8.5",
  "reqwest 0.12.24",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
  "toml 0.8.23",
 ]
 
