@@ -1,0 +1,30 @@
+[package]
+name = "munibot_discord"
+description = "discord integration for munibot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+munibot_core = { path = "../munibot_core" }
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+decancer.workspace = true
+diesel.workspace = true
+diesel-async.workspace = true
+dotenvy.workspace = true
+humantime.workspace = true
+humantime-serde.workspace = true
+log.workspace = true
+num-format.workspace = true
+once_cell.workspace = true
+poise.workspace = true
+rand.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
