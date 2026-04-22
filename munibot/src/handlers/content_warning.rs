@@ -33,9 +33,27 @@ impl ContentWarningHandler {
         addressee: &str,
     ) -> Result<(), TwitchHandlerError> {
         if let Some(warning) = &self.active_warning {
-            self.send_twitch_message(client, channel, &format!("hey {addressee}, muni has issued a content/trigger warning for this stream: {warning}. please take care of yourself! it's okay to leave or mute if this content will make you uncomfortable. and you are loved no matter what!")).await
+            self.send_twitch_message(
+                client,
+                channel,
+                &format!(
+                    "hey {addressee}, muni has issued a content/trigger warning for this stream: \
+                     {warning}. please take care of yourself! it's okay to leave or mute if this \
+                     content will make you uncomfortable. and you are loved no matter what!"
+                ),
+            )
+            .await
         } else {
-            self.send_twitch_message(client, channel, &format!("hey {addressee}, there is no active content/trigger warning in effect. enjoy the stream ^-^ if current conversation is making you uncomfortable, you can use the 'subject change /srs' redeem to change the subject!")).await
+            self.send_twitch_message(
+                client,
+                channel,
+                &format!(
+                    "hey {addressee}, there is no active content/trigger warning in effect. enjoy \
+                     the stream ^-^ if current conversation is making you uncomfortable, you can \
+                     use the 'subject change /srs' redeem to change the subject!"
+                ),
+            )
+            .await
         }
     }
 
@@ -72,7 +90,17 @@ impl ContentWarningHandler {
         if !self.users_greeted.contains(user_name)
             && let Some(warning) = &self.active_warning
         {
-            self.send_twitch_message(client, channel, &format!("welcome, {user_name}! just so you know, muni has issued a content/trigger warning for this stream: {warning}. please take care of yourself! it's okay to leave or mute if this content will make you uncomfortable. and you are loved no matter what!")).await?;
+            self.send_twitch_message(
+                client,
+                channel,
+                &format!(
+                    "welcome, {user_name}! just so you know, muni has issued a content/trigger \
+                     warning for this stream: {warning}. please take care of yourself! it's okay \
+                     to leave or mute if this content will make you uncomfortable. and you are \
+                     loved no matter what!"
+                ),
+            )
+            .await?;
             self.users_greeted.insert(user_name.to_string());
         }
 
@@ -118,7 +146,15 @@ impl TwitchMessageHandler for ContentWarningHandler {
                         } else {
                             self.active_warning = Some(content.to_string());
                             self.users_greeted.clear();
-                            self.send_twitch_message(client, &m.channel_login, &format!("okay! issued a content/trigger warning with the following reason: \"{content}\"")).await?;
+                            self.send_twitch_message(
+                                client,
+                                &m.channel_login,
+                                &format!(
+                                    "okay! issued a content/trigger warning with the following \
+                                     reason: \"{content}\""
+                                ),
+                            )
+                            .await?;
                         }
                     } else {
                         self.say_user_requested_warning(client, &m.channel_login, &m.sender.name)

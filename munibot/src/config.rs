@@ -7,12 +7,14 @@ use serde::{Deserialize, Serialize};
 use crate::MuniBotError;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+
 pub struct Config {
     pub discord: DiscordConfig,
     pub twitch: TwitchConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+
 pub struct DiscordConfig {
     #[serde(default)]
     pub invite_link: Option<String>,
@@ -67,7 +69,8 @@ impl Config {
             } else {
                 // notify we wrote the file
                 info!(
-                    "hi! i'm munibot! i've written my default configuration file to {} for you :3 <3",
+                    "hi! i'm munibot! i've written my default configuration file to {} for you :3 \
+                     <3",
                     p.display()
                 );
             }

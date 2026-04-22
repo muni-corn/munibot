@@ -60,13 +60,10 @@ async fn set_log_channel(
 
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
         let channel_id = channel.unwrap_or_else(|| ctx.channel_id());
-        operations::upsert_guild_config(
-            db,
-            GuildConfig {
-                guild_id: guild_id.get() as i64,
-                logging_channel: Some(channel_id.get() as i64),
-            },
-        )
+        operations::upsert_guild_config(db, GuildConfig {
+            guild_id: guild_id.get() as i64,
+            logging_channel: Some(channel_id.get() as i64),
+        })
         .await
         .map_err(|e| MuniBotError::Other(format!("error saving log channel: {e}")))?;
 
@@ -136,9 +133,11 @@ async fn stop_logging(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 async fn set_autodelete(
     ctx: DiscordContext<'_>,
 
-    #[description = "how long messages should survive before deletion, e.g. '1h', '8 hours', '1 week'"]
+    #[description = "how long messages should survive before deletion, e.g. '1h', '8 hours', '1 \
+                     week'"]
     duration: String,
-    #[description = "whether to always clean any message that is old or only clean messages after the channel is silent"]
+    #[description = "whether to always clean any message that is old or only clean messages after \
+                     the channel is silent"]
     #[rename = "clean_mode"]
     specified_clean_mode: Option<AutoDeleteMode>,
 ) -> Result<(), MuniBotError> {

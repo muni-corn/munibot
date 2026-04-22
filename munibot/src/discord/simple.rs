@@ -43,9 +43,12 @@ const UNCOMMON_TONE_INDICATORS: &[(&str, &str)] = &[
 #[poise::command(slash_command, rename = "tone-indicators", ephemeral)]
 async fn tone_indicators(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
     let mut msg = MessageBuilder::new();
-    msg
-        .push_line("## a guide on tone indicators")
-        .push_line("text doesn't have a voice. tone, inflection, and other non-verbal bits of communication are lost through text! to remedy this, we use tone indicators to specify what tone we mean to convey in our messages.")
+    msg.push_line("## a guide on tone indicators")
+        .push_line(
+            "text doesn't have a voice. tone, inflection, and other non-verbal bits of \
+             communication are lost through text! to remedy this, we use tone indicators to \
+             specify what tone we mean to convey in our messages.",
+        )
         .push_line("don't worry about memorizing them all. i'm here to help you remember!")
         .push_line("## common indicators")
         .push_line("these are the tone indicators used most often.");

@@ -14,8 +14,8 @@ use crate::{
 const BOOP_PREFIXES: [&str; 4] = ["ACK!", "ack!", "eep!", "meep!"];
 const BOOP_ACTIONS: [&str; 2] = ["boops back", "@~@ bzzzt"];
 const BOOP_ERROR_CHANCE: f64 = 0.01;
-const BOOP_ERROR_MESSAGE: &str =
-    "thread 'boop handler' panicked at 'your boop has broken the bot!!', src/handlers/bot_affection.rs:60:9
+const BOOP_ERROR_MESSAGE: &str = "thread 'boop handler' panicked at 'your boop has broken the \
+                                  bot!!', src/handlers/bot_affection.rs:60:9
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace";
 
 const PAT_PREFIXES: [&str; 3] = ["eep!", "hehe!", "meep!"];

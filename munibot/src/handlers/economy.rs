@@ -106,11 +106,15 @@ async fn wallet(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 
         Ok(())
     } else {
-        ctx.say("this command can only be used in a server! each server has their own economy. use this command in a server you're in to check your balance there! ^w^")
-            .await.map_err(|e| DiscordCommandError {
-                message: format!("error sending message: {e}"),
-                command_identifier: "wallet".to_string(),
-            })?;
+        ctx.say(
+            "this command can only be used in a server! each server has their own economy. use \
+             this command in a server you're in to check your balance there! ^w^",
+        )
+        .await
+        .map_err(|e| DiscordCommandError {
+            message: format!("error sending message: {e}"),
+            command_identifier: "wallet".to_string(),
+        })?;
 
         Ok(())
     }
@@ -156,8 +160,11 @@ async fn claim(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
             })?,
         };
     } else {
-        ctx.say("this command can only be used in a server! go claim your payout from me in a server that i share with you ^w^")
-            .await?;
+        ctx.say(
+            "this command can only be used in a server! go claim your payout from me in a server \
+             that i share with you ^w^",
+        )
+        .await?;
     }
 
     Ok(())
@@ -195,7 +202,8 @@ async fn transfer(
             match e {
                 WalletError::InsufficientFunds => {
                     let message = format!(
-                        "you want to transfer **{}** coins, but you only have **{}** coins in your wallet :<",
+                        "you want to transfer **{}** coins, but you only have **{}** coins in \
+                         your wallet :<",
                         amount.to_formatted_string(&Locale::en),
                         author_wallet.balance().to_formatted_string(&Locale::en)
                     );
@@ -227,8 +235,11 @@ async fn transfer(
 
         Ok(())
     } else {
-        ctx.say("this command can only be used in a server! visit a server i share with you to transfer coins to someone else ^w^")
-            .await?;
+        ctx.say(
+            "this command can only be used in a server! visit a server i share with you to \
+             transfer coins to someone else ^w^",
+        )
+        .await?;
 
         Ok(())
     }
