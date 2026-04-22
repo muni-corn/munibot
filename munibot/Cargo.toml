@@ -6,38 +6,12 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 munibot_core = { path = "../munibot_core" }
 munibot_discord = { path = "../munibot_discord" }
 munibot_twitch = { path = "../munibot_twitch" }
-anyhow.workspace = true
-async-trait.workspace = true
-chrono.workspace = true
 clap.workspace = true
-decancer.workspace = true
-diesel.workspace = true
-diesel-async.workspace = true
-diesel_migrations.workspace = true
 dotenvy.workspace = true
 env_logger.workspace = true
-humantime.workspace = true
-humantime-serde.workspace = true
 log.workspace = true
-num-format.workspace = true
-once_cell.workspace = true
-poise.workspace = true
-rand.workspace = true
-regex.workspace = true
-reqwest.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-strum.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
-toml.workspace = true
-twitch-irc.workspace = true
-twitch_api.workspace = true
-twitch_oauth2.workspace = true
-url.workspace = true

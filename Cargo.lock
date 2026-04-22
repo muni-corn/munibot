@@ -1533,38 +1533,14 @@ dependencies = [
 name = "munibot"
 version = "0.2.4"
 dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
  "clap",
- "decancer",
- "diesel",
- "diesel-async",
- "diesel_migrations",
  "dotenvy",
  "env_logger",
- "humantime",
- "humantime-serde",
  "log",
  "munibot_core",
  "munibot_discord",
  "munibot_twitch",
- "num-format",
- "once_cell",
- "poise",
- "rand 0.8.5",
- "regex",
- "reqwest 0.12.24",
- "serde",
- "serde_json",
- "strum",
- "thiserror 1.0.69",
  "tokio",
- "toml 0.8.23",
- "twitch-irc",
- "twitch_api",
- "twitch_oauth2",
- "url",
 ]
 
 [[package]]
