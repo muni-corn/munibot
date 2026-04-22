@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use poise::serenity_prelude::{self as serenity, FullEvent};
 use thiserror::Error;
 
-use super::DiscordFrameworkContext;
+use crate::DiscordFrameworkContext;
 
 #[async_trait]
 pub trait DiscordEventHandler: Sync + Send {

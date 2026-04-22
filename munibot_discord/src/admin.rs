@@ -1,15 +1,17 @@
+use munibot_core::{
+    db::{models::GuildConfig, operations},
+    error::MuniBotError as CoreError,
+};
 use poise::{
     CreateReply,
     serenity_prelude::{ChannelId, Mentionable, MessageBuilder},
 };
 
-use super::{
-    DiscordCommand, DiscordCommandProvider, DiscordContext, autodelete::AutoDeleteHandler,
-};
 use crate::{
-    CoreError, MuniBotError,
-    db::{models::GuildConfig, operations},
-    discord::autodelete::AutoDeleteMode,
+    DiscordCommand, DiscordContext,
+    autodelete::{AutoDeleteHandler, AutoDeleteMode},
+    commands::DiscordCommandProvider,
+    error::MuniBotError,
 };
 
 pub struct AdminCommandProvider;

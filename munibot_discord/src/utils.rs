@@ -1,6 +1,6 @@
 use poise::serenity_prelude::{CacheHttp, GuildId, Http, Message, Result, UserId};
 
-use super::DiscordContext;
+use crate::DiscordContext;
 
 pub async fn display_name_from_message(msg: &Message, http: impl CacheHttp) -> String {
     msg.author_nick(&http)

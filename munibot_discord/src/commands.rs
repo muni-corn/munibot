@@ -3,11 +3,10 @@ use std::{
     fmt::{self, Display},
 };
 
-use super::DiscordState;
-use crate::MuniBotError;
+use crate::DiscordCommand;
 
 pub trait DiscordCommandProvider: Send {
-    fn commands(&self) -> Vec<poise::Command<DiscordState, MuniBotError>>;
+    fn commands(&self) -> Vec<DiscordCommand>;
 }
 
 #[derive(Debug)]
@@ -15,6 +14,7 @@ pub struct DiscordCommandError {
     pub message: String,
     pub command_identifier: String,
 }
+
 impl Display for DiscordCommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -24,4 +24,8 @@ impl Display for DiscordCommandError {
         )
     }
 }
+
 impl Error for DiscordCommandError {}
+
+/// A collection of discord command providers.
+pub type DiscordCommandProviderCollection = Vec<Box<dyn DiscordCommandProvider>>;

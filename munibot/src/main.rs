@@ -33,7 +33,8 @@ async fn main() -> Result<(), Box<MuniBotError>> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let args = Args::parse();
-    let config = Config::read_or_write_default_from(&args.config_file)?;
+    let config = Config::read_or_write_default_from(&args.config_file)
+        .map_err(|e| Box::new(MuniBotError::Core(*e)))?;
 
     // first things first, perform database migrations
     run_pending_migrations().await;

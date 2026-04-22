@@ -1,15 +1,19 @@
 use std::sync::Arc;
 
+use munibot_core::{
+    config::{Config, DiscordConfig},
+    db::DbPool,
+};
 use poise::serenity_prelude::{Cache, Http, Result};
 use tokio::sync::Mutex;
 
-use super::{autodelete::AutoDeleteHandler, handler::DiscordEventHandler};
 use crate::{
-    MuniBotError,
-    config::{Config, DiscordConfig},
-    db::DbPool,
-    handlers::{DiscordMessageHandlerCollection, logging::LoggingHandler},
+    autodelete::AutoDeleteHandler, error::MuniBotError, handler::DiscordEventHandler,
+    handlers::logging::LoggingHandler,
 };
+
+/// A collection of Discord event handlers.
+pub type DiscordMessageHandlerCollection = Vec<Arc<Mutex<dyn DiscordEventHandler>>>;
 
 #[derive(Clone, Debug)]
 pub struct GlobalAccess {
@@ -48,6 +52,7 @@ pub struct DiscordState {
     logging: Arc<Mutex<LoggingHandler>>,
     autodeletion: Arc<Mutex<AutoDeleteHandler>>,
 }
+
 impl DiscordState {
     /// Creates a new `DiscordState` struct. The `LoggingHandler` and
     /// `AutoDeleteHandler` are added for you.
