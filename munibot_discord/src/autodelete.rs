@@ -2,6 +2,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use log::{debug, error, warn};
+use munibot_core::{
+    db::{DbPool, models::AutoDeleteTimerRow, operations},
+    error::MuniBotError as CoreError,
+};
 use poise::serenity_prelude::{
     Cache, CacheHttp, ChannelId, GuildChannel, GuildId, Mentionable, Message, MessageBuilder,
     MessageId, PartialGuild, Result,
@@ -10,12 +14,7 @@ use poise::serenity_prelude::{
 use strum::EnumString;
 use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 
-use super::state::GlobalAccess;
-use crate::{
-    CoreError, MuniBotError,
-    db::{DbPool, models::AutoDeleteTimerRow, operations},
-    handlers::logging::LoggingHandler,
-};
+use crate::{error::MuniBotError, handlers::logging::LoggingHandler, state::GlobalAccess};
 
 #[derive(Debug)]
 pub struct AutoDeleteHandler {

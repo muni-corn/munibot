@@ -1,12 +1,11 @@
 use poise::serenity_prelude::MessageBuilder;
 
-use super::{DiscordContext, commands::DiscordCommandProvider};
-use crate::MuniBotError;
+use crate::{DiscordContext, commands::DiscordCommandProvider, error::MuniBotError};
 
 pub struct SimpleCommandProvider;
 
 impl DiscordCommandProvider for SimpleCommandProvider {
-    fn commands(&self) -> Vec<poise::Command<super::state::DiscordState, crate::MuniBotError>> {
+    fn commands(&self) -> Vec<poise::Command<crate::state::DiscordState, MuniBotError>> {
         vec![tone_indicators()]
     }
 }

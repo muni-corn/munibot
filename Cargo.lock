@@ -1547,6 +1547,7 @@ dependencies = [
  "humantime-serde",
  "log",
  "munibot_core",
+ "munibot_discord",
  "num-format",
  "once_cell",
  "poise",

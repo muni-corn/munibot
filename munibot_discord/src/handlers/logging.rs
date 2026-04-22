@@ -4,6 +4,7 @@ use std::{
 };
 
 use log::debug;
+use munibot_core::db::{DbPool, operations};
 use poise::serenity_prelude::{
     self as serenity, CacheHttp, ChannelId, CreateEmbed, CreateMessage, EmbedMessageBuilding,
     FullEvent, Guild, GuildId, GuildMemberUpdateEvent, Member, Mentionable, Message,
@@ -12,12 +13,9 @@ use poise::serenity_prelude::{
 };
 
 use crate::{
-    db::{DbPool, operations},
-    discord::{
-        DiscordFrameworkContext,
-        handler::{DiscordEventHandler, DiscordHandlerError},
-        state::GlobalAccess,
-    },
+    DiscordFrameworkContext,
+    handler::{DiscordEventHandler, DiscordHandlerError},
+    state::GlobalAccess,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

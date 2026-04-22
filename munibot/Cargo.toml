@@ -10,6 +10,7 @@ license.workspace = true
 
 [dependencies]
 munibot_core = { path = "../munibot_core" }
+munibot_discord = { path = "../munibot_discord" }
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true

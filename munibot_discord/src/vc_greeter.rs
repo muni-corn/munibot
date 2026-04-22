@@ -2,7 +2,7 @@ use poise::serenity_prelude::{
     ChannelId, Context, FullEvent, GuildId, MessageBuilder, Result, UserId, async_trait,
 };
 
-use super::{
+use crate::{
     DiscordFrameworkContext,
     handler::{DiscordEventHandler, DiscordHandlerError},
     utils::display_name_from_ids,
