@@ -1572,6 +1572,7 @@ dependencies = [
  "anyhow",
  "diesel",
  "humantime",
+ "log",
  "reqwest 0.12.24",
  "serde_json",
  "thiserror 1.0.69",
