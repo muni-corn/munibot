@@ -302,7 +302,8 @@ impl AutoDeleteTimer {
                 && last_message_id.created_at().to_utc() > Utc::now() - self.duration()
             {
                 log::warn!(
-                    "autodelete: timer with AfterSilence attempted to fire before its duration was met"
+                    "autodelete: timer with AfterSilence attempted to fire before its duration \
+                     was met"
                 );
                 return Ok(());
             }
@@ -349,7 +350,8 @@ impl AutoDeleteTimer {
 
                 if failures > 0 {
                     log::warn!(
-                        "autodeletion in channel {} (id {}) in {} (id {}): {deletions} deleted, {skipped} skipped, {failures} failed",
+                        "autodeletion in channel {} (id {}) in {} (id {}): {deletions} deleted, \
+                         {skipped} skipped, {failures} failed",
                         channel.name,
                         channel.id,
                         guild.name,
@@ -370,7 +372,8 @@ impl AutoDeleteTimer {
         } else {
             // probably no messages to clean up, so we can exit now
             debug!(
-                "channel {} (id {}) in {} (id {}) has no new messages, so no clean-up will happen now",
+                "channel {} (id {}) in {} (id {}) has no new messages, so no clean-up will happen \
+                 now",
                 channel.name, channel.id, guild.name, guild.id
             );
         }
@@ -512,7 +515,8 @@ impl AutoDeleteTimer {
             // probably no messages to clean up, so we can exit now
             let duration = self.duration();
             debug!(
-                "channel {} (id {}) in {} (id {}) has no messages. we'll check back in after this timer's duration ({})",
+                "channel {} (id {}) in {} (id {}) has no messages. we'll check back in after this \
+                 timer's duration ({})",
                 channel.name,
                 channel.id,
                 guild.name,

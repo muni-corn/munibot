@@ -137,7 +137,8 @@ impl TwitchMessageHandler for QuotesHandler {
                         client,
                         &m.channel_login,
                         &format!(
-                            "quote #{quote_number} is in! recorded in the muni history books forever"
+                            "quote #{quote_number} is in! recorded in the muni history books \
+                             forever"
                         ),
                     )
                     .await?;

@@ -68,11 +68,13 @@ async fn main() -> Result<(), Box<MuniBotError>> {
                 info!("visit {auth_page_url} to get a token");
             } else {
                 error!(
-                    "no TWITCH_TOKEN found and no TWITCH_CLIENT_ID set. the TWITCH_CLIENT_ID environment variable is required to generate an auth url link."
+                    "no TWITCH_TOKEN found and no TWITCH_CLIENT_ID set. the TWITCH_CLIENT_ID \
+                     environment variable is required to generate an auth url link."
                 );
             }
             warn!(
-                "since twitch integration is misconfigured, i won't be running my twitch integration at this time. >.>"
+                "since twitch integration is misconfigured, i won't be running my twitch \
+                 integration at this time. >.>"
             );
             None
         }
@@ -92,7 +94,8 @@ async fn main() -> Result<(), Box<MuniBotError>> {
     }
 
     warn!(
-        "all bot integrations have unexpectedly stopped. i can't do anything else right now. goodbye! ^-^"
+        "all bot integrations have unexpectedly stopped. i can't do anything else right now. \
+         goodbye! ^-^"
     );
     Ok(())
 }

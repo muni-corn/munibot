@@ -177,17 +177,11 @@ impl DiscordEventHandler for LoggingHandler {
 
                 let account_created_timestamp = new_member.user.created_at().timestamp();
 
-                let mut embed = embed_with_fields(
-                    "new member joined",
-                    &msg.build(),
-                    vec![(
-                        "account created".into(),
-                        format!(
-                            "<t:{account_created_timestamp}:F>, <t:{account_created_timestamp}:R>"
-                        ),
-                        false,
-                    )],
-                );
+                let mut embed = embed_with_fields("new member joined", &msg.build(), vec![(
+                    "account created".into(),
+                    format!("<t:{account_created_timestamp}:F>, <t:{account_created_timestamp}:R>"),
+                    false,
+                )]);
                 if let Some(timestamp) = new_member.joined_at {
                     embed = embed.timestamp(timestamp);
                 }
@@ -724,7 +718,8 @@ fn simple_embed(title: &str, message: &str) -> CreateEmbed {
 fn useless_embed(title: &str) -> CreateEmbed {
     simple_embed(
         title,
-        "muni hasn't bothered to implement useful information for this yet. screenshot this and go bother him.",
+        "muni hasn't bothered to implement useful information for this yet. screenshot this and \
+         go bother him.",
     )
 }
 
