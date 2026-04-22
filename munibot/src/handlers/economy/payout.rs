@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use super::wallet::{Wallet, WalletError};
 use crate::{
-    MuniBotError,
+    CoreError, MuniBotError,
     db::{DbPool, operations},
 };
 
@@ -118,6 +118,6 @@ pub enum PayoutError {
 
 impl From<PayoutError> for MuniBotError {
     fn from(e: PayoutError) -> Self {
-        MuniBotError::Other(format!("{e}"))
+        Self::Core(CoreError::Other(format!("{e}")))
     }
 }

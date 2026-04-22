@@ -3,7 +3,7 @@ use chrono::Local;
 use twitch_irc::message::ServerMessage;
 
 use crate::{
-    MuniBotError,
+    CoreError, MuniBotError,
     config::Config,
     db::{DbPool, operations},
     twitch::{
@@ -26,7 +26,7 @@ impl QuotesHandler {
     pub async fn new(pool: DbPool, twitch_streamer_id: &str) -> Result<Self, MuniBotError> {
         let link = operations::get_or_create_community_link_by_twitch_id(&pool, twitch_streamer_id)
             .await
-            .map_err(|e| MuniBotError::Other(e.to_string()))?;
+            .map_err(|e| CoreError::Other(e.to_string()))?;
 
         Ok(Self {
             pool,

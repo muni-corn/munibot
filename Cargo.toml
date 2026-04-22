@@ -7,3 +7,40 @@ version = "0.2.4"
 edition = "2024"
 authors = ["municorn <municorn@musicaloft.com>"]
 license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5.4", features = ["derive"] }
+decancer = "3.2.4"
+diesel = { version = "2.3.6", features = ["chrono", "mysql", "uuid"] }
+diesel-async = { version = "0.7.4", features = ["mysql", "bb8"] }
+diesel_migrations = "2.3.1"
+dotenvy = "0.15"
+env_logger = "0.11.3"
+humantime = "2.1.0"
+humantime-serde = "1.1.1"
+log = "0.4.21"
+num-format = "0.4"
+once_cell = "1.18"
+poise = { version = "0.6", features = ["cache"] }
+rand = { version = "0.8", features = ["std_rng"] }
+regex = "1"
+reqwest = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+strum = { version = "0.27", features = ["derive"] }
+thiserror = "1.0"
+tokio = { version = "1.22", features = ["full"] }
+toml = "0.8.12"
+twitch-irc = { version = "5.0", features = ["refreshing-token-native-tls"] }
+twitch_api = { version = "0.7", features = [
+  "client",
+  "helix",
+  "eventsub",
+  "hmac",
+  "reqwest",
+] }
+twitch_oauth2 = "0.15"
+url = "2.4"
