@@ -3,24 +3,25 @@ use std::sync::Arc;
 use clap::Parser;
 use env_logger::Env;
 use log::{error, info, warn};
-use munibot::{
-    MuniBotError,
+use munibot_core::{
     config::Config,
     db::{establish_pool, run_pending_migrations},
-    discord::{
-        simple::SimpleCommandProvider, start_discord_integration, vc_greeter::VoiceChannelGreeter,
-    },
+};
+use munibot_discord::{
+    DiscordMessageHandlerCollection,
+    commands::DiscordCommandProviderCollection,
+    error::MuniBotError,
     handlers::{
-        DiscordCommandProviderCollection, DiscordMessageHandlerCollection,
         bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
+        greeting::GreetingHandler as DiscordGreetingHandler,
+        magical::MagicalHandler as DiscordMagicalHandler,
         temperature::TemperatureConversionProvider, ventriloquize::VentriloquizeProvider,
     },
-    twitch::{TwitchBot, get_basic_auth_url},
+    simple::SimpleCommandProvider,
+    start_discord_integration,
+    vc_greeter::VoiceChannelGreeter,
 };
-use munibot_discord::handlers::{
-    greeting::GreetingHandler as DiscordGreetingHandler,
-    magical::MagicalHandler as DiscordMagicalHandler,
-};
+use munibot_twitch::{TwitchBot, get_basic_auth_url};
 use tokio::sync::Mutex;
 
 #[derive(Parser, Debug)]
