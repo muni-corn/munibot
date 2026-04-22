@@ -74,3 +74,10 @@ impl From<humantime::DurationError> for MuniBotError {
         Self::Core(e.into())
     }
 }
+
+// Allow ? on Results returning Box<CoreError> from core APIs.
+impl From<Box<CoreError>> for Box<MuniBotError> {
+    fn from(e: Box<CoreError>) -> Self {
+        Box::new(MuniBotError::Core(*e))
+    }
+}
