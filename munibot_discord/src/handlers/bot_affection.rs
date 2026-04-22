@@ -3,12 +3,10 @@ use rand::{Rng, seq::SliceRandom};
 use tokio::time::sleep;
 
 use crate::{
-    MuniBotError,
-    discord::{
-        DiscordCommand, DiscordContext,
-        commands::{DiscordCommandError, DiscordCommandProvider},
-        state::DiscordState,
-    },
+    DiscordCommand, DiscordContext,
+    commands::{DiscordCommandError, DiscordCommandProvider},
+    error::MuniBotError,
+    state::DiscordState,
 };
 
 const BOOP_PREFIXES: [&str; 4] = ["ACK!", "ack!", "eep!", "meep!"];

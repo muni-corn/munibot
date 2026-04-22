@@ -1,12 +1,13 @@
 use chrono::{Local, NaiveDateTime, Utc};
+use munibot_core::{
+    db::{DbPool, operations},
+    error::MuniBotError as CoreError,
+};
 use poise::serenity_prelude::{GuildId, UserId};
 use thiserror::Error;
 
 use super::wallet::{Wallet, WalletError};
-use crate::{
-    CoreError, MuniBotError,
-    db::{DbPool, operations},
-};
+use crate::error::MuniBotError;
 
 const PAYOUT_INTERVAL: chrono::Duration = chrono::Duration::milliseconds(1000 * 60 * 5);
 

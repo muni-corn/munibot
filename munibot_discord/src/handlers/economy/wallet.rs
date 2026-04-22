@@ -1,10 +1,11 @@
+use munibot_core::{
+    db::{DbPool, operations},
+    error::MuniBotError as CoreError,
+};
 use poise::serenity_prelude::{GuildId, UserId};
 use thiserror::Error;
 
-use crate::{
-    CoreError, MuniBotError,
-    db::{DbPool, operations},
-};
+use crate::error::MuniBotError;
 
 #[derive(Debug)]
 pub struct Wallet {
