@@ -86,6 +86,39 @@ impl Default for ContentWarningHandler {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::ContentWarningHandler;
+
+    #[test]
+    fn test_new_has_no_active_warning() {
+        let handler = ContentWarningHandler::new();
+        assert!(
+            handler.active_warning.is_none(),
+            "new handler should have no active warning"
+        );
+    }
+
+    #[test]
+    fn test_new_has_empty_greeted_set() {
+        let handler = ContentWarningHandler::new();
+        assert!(
+            handler.users_greeted.is_empty(),
+            "new handler should have no greeted users"
+        );
+    }
+
+    #[test]
+    fn test_default_matches_new() {
+        let from_new = ContentWarningHandler::new();
+        let from_default = ContentWarningHandler::default();
+        assert_eq!(
+            from_new.active_warning, from_default.active_warning,
+            "default() and new() should have the same initial state"
+        );
+    }
+}
+
 #[async_trait]
 impl TwitchMessageHandler for ContentWarningHandler {
     async fn handle_twitch_message(
