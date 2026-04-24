@@ -102,6 +102,95 @@ impl DiscordEventHandler for GreetingHandler {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::GreetingHandler;
+
+    #[test]
+    fn test_hi_munibot_matches() {
+        let result = GreetingHandler::get_greeting_message("alice", "hi munibot");
+        assert!(result.is_some(), "expected greeting for 'hi munibot'");
+    }
+
+    #[test]
+    fn test_hello_munibot_matches() {
+        let result = GreetingHandler::get_greeting_message("alice", "hello munibot");
+        assert!(result.is_some(), "expected greeting for 'hello munibot'");
+    }
+
+    #[test]
+    fn test_hey_munibot_matches() {
+        let result = GreetingHandler::get_greeting_message("alice", "hey munibot");
+        assert!(result.is_some(), "expected greeting for 'hey munibot'");
+    }
+
+    #[test]
+    fn test_hewwo_munibot_matches() {
+        let result = GreetingHandler::get_greeting_message("alice", "hewwo munibot");
+        assert!(result.is_some(), "expected greeting for 'hewwo munibot'");
+    }
+
+    #[test]
+    fn test_henlo_munibot_matches() {
+        let result = GreetingHandler::get_greeting_message("alice", "henlo munibot");
+        assert!(result.is_some(), "expected greeting for 'henlo munibot'");
+    }
+
+    #[test]
+    fn test_case_insensitive_match() {
+        let result = GreetingHandler::get_greeting_message("alice", "HI MUNIBOT");
+        assert!(result.is_some(), "expected greeting to be case-insensitive");
+    }
+
+    #[test]
+    fn test_words_between_hi_and_munibot() {
+        // regex allows words between the greeting and "munibot"
+        let result = GreetingHandler::get_greeting_message("alice", "hi there munibot!");
+        assert!(result.is_some(), "expected greeting with words in between");
+    }
+
+    #[test]
+    fn test_no_match_without_munibot() {
+        let result = GreetingHandler::get_greeting_message("alice", "hi everyone");
+        assert!(result.is_none(), "expected no greeting without 'munibot'");
+    }
+
+    #[test]
+    fn test_no_match_unrelated_message() {
+        let result = GreetingHandler::get_greeting_message("alice", "how are you doing?");
+        assert!(
+            result.is_none(),
+            "expected no greeting for unrelated message"
+        );
+    }
+
+    #[test]
+    fn test_no_match_empty_string() {
+        let result = GreetingHandler::get_greeting_message("alice", "");
+        assert!(result.is_none(), "expected no greeting for empty message");
+    }
+
+    #[test]
+    fn test_response_contains_username() {
+        let result = GreetingHandler::get_greeting_message("alice", "hi munibot");
+        let msg = result.expect("expected a greeting message");
+        assert!(
+            msg.contains("alice"),
+            "expected response to contain username, got '{msg}'"
+        );
+    }
+
+    #[test]
+    fn test_different_users_get_their_name() {
+        let result = GreetingHandler::get_greeting_message("bobcat", "hello munibot");
+        let msg = result.expect("expected a greeting message");
+        assert!(
+            msg.contains("bobcat"),
+            "expected response to contain 'bobcat', got '{msg}'"
+        );
+    }
+}
+
 const HELLO_TEMPLATES: [&str; 11] = [
     "hi, {name}!<3",
     "hello, {name}! happy to see you!",
