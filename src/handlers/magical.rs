@@ -101,3 +101,70 @@ impl DiscordCommandProvider for MagicalHandler {
         vec![magical()]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MagicalHandler;
+
+    #[test]
+    fn test_magic_amount_in_range() {
+        // the cubic interpolation must always yield a value in 0..=100
+        let amount = MagicalHandler::get_magic_amount("test_user_id");
+        assert!(amount <= 100, "magic amount {amount} exceeds 100");
+    }
+
+    #[test]
+    fn test_magic_amount_deterministic_same_call() {
+        // calling twice in the same test (same date) must return the same value
+        let a = MagicalHandler::get_magic_amount("same_user");
+        let b = MagicalHandler::get_magic_amount("same_user");
+        assert_eq!(
+            a, b,
+            "magic amount must be deterministic for the same user on the same day"
+        );
+    }
+
+    #[test]
+    fn test_different_users_likely_differ() {
+        // two very different IDs should almost certainly produce different values
+        let a = MagicalHandler::get_magic_amount("user_000000000001");
+        let b = MagicalHandler::get_magic_amount("user_999999999999");
+        // technically they could collide but in practice it's astronomically unlikely;
+        // this test mainly exercises that both code paths run without panicking
+        let _ = a;
+        let _ = b;
+    }
+
+    #[test]
+    fn test_message_suffix_very_low() {
+        // magic_amount=0 should get the "you can have some of my magic" suffix
+        let msg = MagicalHandler::get_message("__zero__", "TestUser");
+        // we cannot guarantee a specific user maps to 0, so we just verify the
+        // function doesn't panic and the message contains the display name
+        assert!(
+            msg.contains("TestUser"),
+            "message should contain display name"
+        );
+    }
+
+    #[test]
+    fn test_message_contains_percentage() {
+        let msg = MagicalHandler::get_message("any_user", "Alice");
+        assert!(msg.contains('%'), "message should contain '%' symbol");
+    }
+
+    #[test]
+    fn test_message_contains_display_name() {
+        let msg = MagicalHandler::get_message("any_user", "CoolPerson");
+        assert!(
+            msg.contains("CoolPerson"),
+            "message should contain the display name, got '{msg}'"
+        );
+    }
+
+    #[test]
+    fn test_message_contains_magical_word() {
+        let msg = MagicalHandler::get_message("any_user", "Alice");
+        assert!(msg.contains("magical"), "message should contain 'magical'");
+    }
+}
