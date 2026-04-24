@@ -58,3 +58,62 @@ impl DiscordCommandProvider for TemperatureConversionProvider {
         vec![convert_temperature()]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{get_celsius_to_fahrenheit_message, get_fahrenheit_to_celsius_message};
+
+    #[test]
+    fn test_fahrenheit_to_celsius_freezing() {
+        let msg = get_fahrenheit_to_celsius_message(32.0);
+        assert!(msg.contains("0.0°C"), "expected 0.0°C in '{msg}'");
+    }
+
+    #[test]
+    fn test_fahrenheit_to_celsius_boiling() {
+        let msg = get_fahrenheit_to_celsius_message(212.0);
+        assert!(msg.contains("100.0°C"), "expected 100.0°C in '{msg}'");
+    }
+
+    #[test]
+    fn test_fahrenheit_to_celsius_body_temp() {
+        // 98.6°F = 37°C
+        let msg = get_fahrenheit_to_celsius_message(98.6);
+        assert!(msg.contains("37.0°C"), "expected 37.0°C in '{msg}'");
+    }
+
+    #[test]
+    fn test_celsius_to_fahrenheit_freezing() {
+        let msg = get_celsius_to_fahrenheit_message(0.0);
+        assert!(msg.contains("32°F"), "expected 32°F in '{msg}'");
+    }
+
+    #[test]
+    fn test_celsius_to_fahrenheit_boiling() {
+        let msg = get_celsius_to_fahrenheit_message(100.0);
+        assert!(msg.contains("212°F"), "expected 212°F in '{msg}'");
+    }
+
+    #[test]
+    fn test_fahrenheit_to_celsius_negative() {
+        // -40°F = -40°C (the crossing point)
+        let msg = get_fahrenheit_to_celsius_message(-40.0);
+        assert!(msg.contains("-40.0°C"), "expected -40.0°C in '{msg}'");
+    }
+
+    #[test]
+    fn test_celsius_to_fahrenheit_negative() {
+        // -40°C = -40°F
+        let msg = get_celsius_to_fahrenheit_message(-40.0);
+        assert!(msg.contains("-40°F"), "expected -40°F in '{msg}'");
+    }
+
+    #[test]
+    fn test_message_contains_original_value() {
+        let msg = get_fahrenheit_to_celsius_message(72.0);
+        assert!(msg.contains("72"), "expected original value in '{msg}'");
+
+        let msg = get_celsius_to_fahrenheit_message(22.0);
+        assert!(msg.contains("22"), "expected original value in '{msg}'");
+    }
+}
