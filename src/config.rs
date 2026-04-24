@@ -118,3 +118,94 @@ impl Default for Config {
 fn default_twitch_user() -> String {
     "muni__bot".to_owned()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::Config;
+
+    #[test]
+    fn test_default_config_discord_invite_link_is_none() {
+        let config = Config::default();
+        assert!(
+            config.discord.invite_link.is_none(),
+            "default invite link should be None"
+        );
+    }
+
+    #[test]
+    fn test_default_config_ventriloquists_is_empty() {
+        let config = Config::default();
+        assert!(
+            config.discord.ventriloquists.is_empty(),
+            "default ventriloquists list should be empty"
+        );
+    }
+
+    #[test]
+    fn test_default_config_twitch_user() {
+        let config = Config::default();
+        assert_eq!(config.twitch.twitch_user, "muni__bot");
+    }
+
+    #[test]
+    fn test_default_config_initial_channels_is_empty() {
+        let config = Config::default();
+        assert!(
+            config.twitch.initial_channels.is_empty(),
+            "default initial_channels should be empty"
+        );
+    }
+
+    #[test]
+    fn test_toml_roundtrip() {
+        let original = Config::default();
+        let toml_str = toml::to_string_pretty(&original).expect("failed to serialize config");
+        let parsed: Config = toml::from_str(&toml_str).expect("failed to deserialize config");
+        assert_eq!(parsed.twitch.twitch_user, original.twitch.twitch_user);
+        assert_eq!(parsed.discord.invite_link, original.discord.invite_link);
+    }
+
+    #[test]
+    fn test_read_or_write_default_creates_file_when_missing() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("config.toml");
+
+        assert!(!path.exists(), "file should not exist before call");
+        let config = Config::read_or_write_default_from(&path)
+            .expect("should succeed even when file is missing");
+
+        // the default should be returned
+        assert_eq!(config.twitch.twitch_user, "muni__bot");
+        // the file should now exist
+        assert!(path.exists(), "config file should have been written");
+    }
+
+    #[test]
+    fn test_read_or_write_default_reads_existing_file() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("config.toml");
+
+        // write a custom TOML manually
+        let toml_content = r#"
+[discord]
+invite_link = "https://discord.gg/example"
+ventriloquists = []
+
+[twitch]
+twitch_user = "custom_bot_user"
+initial_channels = ["mychannel"]
+"#;
+        fs::write(&path, toml_content).expect("failed to write test config");
+
+        let config = Config::read_or_write_default_from(&path).expect("should read existing file");
+
+        assert_eq!(config.twitch.twitch_user, "custom_bot_user");
+        assert_eq!(
+            config.discord.invite_link.as_deref(),
+            Some("https://discord.gg/example")
+        );
+        assert_eq!(config.twitch.initial_channels, vec!["mychannel"]);
+    }
+}
