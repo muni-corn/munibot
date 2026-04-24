@@ -50,3 +50,4 @@ url = "2.4"
 [dev-dependencies]
 rand_chacha = "0.3"
 surrealdb = { version = "2.0", features = ["kv-mem"] }
+tempfile = "3.27.0"
