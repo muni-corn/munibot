@@ -582,3 +582,61 @@ impl AutoDeleteTimer {
         format!("#{channel_name} in \"{guild_name}\"")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AutoDeleteMode;
+
+    #[test]
+    fn test_to_db_str_always() {
+        assert_eq!(AutoDeleteMode::Always.to_db_str(), "Always");
+    }
+
+    #[test]
+    fn test_to_db_str_after_silence() {
+        assert_eq!(AutoDeleteMode::AfterSilence.to_db_str(), "AfterSilence");
+    }
+
+    #[test]
+    fn test_from_db_str_always() {
+        assert!(matches!(
+            AutoDeleteMode::from_db_str("Always"),
+            AutoDeleteMode::Always
+        ));
+    }
+
+    #[test]
+    fn test_from_db_str_after_silence() {
+        assert!(matches!(
+            AutoDeleteMode::from_db_str("AfterSilence"),
+            AutoDeleteMode::AfterSilence
+        ));
+    }
+
+    #[test]
+    fn test_from_db_str_unknown_defaults_to_after_silence() {
+        // any unrecognized value should fall back to AfterSilence
+        assert!(matches!(
+            AutoDeleteMode::from_db_str("something_unexpected"),
+            AutoDeleteMode::AfterSilence
+        ));
+    }
+
+    #[test]
+    fn test_round_trip_always() {
+        let mode = AutoDeleteMode::Always;
+        assert!(matches!(
+            AutoDeleteMode::from_db_str(mode.to_db_str()),
+            AutoDeleteMode::Always
+        ));
+    }
+
+    #[test]
+    fn test_round_trip_after_silence() {
+        let mode = AutoDeleteMode::AfterSilence;
+        assert!(matches!(
+            AutoDeleteMode::from_db_str(mode.to_db_str()),
+            AutoDeleteMode::AfterSilence
+        ));
+    }
+}
