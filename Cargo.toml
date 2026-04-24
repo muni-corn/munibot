@@ -48,4 +48,5 @@ twitch_oauth2 = "0.15"
 url = "2.4"
 
 [dev-dependencies]
+rand_chacha = "0.10.0"
 surrealdb = { version = "2.0", features = ["kv-mem"] }
