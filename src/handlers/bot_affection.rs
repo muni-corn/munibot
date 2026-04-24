@@ -198,3 +198,94 @@ impl ResponseSelection<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+
+    use super::{
+        BOOP_ACTIONS, BOOP_PREFIXES, BotAffectionProvider, ResponseSelection, get_str_or_empty,
+    };
+
+    fn seeded_rng(seed: u64) -> ChaCha8Rng {
+        ChaCha8Rng::seed_from_u64(seed)
+    }
+
+    #[test]
+    fn test_get_str_or_empty_always_returns_string_at_p1() {
+        let rng = seeded_rng(42);
+        // p=1.0 means gen_bool always returns true
+        let result = get_str_or_empty(rng, "~", 1.0);
+        assert_eq!(result, "~");
+    }
+
+    #[test]
+    fn test_get_str_or_empty_never_returns_string_at_p0() {
+        let rng = seeded_rng(42);
+        // p=0.0 means gen_bool always returns false
+        let result = get_str_or_empty(rng, "~", 0.0);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_response_selection_always_picks_some() {
+        let opts: &[&str] = &["a", "b", "c"];
+        let selection = ResponseSelection::Always(opts);
+        // must pick something every time
+        for seed in 0..20u64 {
+            let result = selection.pick(seeded_rng(seed));
+            assert!(
+                result.is_some(),
+                "Always selection returned None with seed {seed}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_response_selection_always_pick_is_from_options() {
+        let opts: &[&str] = &["alpha", "beta", "gamma"];
+        let selection = ResponseSelection::Always(opts);
+        let result = selection.pick(seeded_rng(99)).unwrap();
+        assert!(
+            opts.contains(&result),
+            "picked value '{result}' not in options"
+        );
+    }
+
+    #[test]
+    fn test_response_selection_rare_at_zero_always_returns_none() {
+        let opts: &[&str] = &["a", "b"];
+        let selection = ResponseSelection::Rare(opts, 0.0);
+        for seed in 0..20u64 {
+            let result = selection.pick(seeded_rng(seed));
+            assert!(
+                result.is_none(),
+                "Rare(0.0) selection returned Some with seed {seed}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_generic_response_never_empty() {
+        // with Always variants, the result should never be the fallback "o///o"
+        // because there's always at least one prefix and one action
+        for _ in 0..10 {
+            let msg = BotAffectionProvider::get_generic_response(
+                ResponseSelection::Always(&BOOP_PREFIXES),
+                ResponseSelection::Always(&BOOP_ACTIONS),
+            );
+            assert!(!msg.is_empty(), "response should never be empty");
+        }
+    }
+
+    #[test]
+    fn test_get_generic_response_fallback_when_rare_at_zero() {
+        // when both are Rare(0.0), no prefix and no action => fallback "o///o"
+        let msg = BotAffectionProvider::get_generic_response(
+            ResponseSelection::Rare(&BOOP_PREFIXES, 0.0),
+            ResponseSelection::Rare(&BOOP_ACTIONS, 0.0),
+        );
+        assert_eq!(msg, "o///o", "expected fallback message, got '{msg}'");
+    }
+}
