@@ -93,12 +93,48 @@ fn matches_scam_message(msg_content: &str) -> Result<bool, decancer::Error> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_matches_scam_message() {
-        let msg = "𝕔𝕙𝕖𝕒𝕡 𝕧𝕚𝕖𝕨𝕖𝕣𝕤 𝕠𝕟 scam.url";
-        assert!(super::matches_scam_message(msg).unwrap());
+    use super::matches_scam_message;
 
+    #[test]
+    fn test_homoglyph_cheap_viewers_on_matches() {
+        let msg = "𝕔𝕙𝕖𝕒𝕡 𝕧𝕚𝕖𝕨𝕖𝕣𝕤 𝕠𝕟 scam.url";
+        assert!(matches_scam_message(msg).unwrap());
+    }
+
+    #[test]
+    fn test_homoglyph_best_viewers_on_matches() {
         let msg = "b︢e︢st v︢ie︢we︣rs o︣n scam.url";
-        assert!(super::matches_scam_message(msg).unwrap());
+        assert!(matches_scam_message(msg).unwrap());
+    }
+
+    #[test]
+    fn test_plain_cheap_viewers_on_matches() {
+        // plain ASCII version should also match after decancer cures it
+        let msg = "cheap viewers on twitch.tv/example";
+        assert!(matches_scam_message(msg).unwrap());
+    }
+
+    #[test]
+    fn test_plain_best_viewers_on_matches() {
+        let msg = "best viewers on twitch.tv/example";
+        assert!(matches_scam_message(msg).unwrap());
+    }
+
+    #[test]
+    fn test_normal_message_does_not_match() {
+        let msg = "hey everyone, welcome to the stream!";
+        assert!(!matches_scam_message(msg).unwrap());
+    }
+
+    #[test]
+    fn test_empty_string_does_not_match() {
+        assert!(!matches_scam_message("").unwrap());
+    }
+
+    #[test]
+    fn test_partial_phrase_does_not_match() {
+        // "cheap viewers" without "on" should not match
+        let msg = "these are the cheapest viewers around";
+        assert!(!matches_scam_message(msg).unwrap());
     }
 }
