@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use num_format::{Locale, ToFormattedString};
-use poise::serenity_prelude::{Context, FullEvent, Message, UserId};
+use poise::serenity_prelude::{Context, FullEvent, UserId};
 use wallet::Wallet;
 
 use self::wallet::WalletError;
@@ -21,10 +21,9 @@ mod wallet;
 pub struct EconomyProvider;
 
 impl EconomyProvider {
-    fn calc_salary(msg: &Message) -> u64 {
+    fn calc_salary(content: &str) -> u64 {
         // determine a salary based on words
-        let valid_char_count: i32 = msg
-            .content
+        let valid_char_count: i32 = content
             .split_whitespace()
             .filter_map(|w| {
                 // ignore words containing symbols
@@ -60,7 +59,7 @@ impl DiscordEventHandler for EconomyProvider {
         if let FullEvent::Message { new_message } = event {
             let msg = new_message;
             if let Some(guild_id) = msg.guild_id {
-                let salary = Self::calc_salary(msg);
+                let salary = Self::calc_salary(&msg.content);
                 let db = framework.user_data().await.access().db();
 
                 Payout::get_from_db(db, guild_id, msg.author.id)
