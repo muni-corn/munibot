@@ -104,3 +104,54 @@ impl DiscordCommandProvider for EightBallProvider {
         vec![eight_ball()]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{EIGHT_BALL_RESPONSES, EightBallProvider, SHAKE_ADVERBS};
+
+    #[test]
+    fn test_shake_message_starts_with_shakes() {
+        let msg = EightBallProvider::get_shake_message();
+        assert!(
+            msg.starts_with("shakes eight ball"),
+            "expected shake message to start with 'shakes eight ball', got '{msg}'"
+        );
+    }
+
+    #[test]
+    fn test_shake_message_ends_with_ellipsis() {
+        let msg = EightBallProvider::get_shake_message();
+        assert!(
+            msg.ends_with("..."),
+            "expected shake message to end with '...', got '{msg}'"
+        );
+    }
+
+    #[test]
+    fn test_shake_message_contains_adverb_from_list() {
+        let msg = EightBallProvider::get_shake_message();
+        let adverb_found = SHAKE_ADVERBS.iter().any(|a| msg.contains(*a));
+        assert!(
+            adverb_found,
+            "shake message '{msg}' doesn't contain a known adverb"
+        );
+    }
+
+    #[test]
+    fn test_response_is_from_known_set() {
+        // run several times to reduce the chance of a false positive
+        for _ in 0..20 {
+            let response = EightBallProvider::get_response();
+            assert!(
+                EIGHT_BALL_RESPONSES.contains(&response),
+                "response '{response}' not in known set"
+            );
+        }
+    }
+
+    #[test]
+    fn test_response_is_non_empty() {
+        let response = EightBallProvider::get_response();
+        assert!(!response.is_empty(), "response should never be empty");
+    }
+}
