@@ -129,3 +129,126 @@ impl RollResult {
         };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use poise::serenity_prelude::MessageBuilder;
+
+    use super::{DiceHandler, RollResult, number_to_message};
+
+    #[test]
+    fn test_zero_sides_returns_single_message() {
+        let result = DiceHandler::roll_for_message(0);
+        match result {
+            RollResult::SingleMessage(msg) => {
+                assert!(msg.contains("what"), "expected 'what' in '{msg}'")
+            }
+            RollResult::Full(..) => panic!("expected SingleMessage for 0 sides"),
+        }
+    }
+
+    #[test]
+    fn test_one_side_returns_single_message() {
+        let result = DiceHandler::roll_for_message(1);
+        match result {
+            RollResult::SingleMessage(msg) => {
+                assert!(msg.contains("1"), "expected '1' in '{msg}'");
+            }
+            RollResult::Full(..) => panic!("expected SingleMessage for 1 side"),
+        }
+    }
+
+    #[test]
+    fn test_two_sides_coin_flip_message() {
+        // run several times due to randomness; each must be a coin-flip message
+        for _ in 0..10 {
+            let result = DiceHandler::roll_for_message(2);
+            match result {
+                RollResult::SingleMessage(msg) => {
+                    assert!(
+                        msg.contains("heads") || msg.contains("tails"),
+                        "expected heads/tails in '{msg}'"
+                    );
+                }
+                RollResult::Full(..) => panic!("expected SingleMessage for 2 sides (coin flip)"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_normal_roll_returns_full_variant() {
+        // d6 always produces a Full result
+        let result = DiceHandler::roll_for_message(6);
+        assert!(
+            matches!(result, RollResult::Full(..)),
+            "expected Full result for d6"
+        );
+    }
+
+    #[test]
+    fn test_critical_failure_suffix_for_result_one_on_d20() {
+        let result = number_to_message(1, 20);
+        match result {
+            RollResult::Full(_, n, suffix) => {
+                assert_eq!(n, 1);
+                // suffix should be from the critical failure list (not a plain dot)
+                assert!(
+                    suffix.contains("ouch")
+                        || suffix.contains("luck")
+                        || suffix.contains("good")
+                        || suffix.contains("🍿")
+                        || suffix.contains("yikes")
+                        || suffix.contains("lol"),
+                    "unexpected critical failure suffix: '{suffix}'"
+                );
+            }
+            RollResult::SingleMessage(_) => panic!("expected Full for d20 roll of 1"),
+        }
+    }
+
+    #[test]
+    fn test_critical_success_suffix_for_max_on_d20() {
+        let result = number_to_message(20, 20);
+        match result {
+            RollResult::Full(_, n, suffix) => {
+                assert_eq!(n, 20);
+                assert!(
+                    suffix.contains("impressive")
+                        || suffix.contains("🎉")
+                        || suffix.contains(">u<")
+                        || suffix.contains(":D"),
+                    "unexpected critical success suffix: '{suffix}'"
+                );
+            }
+            RollResult::SingleMessage(_) => panic!("expected Full for d20 roll of 20"),
+        }
+    }
+
+    #[test]
+    fn test_69_on_d69_gets_nice_suffix() {
+        // the 69 arm fires when n == sides == 69, overriding what would otherwise
+        // be a critical success; on any other die size 69 is caught by the generic arm
+        let result = number_to_message(69, 69);
+        match result {
+            RollResult::Full(_, n, suffix) => {
+                assert_eq!(n, 69);
+                assert!(
+                    suffix.contains("nice"),
+                    "expected 'nice' suffix, got '{suffix}'"
+                );
+            }
+            RollResult::SingleMessage(_) => panic!("expected Full for d69 roll of 69"),
+        }
+    }
+
+    #[test]
+    fn test_roll_result_builds_non_empty_message() {
+        let mut builder = MessageBuilder::new();
+        DiceHandler::roll_for_message(20).add_to_message_builder(&mut builder);
+        let msg = builder.build();
+        assert!(
+            !msg.is_empty(),
+            "message builder output should not be empty"
+        );
+    }
+}
