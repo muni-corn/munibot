@@ -1161,3 +1161,28 @@ fn yes_no_bool(b: bool) -> String {
 fn enabled_bool(b: bool) -> String {
     if b { "enabled" } else { "disabled" }.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{enabled_bool, yes_no_bool};
+
+    #[test]
+    fn test_yes_no_bool_true() {
+        assert_eq!(yes_no_bool(true), "yes");
+    }
+
+    #[test]
+    fn test_yes_no_bool_false() {
+        assert_eq!(yes_no_bool(false), "no");
+    }
+
+    #[test]
+    fn test_enabled_bool_true() {
+        assert_eq!(enabled_bool(true), "enabled");
+    }
+
+    #[test]
+    fn test_enabled_bool_false() {
+        assert_eq!(enabled_bool(false), "disabled");
+    }
+}
