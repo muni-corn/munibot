@@ -232,3 +232,69 @@ async fn transfer(
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::EconomyProvider;
+
+    #[test]
+    fn test_empty_content_zero_salary() {
+        // empty string contributes no valid words
+        let salary = EconomyProvider::calc_salary("");
+        assert_eq!(salary, 0, "empty content should yield 0 salary");
+    }
+
+    #[test]
+    fn test_short_words_ignored() {
+        // words <= 2 chars are filtered out entirely
+        let salary = EconomyProvider::calc_salary("hi ok no");
+        assert_eq!(salary, 0, "short words should yield 0 salary");
+    }
+
+    #[test]
+    fn test_symbol_words_ignored() {
+        // words with symbols are excluded even if long enough
+        let salary = EconomyProvider::calc_salary("http://example.com hello@world foo!bar");
+        assert_eq!(salary, 0, "words with symbols should yield 0 salary");
+    }
+
+    #[test]
+    fn test_normal_words_earn_salary() {
+        // "hello" is 5 chars and qualifies
+        let salary = EconomyProvider::calc_salary("hello world");
+        assert!(salary > 0, "normal words should earn a positive salary");
+    }
+
+    #[test]
+    fn test_word_char_count_capped_at_ten() {
+        // a word at the cap and one over the cap should earn the same salary
+        let salary_long = EconomyProvider::calc_salary("abcdefghij");
+        let salary_over_cap = EconomyProvider::calc_salary("supercalifragilisticexpialidocious");
+        assert_eq!(
+            salary_long, salary_over_cap,
+            "words over 10 chars should be treated the same as exactly 10"
+        );
+    }
+
+    #[test]
+    fn test_large_content_sigmoid_caps_salary() {
+        // a very long message of qualifying words should approach the sigmoid cap (< 1000)
+        let many_words = "wonderful ".repeat(500);
+        let salary = EconomyProvider::calc_salary(&many_words);
+        assert!(
+            salary < 1000,
+            "large messages should be capped below 1000 by sigmoid"
+        );
+    }
+
+    #[test]
+    fn test_salary_grows_with_more_content() {
+        // more qualifying words should earn more (or equal) salary
+        let small = EconomyProvider::calc_salary("hello");
+        let bigger = EconomyProvider::calc_salary("hello world there friend");
+        assert!(
+            bigger >= small,
+            "more words should yield at least as much salary"
+        );
+    }
+}
