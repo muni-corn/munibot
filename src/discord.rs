@@ -18,13 +18,12 @@ use poise::{
     serenity_prelude::{self as serenity, Result, Settings},
 };
 use state::DiscordState;
-use surrealdb::{Surreal, engine::remote::ws, opt::auth::Database};
 
 use self::{admin::AdminCommandProvider, commands::DiscordCommandProvider};
 use crate::{
     MuniBotError,
     config::Config,
-    db::{DbPool, establish_pool, migration},
+    db::{DbPool, establish_pool},
     handlers::DiscordMessageHandlerCollection,
 };
 
@@ -43,38 +42,6 @@ pub async fn start_discord_integration(
     let pool = establish_pool()
         .await
         .expect("couldn't establish database connection pool");
-
-    // connect to SurrealDB and run the one-time data migration
-    let surreal_url = env::var("SURREAL_URL").unwrap_or_else(|_| "localhost:8000".to_owned());
-    let surreal_user = env::var("SURREAL_USER").unwrap_or_else(|_| "root".to_owned());
-    let surreal_pass = env::var("SURREAL_PASS").unwrap_or_else(|_| "root".to_owned());
-
-    match Surreal::new::<ws::Ws>(surreal_url.as_str()).await {
-        Ok(surreal) => {
-            let sign_in_result = surreal
-                .signin(Database {
-                    namespace: "muni_bot",
-                    database: "muni_bot",
-                    username: &surreal_user,
-                    password: &surreal_pass,
-                })
-                .await;
-
-            match sign_in_result {
-                Ok(_) => {
-                    if let Err(e) = migration::migrate_from_surrealdb(&pool, &surreal).await {
-                        log::error!("data migration failed: {e}");
-                    }
-                }
-                Err(e) => {
-                    info!("discord: couldn't sign in to SurrealDB (migration skipped): {e}");
-                }
-            }
-        }
-        Err(e) => {
-            info!("discord: couldn't connect to SurrealDB (migration skipped): {e}");
-        }
-    }
 
     let mut commands: Vec<DiscordCommand> = command_providers
         .iter()
