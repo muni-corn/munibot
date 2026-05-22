@@ -7,12 +7,10 @@ mod common;
 
 use chrono::Utc;
 use common::TestDb;
-use munibot::db::{
+use munibot_core::db::{
     models::{AutoDeleteTimerRow, GuildConfig},
     operations,
 };
-
-// ─── guild_configs ────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_upsert_and_get_guild_config() {
@@ -42,23 +40,17 @@ async fn test_upsert_and_get_guild_config() {
 async fn test_upsert_guild_config_overwrites_existing() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(
-        &db.pool,
-        GuildConfig {
-            guild_id: 1002,
-            logging_channel: Some(111),
-        },
-    )
+    operations::upsert_guild_config(&db.pool, GuildConfig {
+        guild_id: 1002,
+        logging_channel: Some(111),
+    })
     .await
     .expect("first upsert failed");
 
-    operations::upsert_guild_config(
-        &db.pool,
-        GuildConfig {
-            guild_id: 1002,
-            logging_channel: Some(222),
-        },
-    )
+    operations::upsert_guild_config(&db.pool, GuildConfig {
+        guild_id: 1002,
+        logging_channel: Some(222),
+    })
     .await
     .expect("second upsert failed");
 
@@ -87,13 +79,10 @@ async fn test_get_guild_config_missing_returns_none() {
 async fn test_delete_guild_config() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(
-        &db.pool,
-        GuildConfig {
-            guild_id: 1003,
-            logging_channel: None,
-        },
-    )
+    operations::upsert_guild_config(&db.pool, GuildConfig {
+        guild_id: 1003,
+        logging_channel: None,
+    })
     .await
     .expect("upsert failed");
 
@@ -107,8 +96,6 @@ async fn test_delete_guild_config() {
         .expect("get failed");
     assert!(after.is_none(), "config should be gone after delete");
 }
-
-// ─── autodelete_timers ────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_upsert_and_get_all_autodelete_timers() {
@@ -194,8 +181,6 @@ async fn test_update_autodelete_last_cleaned() {
     assert!(all[0].last_cleaned.and_utc().timestamp() >= initial_time.and_utc().timestamp());
 }
 
-// ─── guild_wallets ────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn test_get_or_create_wallet_creates_new() {
     let db = TestDb::new().await;
@@ -270,8 +255,6 @@ async fn test_spend_from_wallet_decreases_balance() {
     assert_eq!(after.balance, 700);
 }
 
-// ─── guild_payouts ────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn test_get_or_create_payout_creates_new() {
     let db = TestDb::new().await;
@@ -344,8 +327,6 @@ async fn test_claim_payout_zeros_balance_and_records_time() {
     assert_eq!(after.balance, 0, "balance should be zeroed after claim");
 }
 
-// ─── community_links ──────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn test_get_or_create_community_link_by_twitch_id_creates_new() {
     let db = TestDb::new().await;
@@ -409,8 +390,6 @@ async fn test_get_community_by_guild_id_missing_returns_none() {
         .expect("get failed");
     assert!(result.is_none());
 }
-
-// ─── quotes ───────────────────────────────────────────────────────────────────
 
 async fn make_community(db: &TestDb) -> i64 {
     // quotes require a community_id that references community_links.id

@@ -13,15 +13,15 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, bb8::Pool},
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use munibot::db::DbPool;
-use rand::Rng;
+use munibot_core::db::DbPool;
+use rand::{RngExt, distr::Alphanumeric};
 
 // use 127.0.0.1 (not localhost) to force TCP -- the native MySQL C library
 // used by diesel's sync MysqlConnection interprets "localhost" as a Unix socket
 pub const ROOT_DB_URL: &str = "mysql://root:sillylittlepassword@127.0.0.1:3306/mysql";
 pub const TEST_DB_BASE_URL: &str = "mysql://munibot_test:sillylittlepassword@127.0.0.1:3306";
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
 
 /// Owns a temporary MySQL database for the duration of a single test.
 ///
@@ -39,8 +39,8 @@ impl TestDb {
     pub async fn new() -> Self {
         // generate a random 12-char alphanumeric suffix to ensure uniqueness
         // across concurrent test processes
-        let suffix: String = rand::thread_rng()
-            .sample_iter(rand::distributions::Alphanumeric)
+        let suffix: String = rand::rng()
+            .sample_iter(Alphanumeric)
             .take(12)
             .map(char::from)
             .map(|c| c.to_ascii_lowercase())
