@@ -1,5 +1,5 @@
 use poise::serenity_prelude::MessageBuilder;
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 
 use crate::{
     DiscordCommand, DiscordContext,
@@ -12,14 +12,14 @@ pub struct EightBallProvider;
 impl EightBallProvider {
     /// Returns a random shake message, "shakes eight ball <adverb>".
     fn get_shake_message() -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let adverb = SHAKE_ADVERBS.choose(&mut rng).unwrap();
         format!("shakes eight ball {adverb}...")
     }
 
     /// Returns a random eight ball response.
     fn get_response() -> &'static str {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         EIGHT_BALL_RESPONSES.choose(&mut rng).unwrap()
     }
 }

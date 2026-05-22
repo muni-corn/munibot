@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 use regex::Regex;
 
 static HI_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -29,7 +29,7 @@ pub fn matches_greeting(message_text: &str) -> bool {
 /// greeting pattern, or `None` if the message should be ignored.
 pub fn get_greeting_response(user_name: &str, message_text: &str) -> Option<String> {
     if matches_greeting(message_text) {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let greeting = HELLO_TEMPLATES
             .choose(&mut rng)
             .unwrap()

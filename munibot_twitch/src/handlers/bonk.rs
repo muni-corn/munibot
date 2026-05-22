@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use munibot_core::config::Config;
-use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
+use rand::seq::IndexedRandom;
 use twitch_irc::message::ServerMessage;
 
 use crate::{
@@ -24,9 +24,8 @@ impl TwitchMessageHandler for BonkHandler {
             if let Some(target) = m.message_text.trim().strip_prefix("!bonk ") {
                 // pick a template and craft message by replacing all {target}s with the
                 // message's arguments
-                let mut rng = StdRng::from_entropy();
                 let message = BONK_TEMPLATES
-                    .choose(&mut rng)
+                    .choose(&mut rand::rng())
                     .unwrap()
                     .replace("{target}", target);
 

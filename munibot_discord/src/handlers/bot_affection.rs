@@ -1,5 +1,5 @@
 use poise::serenity_prelude::MessageBuilder;
-use rand::{Rng, seq::SliceRandom};
+use rand::{Rng, RngExt, seq::IndexedRandom};
 use tokio::time::sleep;
 
 use crate::{
@@ -52,7 +52,7 @@ pub struct BotAffectionProvider;
 
 impl BotAffectionProvider {
     fn get_generic_response(prefixes: ResponseSelection, actions: ResponseSelection) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut msg = MessageBuilder::new();
 
         // start the message with a prefix, if decided
@@ -99,14 +99,14 @@ impl BotAffectionProvider {
 
 /// Returns a string with the given probability, or an empty string.
 fn get_str_or_empty(mut rng: impl Rng, s: &str, p: f64) -> &str {
-    if rng.gen_bool(p) { s } else { "" }
+    if rng.random_bool(p) { s } else { "" }
 }
 
 /// Boop the bot!
 #[poise::command(slash_command, prefix_command)]
 async fn boop(ctx: poise::Context<'_, DiscordState, MuniBotError>) -> Result<(), MuniBotError> {
     // rarely throw a fake error message
-    if rand::thread_rng().gen_bool(BOOP_ERROR_CHANCE) {
+    if rand::rng().random_bool(BOOP_ERROR_CHANCE) {
         ctx.say(
             MessageBuilder::new()
                 .push_codeblock_safe(BOOP_ERROR_MESSAGE, None)
@@ -191,7 +191,7 @@ impl ResponseSelection<'_> {
     fn pick(&self, mut rng: impl Rng) -> Option<&str> {
         match self {
             Self::Always(opts) => opts.choose(&mut rng).copied(),
-            Self::Rare(opts, p) if rng.gen_bool(*p) => opts.choose(&mut rng).copied(),
+            Self::Rare(opts, p) if rng.random_bool(*p) => opts.choose(&mut rng).copied(),
             _ => None,
         }
     }
@@ -199,8 +199,7 @@ impl ResponseSelection<'_> {
 
 #[cfg(test)]
 mod tests {
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
+    use rand_chacha::{ChaCha8Rng, rand_core::SeedableRng};
 
     use super::{
         BOOP_ACTIONS, BOOP_PREFIXES, BotAffectionProvider, ResponseSelection, get_str_or_empty,
@@ -213,7 +212,7 @@ mod tests {
     #[test]
     fn test_get_str_or_empty_always_returns_string_at_p1() {
         let rng = seeded_rng(42);
-        // p=1.0 means gen_bool always returns true
+        // p=1.0 means random_bool always returns true
         let result = get_str_or_empty(rng, "~", 1.0);
         assert_eq!(result, "~");
     }
@@ -221,7 +220,7 @@ mod tests {
     #[test]
     fn test_get_str_or_empty_never_returns_string_at_p0() {
         let rng = seeded_rng(42);
-        // p=0.0 means gen_bool always returns false
+        // p=0.0 means random_bool always returns false
         let result = get_str_or_empty(rng, "~", 0.0);
         assert_eq!(result, "");
     }

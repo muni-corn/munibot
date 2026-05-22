@@ -1,6 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+use rand::seq::IndexedRandom;
 
 use crate::db::{
     DbPool,
@@ -415,8 +416,7 @@ pub async fn get_random_quote(pool: &DbPool, community_id: i64) -> QueryResult<O
         return Ok(None);
     }
 
-    use rand::seq::SliceRandom;
-    let chosen = *ids.choose(&mut rand::thread_rng()).unwrap();
+    let chosen = *ids.choose(&mut rand::rng()).unwrap();
 
     quotes::table
         .filter(quotes::community_id.eq(community_id))

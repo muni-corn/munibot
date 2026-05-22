@@ -1,5 +1,5 @@
 use poise::serenity_prelude::MessageBuilder;
-use rand::{Rng, seq::SliceRandom};
+use rand::{RngExt, seq::IndexedRandom};
 
 use crate::{
     DiscordCommand, DiscordContext,
@@ -16,7 +16,7 @@ impl DiceHandler {
             0 => RollResult::SingleMessage("what.".to_string()),
             1 => RollResult::SingleMessage("you roll a one-sided die. it's a 1.".to_string()),
             _ => {
-                let result = rand::thread_rng().gen_range(1..=sides);
+                let result = rand::rng().random_range(1..=sides);
                 if sides == 2 {
                     RollResult::SingleMessage(format!(
                         "coin flip. it's {}!",
@@ -79,7 +79,7 @@ const CRITICAL_SUCCESS_SUFFIXES: [&str; 5] =
     ["!! impressive ;3", "!! 🎉🎉", "!! >u<", "!! :D ", "!! >:D "];
 
 fn number_to_message(result: u8, sides: u8) -> RollResult {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let prefix = RESULT_PREFIXES.choose(&mut rng).unwrap();
     match result {
         n if sides < 20 || (n != 1 && n != sides) => {

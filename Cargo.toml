@@ -25,7 +25,7 @@ log = "0.4.21"
 num-format = "0.4"
 once_cell = "1.18"
 poise = { version = "0.6", features = ["cache"] }
-rand = { version = "0.8", features = ["std_rng"] }
+rand = { version = "0.10.1", features = ["std_rng"] }
 regex = "1"
 reqwest = "0.12"
 serde = { version = "1", features = ["derive"] }

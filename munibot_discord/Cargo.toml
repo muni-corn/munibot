@@ -28,3 +28,6 @@ serde_json.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+rand_chacha = "0.10.0"

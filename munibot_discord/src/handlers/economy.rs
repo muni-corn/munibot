@@ -287,7 +287,8 @@ mod tests {
 
     #[test]
     fn test_large_content_sigmoid_caps_salary() {
-        // a very long message of qualifying words should approach the sigmoid cap (< 1000)
+        // a very long message of qualifying words should approach the sigmoid cap (<
+        // 1000)
         let many_words = "wonderful ".repeat(500);
         let salary = EconomyProvider::calc_salary(&many_words);
         assert!(
