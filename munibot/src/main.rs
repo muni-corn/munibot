@@ -21,7 +21,7 @@ use munibot_discord::{
 };
 use munibot_twitch::{TwitchBot, get_basic_auth_url};
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{Instrument, error, info, info_span, warn};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Parser, Debug)]
@@ -44,6 +44,13 @@ async fn main() -> Result<(), Box<MuniBotError>> {
         .init();
 
     let args = Args::parse();
+
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        config = %args.config_file,
+        "starting munibot"
+    );
+
     let config = Config::read_or_write_default_from(&args.config_file)
         .map_err(|e| Box::new(MuniBotError::Core(*e)))?;
 
@@ -69,15 +76,15 @@ async fn main() -> Result<(), Box<MuniBotError>> {
                 // wait for the twitch bot to stop, if ever
                 Ok(twitch_handle) => Some(twitch_handle),
                 Err(e) => {
-                    error!("twitch bot failed to start :< {e}");
+                    error!(error = %e, "twitch bot failed to start");
                     None
                 }
             }
         }
         Err(e) => {
             if let Ok(auth_page_url) = get_basic_auth_url() {
-                error!("no TWITCH_TOKEN found ({e})");
-                info!("visit {auth_page_url} to get a token");
+                error!(error = %e, "no TWITCH_TOKEN found");
+                info!(url = %auth_page_url, "visit this url to get a token");
             } else {
                 error!(
                     "no TWITCH_TOKEN found and no TWITCH_CLIENT_ID set. the TWITCH_CLIENT_ID \
@@ -95,13 +102,13 @@ async fn main() -> Result<(), Box<MuniBotError>> {
     // wait for the discord bot to stop, if ever
     match discord_handle.await {
         Ok(_) => warn!("discord bot stopped o.o  this is probably not supposed to happen..."),
-        Err(e) => error!("discord bot died with error: {e}"),
+        Err(e) => error!(error = %e, "discord bot died"),
     }
 
     if let Some(twitch_handle) = twitch_handle {
         match twitch_handle.await {
             Ok(_) => warn!("twitch bot stopped o.o  this is probably not supposed to happen..."),
-            Err(e) => error!("twitch bot died with error: {e}"),
+            Err(e) => error!(error = %e, "twitch bot died"),
         }
     }
 
@@ -129,9 +136,11 @@ fn start_discord(config: Config) -> tokio::task::JoinHandle<()> {
         Box::new(SimpleCommandProvider),
     ];
 
-    tokio::spawn(start_discord_integration(
-        discord_handlers,
-        discord_command_providers,
-        config,
-    ))
+    // attach a root span so all events from within the discord integration
+    // carry the "discord" context in the subscriber output
+    let span = info_span!("discord");
+    tokio::spawn(
+        start_discord_integration(discord_handlers, discord_command_providers, config)
+            .instrument(span),
+    )
 }
