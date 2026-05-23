@@ -1,7 +1,7 @@
 use std::{fs, io::ErrorKind, path::Path};
 
-use log::{info, warn};
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 
 use crate::error::MuniBotError;
 

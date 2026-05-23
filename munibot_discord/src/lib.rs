@@ -1,7 +1,6 @@
 #![feature(never_type)]
 
 use dotenvy::dotenv;
-use log::{error, info};
 use munibot_core::{
     config::Config,
     db::{DbPool, establish_pool},
@@ -11,6 +10,7 @@ use poise::{
     samples::register_globally,
     serenity_prelude::{self as serenity, Settings},
 };
+use tracing::{error, info};
 
 pub mod admin;
 pub mod autodelete;

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use log::{error, info, warn};
 use munibot_core::{config::Config, db::DbPool};
 use tokio::task::JoinHandle;
+use tracing::{error, info, warn};
 use twitch_irc::{
     ClientConfig, SecureTCPTransport, TwitchIRCClient, irc, login::StaticLoginCredentials,
     message::ServerMessage,

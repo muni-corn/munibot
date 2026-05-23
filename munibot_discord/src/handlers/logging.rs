@@ -3,7 +3,6 @@ use std::{
     future::Future,
 };
 
-use log::debug;
 use munibot_core::db::{DbPool, operations};
 use poise::serenity_prelude::{
     self as serenity, CacheHttp, ChannelId, CreateEmbed, CreateMessage, EmbedMessageBuilding,
@@ -11,6 +10,7 @@ use poise::serenity_prelude::{
     MessageBuilder, MessageId, MessageUpdateEvent, PartialGuild, ReactionType, Result, Role,
     async_trait,
 };
+use tracing::{debug, error};
 
 use crate::{
     DiscordFrameworkContext,
@@ -624,7 +624,7 @@ impl LoggingHandler {
             )
             .await
         {
-            log::error!("error while alerting of set_pauses: {e}")
+            error!("error while alerting of set_pauses: {e}")
         }
     }
 
@@ -653,7 +653,7 @@ impl LoggingHandler {
             )
             .await
         {
-            log::error!("error while alerting of set_pauses: {e}")
+            error!("error while alerting of set_pauses: {e}")
         }
     }
 

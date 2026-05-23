@@ -42,5 +42,5 @@ pub async fn run_pending_migrations() {
             .expect("couldn't run mysql database migrations :(");
     }
 
-    log::info!("embedded migrations complete!");
+    tracing::info!("embedded migrations complete!");
 }

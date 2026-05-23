@@ -8,10 +8,13 @@ pub trait Passing {
 }
 
 impl<T, E: std::error::Error> Passing for Result<T, E> {
-    /// Consume this Result and log the error with `log::error!`, if present.
+    /// Consume this Result and emit a tracing error event, if present.
+    ///
+    /// The error is recorded as a structured `error` field so subscribers
+    /// can filter or capture it independently of the message text.
     fn pass(self) {
         if let Err(e) = self {
-            log::error!("{e}");
+            tracing::error!(error = %e, "result discarded via Passing");
         }
     }
 }

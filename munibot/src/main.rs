@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use env_logger::Env;
-use log::{error, info, warn};
 use munibot_core::{
     config::Config,
     db::{establish_pool, run_pending_migrations},
@@ -23,6 +21,8 @@ use munibot_discord::{
 };
 use munibot_twitch::{TwitchBot, get_basic_auth_url};
 use tokio::sync::Mutex;
+use tracing::{error, info, warn};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -34,7 +34,14 @@ struct Args {
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() -> Result<(), Box<MuniBotError>> {
     dotenvy::dotenv().ok();
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
+    // initialize the tracing subscriber with an env filter, bridging any
+    // log-crate records from transitive dependencies into the tracing pipeline
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_target(true))
+        .init();
 
     let args = Args::parse();
     let config = Config::read_or_write_default_from(&args.config_file)

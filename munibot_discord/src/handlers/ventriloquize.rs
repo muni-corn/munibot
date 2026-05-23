@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use log::error;
 use poise::{Command, CreateReply, serenity_prelude::CreateMessage};
 use tokio::time::sleep;
+use tracing::error;
 
 use crate::{
     DiscordContext, commands::DiscordCommandProvider, error::MuniBotError, state::DiscordState,

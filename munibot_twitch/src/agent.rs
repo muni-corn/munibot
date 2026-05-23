@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use log::{debug, info};
+use tracing::{debug, info};
 use twitch_api::{
     HelixClient,
     helix::{ClientRequestError, channels::ChannelInformation, users::User},

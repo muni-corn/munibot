@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
-use log::{debug, error, warn};
 use munibot_core::{
     db::{DbPool, models::AutoDeleteTimerRow, operations},
     error::MuniBotError as CoreError,
@@ -13,6 +12,7 @@ use poise::serenity_prelude::{
 };
 use strum::EnumString;
 use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
+use tracing::{debug, error, warn};
 
 use crate::{error::MuniBotError, handlers::logging::LoggingHandler, state::GlobalAccess};
 
@@ -165,7 +165,7 @@ impl AutoDeleteHandler {
                     match timer.check_messages(cache_http).await {
                         Ok(d) => d.min(smallest),
                         Err(e) => {
-                            log::error!("couldn't check messages for autodelete timer: {e}");
+                            error!("couldn't check messages for autodelete timer: {e}");
                             smallest
                         }
                     }
@@ -286,7 +286,7 @@ impl AutoDeleteTimer {
         db: &DbPool,
         logging: Arc<Mutex<LoggingHandler>>,
     ) -> Result<(), anyhow::Error> {
-        log::debug!(
+        debug!(
             "executing cleanup in channel {}",
             self.get_full_name(&cache_http).await
         );
@@ -300,7 +300,7 @@ impl AutoDeleteTimer {
             if let AutoDeleteMode::AfterSilence = self.mode()
                 && last_message_id.created_at().to_utc() > Utc::now() - self.duration()
             {
-                log::warn!(
+                warn!(
                     "autodelete: timer with AfterSilence attempted to fire before its duration \
                      was met"
                 );
@@ -308,7 +308,7 @@ impl AutoDeleteTimer {
             }
 
             // collect all messages older than this timer's duration
-            log::debug!(
+            debug!(
                 "{} is collecting messages to delete for autodeletion",
                 self.get_full_name(&cache_http).await
             );
@@ -348,13 +348,10 @@ impl AutoDeleteTimer {
                 } = self.delete_messages(cache_http_arc, chopping_block).await;
 
                 if failures > 0 {
-                    log::warn!(
+                    warn!(
                         "autodeletion in channel {} (id {}) in {} (id {}): {deletions} deleted, \
                          {skipped} skipped, {failures} failed",
-                        channel.name,
-                        channel.id,
-                        guild.name,
-                        guild.id
+                        channel.name, channel.id, guild.name, guild.id
                     )
                 }
 
@@ -438,7 +435,7 @@ impl AutoDeleteTimer {
                     async move {
                         if let Err(e) = m.delete(cache_http).await {
                             // log the deletion failure
-                            log::error!("autodelete failed to delete a message: {e}");
+                            error!("autodelete failed to delete a message: {e}");
                             stats.failures += 1;
                             stats
                         } else {
@@ -481,7 +478,7 @@ impl AutoDeleteTimer {
                             match r {
                                 Ok(m) => Some(m.timestamp),
                                 Err(e) => {
-                                    log::warn!("error when streaming message to check timer: {e}");
+                                    warn!("error when streaming message to check timer: {e}");
                                     None
                                 }
                             }
