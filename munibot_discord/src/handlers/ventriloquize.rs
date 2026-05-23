@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use poise::{Command, CreateReply, serenity_prelude::CreateMessage};
 use tokio::time::sleep;
-use tracing::error;
+use tracing::{Instrument, error, info_span, instrument};
 
 use crate::{
     DiscordContext, commands::DiscordCommandProvider, error::MuniBotError, state::DiscordState,
@@ -11,6 +11,11 @@ use crate::{
 pub struct VentriloquizeProvider;
 
 #[poise::command(slash_command, hide_in_help, check = "is_ventriloquist")]
+#[instrument(skip_all, fields(
+    user = %ctx.author().name,
+    guild = ?ctx.guild_id(),
+    channel = %ctx.channel_id()
+))]
 async fn ventriloquize<'a, 'b: 'a>(
     ctx: DiscordContext<'b>,
     message: String,
@@ -24,20 +29,25 @@ async fn ventriloquize<'a, 'b: 'a>(
         .content("beep boop...");
     ctx.send(reply).await?;
 
-    tokio::spawn(async move {
-        // start typing to look like munibot is actually typing
-        let typing = channel_id.start_typing(&http);
+    // propagate span context into the spawned task
+    let send_span = info_span!("ventriloquize_send", channel = %channel_id);
+    tokio::spawn(
+        async move {
+            // start typing to look like munibot is actually typing
+            let typing = channel_id.start_typing(&http);
 
-        // wait a minute to simulate typing
-        sleep(Duration::from_millis(message.len() as u64 * 25)).await;
-        typing.stop();
+            // wait to simulate typing
+            sleep(Duration::from_millis(message.len() as u64 * 25)).await;
+            typing.stop();
 
-        // send the message
-        let message = CreateMessage::default().content(message);
-        if let Err(e) = channel_id.send_message(&http, message).await {
-            error!("couldn't send ventriloquization: {e}");
+            // send the message
+            let message = CreateMessage::default().content(message);
+            if let Err(e) = channel_id.send_message(&http, message).await {
+                error!(error = %e, "couldn't send ventriloquization");
+            }
         }
-    });
+        .instrument(send_span),
+    );
 
     Ok(())
 }

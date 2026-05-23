@@ -10,7 +10,7 @@ use poise::{
     samples::register_globally,
     serenity_prelude::{self as serenity, Settings},
 };
-use tracing::{error, info};
+use tracing::{Instrument, debug, error, info, info_span};
 
 pub mod admin;
 pub mod autodelete;
@@ -115,7 +115,7 @@ async fn on_ready(
 
     ctx.set_activity(Some(serenity::ActivityData::watching("you sleep uwu")));
 
-    info!("discord: logged in as {}", ready.user.name);
+    info!(bot_name = %ready.user.name, "discord: logged in");
 
     let new_state =
         DiscordState::new(handlers, &config, pool, ctx.http.clone(), ctx.cache.clone()).await?;
@@ -132,11 +132,24 @@ async fn event_handler(
     framework_context: DiscordFrameworkContext<'_>,
     data: &DiscordState,
 ) -> Result<(), MuniBotError> {
+    // create a per-event span so every downstream event carries the event kind
+    let event_span = info_span!("discord_event", event = event.snake_case_name());
+    let _guard = event_span.enter();
+
+    debug!("dispatching discord event");
+
     for handler in data.handlers().iter() {
         let mut locked_handler = handler.lock().await;
-        let handled_future = locked_handler.handle_discord_event(context, framework_context, event);
-        if let Err(e) = handled_future.await {
-            error!("discord: error in {} handler: {}", locked_handler.name(), e);
+        let handler_name = locked_handler.name();
+        let handle_fut = locked_handler
+            .handle_discord_event(context, framework_context, event)
+            .instrument(info_span!("discord_handler", handler = %handler_name));
+        if let Err(e) = handle_fut.await {
+            error!(
+                handler = %handler_name,
+                error = %e,
+                "error in discord handler"
+            );
         }
     }
     Ok(())
