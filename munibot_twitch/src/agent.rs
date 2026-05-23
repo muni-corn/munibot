@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 use twitch_api::{
     HelixClient,
     helix::{ClientRequestError, channels::ChannelInformation, users::User},
@@ -33,6 +33,7 @@ impl<'a> TwitchAgent<'a> {
     }
 
     /// Get the channel info for the given broadcaster ID
+    #[instrument(skip_all, fields(broadcaster_id = %broadcaster_id))]
     pub async fn get_channel_info(
         &self,
         broadcaster_id: &str,
@@ -43,6 +44,7 @@ impl<'a> TwitchAgent<'a> {
             .await?)
     }
 
+    #[instrument(skip_all, fields(login = %login))]
     pub async fn get_user_from_login(&self, login: &str) -> Result<Option<User>, TwitchAgentError> {
         Ok(self
             .helix_client
@@ -50,13 +52,18 @@ impl<'a> TwitchAgent<'a> {
             .await?)
     }
 
+    #[instrument(skip_all, fields(
+        target_user_id = %ban_user_id,
+        broadcaster_id = %broadcaster_id,
+        reason = %reason
+    ))]
     pub async fn ban_user(
         &self,
         ban_user_id: &UserId,
         reason: &str,
         broadcaster_id: &UserId,
     ) -> Result<(), TwitchAgentError> {
-        debug!("attempting to ban user {}", ban_user_id);
+        debug!("attempting ban");
         let moderator_id = self.get_bot_id();
         self.helix_client
             .ban_user(
@@ -68,7 +75,7 @@ impl<'a> TwitchAgent<'a> {
                 self.auth.get_user_token(),
             )
             .await?;
-        info!("munibot banned user {ban_user_id} from broadcaster {broadcaster_id}");
+        info!("ban succeeded");
         Ok(())
     }
 }

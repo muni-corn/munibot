@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use munibot_core::{config::Config, db::DbPool};
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{Instrument, debug, error, info, instrument, warn};
 use twitch_irc::{
     ClientConfig, SecureTCPTransport, TwitchIRCClient, irc, login::StaticLoginCredentials,
     message::ServerMessage,
@@ -74,35 +74,46 @@ impl TwitchBot {
             .await;
 
         let bot_config_clone = bot_config.clone();
-        let handle = tokio::spawn(async move {
-            while let Some(message) = incoming_messages.recv().await {
-                if let ServerMessage::Notice(notice_msg) = message {
-                    if let Some(channel) = notice_msg.channel_login {
-                        warn!(
-                            "notice received from {}: {}",
-                            channel, notice_msg.message_text
-                        );
-                    } else {
-                        warn!("notice received from twitch: {}", notice_msg.message_text);
+        // keep the current span context across the tokio::spawn boundary so
+        // events inside the recv loop appear under the "twitch" parent span
+        let handle = tokio::spawn(
+            async move {
+                while let Some(message) = incoming_messages.recv().await {
+                    if let ServerMessage::Notice(notice_msg) = message {
+                        if let Some(channel) = notice_msg.channel_login {
+                            warn!(
+                                channel = %channel,
+                                message = %notice_msg.message_text,
+                                "twitch notice received"
+                            );
+                        } else {
+                            warn!(
+                                message = %notice_msg.message_text,
+                                "twitch notice received (global)"
+                            );
+                        }
+                    } else if let Err(e) = self
+                        .handle_twitch_message(&message, &irc_client, &agent, &bot_config_clone)
+                        .await
+                    {
+                        error!(error = %e, "error in twitch message handler");
                     }
-                } else if let Err(e) = self
-                    .handle_twitch_message(&message, &irc_client, &agent, &bot_config_clone)
-                    .await
-                {
-                    error!("error in twitch message handler! {e}");
                 }
             }
-        });
+            .in_current_span(),
+        );
         Ok(handle)
     }
 
+    #[instrument(skip_all, fields(channel = %channel))]
     async fn join_channel(&self, channel: &str, client: &MuniBotTwitchIRCClient) {
         // join a channel. this will error if the passed channel login name is
         // malformed.
         if let Err(e) = client.join(channel.to_string()) {
-            error!("error joining {}'s twitch channel :( {}", channel, e);
+            error!(error = %e, "error joining twitch channel");
+        } else {
+            info!("joined twitch channel");
         }
-        info!("twitch: joined channel {}", channel);
     }
 }
 
@@ -115,12 +126,18 @@ impl TwitchMessageHandler for TwitchBot {
         agent: &TwitchAgent,
         config: &Config,
     ) -> Result<bool, TwitchHandlerError> {
+        // build a per-message span with the channel and message kind so all
+        // downstream events are annotated with their source context; use
+        // Instrument rather than entered() because this is an async function
+        let (channel, kind) = message_channel_and_kind(message);
+        debug!(channel = %channel, kind = %kind, "received twitch message");
+
         if let Err(e) = self
             .auto_ban_handler
             .handle_twitch_message(message, client, agent, config)
             .await
         {
-            error!("error in autoban handler at root: {}", e);
+            error!(error = %e, "error in autoban handler");
         }
 
         if let ServerMessage::Privmsg(privmsg) = message
@@ -134,12 +151,29 @@ impl TwitchMessageHandler for TwitchBot {
                     .await
                 {
                     Ok(true) => return Ok(true),
-                    Err(e) => error!("error twitch in message handler: {}", e),
+                    Err(e) => error!(error = %e, "error in twitch message handler"),
                     _ => continue,
                 }
             }
         }
 
-        return Ok(false);
+        Ok(false)
+    }
+}
+
+/// Extracts a channel name and message kind label from a `ServerMessage` for
+/// use as span fields. Returns empty strings when not applicable.
+fn message_channel_and_kind(message: &ServerMessage) -> (String, &'static str) {
+    match message {
+        ServerMessage::Privmsg(m) => (m.channel_login.clone(), "privmsg"),
+        ServerMessage::Notice(m) => (m.channel_login.clone().unwrap_or_default(), "notice"),
+        ServerMessage::Join(m) => (m.channel_login.clone(), "join"),
+        ServerMessage::Part(m) => (m.channel_login.clone(), "part"),
+        ServerMessage::UserNotice(m) => (m.channel_login.clone(), "usernotice"),
+        ServerMessage::ClearChat(m) => (m.channel_login.clone(), "clearchat"),
+        ServerMessage::ClearMsg(m) => (m.channel_login.clone(), "clearmsg"),
+        ServerMessage::RoomState(m) => (m.channel_login.clone(), "roomstate"),
+        ServerMessage::UserState(m) => (m.channel_login.clone(), "userstate"),
+        _ => (String::new(), "other"),
     }
 }
