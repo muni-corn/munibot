@@ -10,7 +10,7 @@ use poise::serenity_prelude::{
     MessageBuilder, MessageId, MessageUpdateEvent, PartialGuild, ReactionType, Result, Role,
     async_trait,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, instrument};
 
 use crate::{
     DiscordFrameworkContext,
@@ -43,6 +43,7 @@ impl DiscordEventHandler for LoggingHandler {
         "logging"
     }
 
+    #[instrument(skip_all, fields(event = event.snake_case_name()))]
     async fn handle_discord_event(
         &mut self,
         context: &serenity::Context,
@@ -696,7 +697,7 @@ async fn send_message(
     if let Some(logging_channel) = get_logging_channel_for_guild(db, guild_id).await? {
         logging_channel.send_message(cache_http, message).await?;
     } else {
-        debug!("no logging channel for guild with id {guild_id}")
+        debug!(guild = %guild_id, "no logging channel configured for guild")
     }
     Ok(())
 }
