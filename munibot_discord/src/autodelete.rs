@@ -6,13 +6,13 @@ use munibot_core::{
     error::MuniBotError as CoreError,
 };
 use poise::serenity_prelude::{
-    Cache, CacheHttp, ChannelId, GuildChannel, GuildId, Mentionable, Message, MessageBuilder,
-    MessageId, PartialGuild, Result,
+    CacheHttp, ChannelId, GuildChannel, GuildId, Mentionable, Message, MessageBuilder, MessageId,
+    PartialGuild, Result,
     futures::{StreamExt, stream},
 };
 use strum::EnumString;
 use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
-use tracing::{debug, error, warn};
+use tracing::{Instrument, debug, error, info, info_span, instrument, warn};
 
 use crate::{error::MuniBotError, handlers::logging::LoggingHandler, state::GlobalAccess};
 
@@ -27,6 +27,7 @@ impl AutoDeleteHandler {
     const MAXIMUM_WAIT_TIME: Duration = Duration::from_mins(30);
     pub const MINIMUM_TIMER_DURATION: Duration = Duration::from_hours(1);
 
+    #[instrument(skip_all)]
     pub async fn new(
         global_access: GlobalAccess,
         logging: Arc<Mutex<LoggingHandler>>,
@@ -42,7 +43,7 @@ impl AutoDeleteHandler {
             timers.insert(channel_id, AutoDeleteTimer::from_row(row));
         }
 
-        debug!("loaded timers: {:?}", timers);
+        debug!(count = timers.len(), "loaded autodelete timers");
 
         Ok(Self {
             timers,
@@ -73,7 +74,11 @@ impl AutoDeleteHandler {
 
         let timer = AutoDeleteTimer::from_row(saved);
         self.timers.insert(channel_id, timer);
-        debug!("new timers map: {:?}", self.timers);
+        debug!(
+            channel = %channel_id,
+            total_timers = self.timers.len(),
+            "autodelete timer registered"
+        );
 
         // build log message
         let mut msg = MessageBuilder::default();
@@ -129,51 +134,61 @@ impl AutoDeleteHandler {
         Ok(true)
     }
 
+    #[instrument(skip_all)]
     pub async fn fire_due_timers(&mut self) -> Result<(), anyhow::Error> {
+        debug!(timers = self.timers.len(), "firing due autodelete timers");
         stream::iter(self.timers.values_mut())
-            .for_each_concurrent(3, |timer| async {
-                debug!(
-                    "checking if we should fire timer for {} in {}",
-                    timer.channel_name(self.access.as_cache_http()).await,
-                    timer.guild_name(self.access.cache())
-                );
-                if timer.should_check()
-                    && let Err(e) = timer
-                        .clean_now(
-                            self.access.as_cache_http(),
-                            self.access.db(),
-                            self.logging.clone(),
-                        )
-                        .await
-                {
-                    error!("timer failed to clean: {e}");
+            .for_each_concurrent(3, |timer| {
+                let channel_id = timer.channel_id();
+                let guild_id = timer.guild_id();
+                let cache_http = self.access.as_cache_http();
+                let db = self.access.db();
+                let logging = self.logging.clone();
+                async move {
+                    debug!(
+                        channel = %channel_id,
+                        guild = %guild_id,
+                        "checking autodelete timer"
+                    );
+                    if timer.should_check()
+                        && let Err(e) = timer.clean_now(cache_http, db, logging).await
+                    {
+                        error!(
+                            channel = %channel_id,
+                            guild = %guild_id,
+                            error = %e,
+                            "autodelete timer failed to clean"
+                        );
+                    }
                 }
             })
             .await;
         Ok(())
     }
 
+    #[instrument(skip_all)]
     pub async fn get_next_fire(&mut self) -> Duration {
         let cache_http = self.access.as_cache_http();
         stream::iter(self.timers.values())
             .fold(Self::MAXIMUM_WAIT_TIME, |smallest, timer| async move {
+                let channel_id = timer.channel_id();
+                let guild_id = timer.guild_id();
                 if timer.should_check() {
-                    debug!(
-                        "timer for {} is being checked",
-                        timer.get_full_name(cache_http).await
-                    );
+                    debug!(channel = %channel_id, guild = %guild_id, "timer is due, checking");
                     match timer.check_messages(cache_http).await {
                         Ok(d) => d.min(smallest),
                         Err(e) => {
-                            error!("couldn't check messages for autodelete timer: {e}");
+                            error!(
+                                channel = %channel_id,
+                                guild = %guild_id,
+                                error = %e,
+                                "couldn't check messages for autodelete timer"
+                            );
                             smallest
                         }
                     }
                 } else {
-                    debug!(
-                        "timer for {} should not be checked",
-                        timer.get_full_name(cache_http).await
-                    );
+                    debug!(channel = %channel_id, guild = %guild_id, "timer is not yet due");
                     timer.duration().min(smallest)
                 }
             })
@@ -181,24 +196,30 @@ impl AutoDeleteHandler {
     }
 
     pub fn start(this: Arc<Mutex<Self>>) -> JoinHandle<!> {
-        tokio::spawn(async move {
-            loop {
-                debug!("starting iteration of autodelete loop");
-                let sleep_time = {
-                    let mut locked = this.lock().await;
-                    locked.get_next_fire().await
-                };
-                debug!(
-                    "sleeping until next check in {}",
-                    humantime::format_duration(sleep_time)
-                );
-                tokio::time::sleep(sleep_time).await;
-                debug!("firing overdue timers!");
-                if let Err(e) = this.lock().await.fire_due_timers().await {
-                    error!("autodelete failed when firing timers: {e}");
+        // attach a named span so all events from the background loop carry
+        // the "autodelete" context across awaits
+        let span = info_span!("autodelete_loop");
+        tokio::spawn(
+            async move {
+                loop {
+                    debug!("starting autodelete iteration");
+                    let sleep_time = {
+                        let mut locked = this.lock().await;
+                        locked.get_next_fire().await
+                    };
+                    debug!(
+                        sleep_secs = sleep_time.as_secs(),
+                        "sleeping until next autodelete check"
+                    );
+                    tokio::time::sleep(sleep_time).await;
+                    debug!("woke up, firing overdue autodelete timers");
+                    if let Err(e) = this.lock().await.fire_due_timers().await {
+                        error!(error = %e, "autodelete failed when firing timers");
+                    }
                 }
             }
-        })
+            .instrument(span),
+        )
     }
 }
 
@@ -280,18 +301,22 @@ impl AutoDeleteTimer {
 
     /// Cleans channels by deleting messages according to this timer's deletion
     /// mode.
+    #[instrument(skip_all, fields(
+        channel = %self.channel_id(),
+        guild = %self.guild_id(),
+        mode = ?self.mode()
+    ))]
     pub async fn clean_now(
         &mut self,
         cache_http: impl CacheHttp,
         db: &DbPool,
         logging: Arc<Mutex<LoggingHandler>>,
     ) -> Result<(), anyhow::Error> {
-        debug!(
-            "executing cleanup in channel {}",
-            self.get_full_name(&cache_http).await
-        );
+        debug!("executing cleanup");
 
-        let (guild, channel) = self.get_guild_channel(&cache_http).await?;
+        // guild is fetched for its channel collection but not logged directly;
+        // channel id and guild id come from the span fields set on this function
+        let (_guild, channel) = self.get_guild_channel(&cache_http).await?;
 
         if let Some(last_message_id) = channel.last_message_id
             && last_message_id.get() != self.last_message_id_cleaned().get()
@@ -300,18 +325,12 @@ impl AutoDeleteTimer {
             if let AutoDeleteMode::AfterSilence = self.mode()
                 && last_message_id.created_at().to_utc() > Utc::now() - self.duration()
             {
-                warn!(
-                    "autodelete: timer with AfterSilence attempted to fire before its duration \
-                     was met"
-                );
+                warn!("AfterSilence timer fired before its silence duration was met");
                 return Ok(());
             }
 
             // collect all messages older than this timer's duration
-            debug!(
-                "{} is collecting messages to delete for autodeletion",
-                self.get_full_name(&cache_http).await
-            );
+            debug!("collecting messages to delete");
             let cache_http_arc = Arc::new(cache_http);
             let stream_failures = Mutex::new(0);
             let chopping_block = self
@@ -322,17 +341,14 @@ impl AutoDeleteTimer {
             let stream_failures = stream_failures.into_inner();
             if stream_failures > 0 {
                 warn!(
-                    "{} couldn't stream {stream_failures} messages for autodeletion",
-                    self.get_full_name(cache_http_arc.clone()).await
+                    stream_failures = stream_failures,
+                    "some messages couldn't be streamed for autodeletion"
                 );
             }
 
             // abort if there aren't any messages to delete
             if chopping_block.is_empty() {
-                debug!(
-                    "couldn't collect any messages to delete for {}",
-                    self.get_full_name(cache_http_arc).await
-                );
+                debug!("no messages to delete");
             } else {
                 // first, pause logging
                 logging
@@ -349,29 +365,30 @@ impl AutoDeleteTimer {
 
                 if failures > 0 {
                     warn!(
-                        "autodeletion in channel {} (id {}) in {} (id {}): {deletions} deleted, \
-                         {skipped} skipped, {failures} failed",
-                        channel.name, channel.id, guild.name, guild.id
-                    )
+                        deletions = deletions,
+                        skipped = skipped,
+                        failures = failures,
+                        "autodeletion cycle completed with failures"
+                    );
+                } else {
+                    info!(
+                        deletions = deletions,
+                        skipped = skipped,
+                        "autodeletion cycle completed"
+                    );
                 }
 
                 // record last message id if needed
                 if let Some(last_deleted_id) = last_message_deleted.map(|m| m.id) {
-                    debug!("setting new latest message: {:?}", last_deleted_id);
+                    debug!(last_message_id = %last_deleted_id, "updating last cleaned message id");
                     self.row.last_message_id_cleaned = last_deleted_id.get() as i64;
                 } else {
-                    debug!("not changing latest message id for channel clean-up");
+                    debug!("no new last message id to record");
                 }
-
-                debug!("cleanup is done");
             }
         } else {
             // probably no messages to clean up, so we can exit now
-            debug!(
-                "channel {} (id {}) in {} (id {}) has no new messages, so no clean-up will happen \
-                 now",
-                channel.name, channel.id, guild.name, guild.id
-            );
+            debug!("no new messages since last clean, skipping");
         }
 
         // update last time this channel was cleaned
@@ -408,7 +425,7 @@ impl AutoDeleteTimer {
                     }
                     Err(e) => {
                         (*stream_failures.lock().await) += 1;
-                        debug!("failed to stream message for cleanup: {e}");
+                        debug!(error = %e, "failed to stream message for cleanup");
                         None
                     }
                 }
@@ -435,7 +452,7 @@ impl AutoDeleteTimer {
                     async move {
                         if let Err(e) = m.delete(cache_http).await {
                             // log the deletion failure
-                            error!("autodelete failed to delete a message: {e}");
+                            error!(message_id = %m.id, error = %e, "autodelete failed to delete message");
                             stats.failures += 1;
                             stats
                         } else {
@@ -460,6 +477,7 @@ impl AutoDeleteTimer {
 
     /// Checks the messages in a channel and calculates the next time this timer
     /// should clean.
+    #[instrument(skip_all, fields(channel = %self.channel_id(), guild = %self.guild_id()))]
     pub async fn check_messages(
         &self,
         cache_http: impl CacheHttp,
@@ -478,7 +496,7 @@ impl AutoDeleteTimer {
                             match r {
                                 Ok(m) => Some(m.timestamp),
                                 Err(e) => {
-                                    warn!("error when streaming message to check timer: {e}");
+                                    warn!(error = %e, "error streaming message to check timer");
                                     None
                                 }
                             }
@@ -502,22 +520,18 @@ impl AutoDeleteTimer {
             };
 
             debug!(
-                "next clean for {} is in {}",
-                self.get_full_name(cache_http).await,
-                humantime::format_duration(duration_to_next_clean)
+                next_clean_secs = duration_to_next_clean.as_secs(),
+                "calculated next clean time"
             );
             Ok(duration_to_next_clean)
         } else {
             // probably no messages to clean up, so we can exit now
             let duration = self.duration();
             debug!(
-                "channel {} (id {}) in {} (id {}) has no messages. we'll check back in after this \
-                 timer's duration ({})",
-                channel.name,
-                channel.id,
-                guild.name,
-                guild.id,
-                humantime::Duration::from(duration)
+                channel = %channel.name,
+                guild = %guild.name,
+                duration_secs = duration.as_secs(),
+                "channel has no messages, will check back after timer duration"
             );
             Ok(duration)
         }
@@ -555,31 +569,6 @@ impl AutoDeleteTimer {
         };
 
         Ok((guild, guild_channel))
-    }
-
-    async fn channel_name(&self, cache_http: impl CacheHttp) -> String {
-        self.channel_id()
-            .name(cache_http)
-            .await
-            .unwrap_or_else(|_| "<failed to fetch channel name>".to_string())
-    }
-
-    fn guild_name(&self, cache: impl AsRef<Cache>) -> String {
-        self.guild_id()
-            .name(cache)
-            .unwrap_or_else(|| "<no guild name in cache>".to_string())
-    }
-
-    async fn get_full_name(&self, cache_http: impl CacheHttp) -> String {
-        let guild_name = if let Some(cache) = cache_http.cache() {
-            self.guild_name(cache)
-        } else {
-            "<no cache for guild name>".to_string()
-        };
-
-        let channel_name = self.channel_name(cache_http).await;
-
-        format!("#{channel_name} in \"{guild_name}\"")
     }
 }
 
