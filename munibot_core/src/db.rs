@@ -4,6 +4,7 @@ use diesel_async::{
     pooled_connection::{AsyncDieselConnectionManager, bb8::Pool},
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
+use tracing::instrument;
 
 pub mod models;
 pub mod operations;
@@ -21,6 +22,7 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
 
 /// Creates a new database connection pool using the `DATABASE_URL` environment
 /// variable.
+#[instrument(skip_all)]
 pub async fn establish_pool() -> Result<DbPool, Box<dyn std::error::Error + Send + Sync>> {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
@@ -31,6 +33,7 @@ pub async fn establish_pool() -> Result<DbPool, Box<dyn std::error::Error + Send
 }
 
 /// Runs all pending embedded migrations against the database at `DATABASE_URL`.
+#[instrument(skip_all)]
 pub async fn run_pending_migrations() {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 

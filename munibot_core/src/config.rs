@@ -1,7 +1,7 @@
 use std::{fs, io::ErrorKind, path::Path};
 
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 use crate::error::MuniBotError;
 
@@ -33,6 +33,7 @@ pub struct TwitchConfig {
 impl Config {
     /// Reads the config from the file if it exists, otherwise writes the
     /// default config to the file and loads that.
+    #[instrument(skip_all, fields(path = %path.as_ref().display()))]
     pub fn read_or_write_default_from<P: AsRef<Path>>(path: P) -> Result<Self, Box<MuniBotError>> {
         let p = path.as_ref();
 
@@ -52,25 +53,21 @@ impl Config {
             // write the default config string
             if let Err(e) = fs::write(p, toml_string) {
                 warn!(
-                    "hi there! i wanted to write my default configuration file to {}, but i can't.",
-                    p.display(),
+                    error = %e,
+                    "hi there! i wanted to write my default configuration file, but i can't.",
                 );
                 match e.kind() {
                     ErrorKind::NotFound => {
-                        warn!("does its parent directory exist?\n");
+                        warn!("does its parent directory exist?");
                     }
                     ErrorKind::PermissionDenied => {
-                        warn!("do you (or i) have permission to write to it?\n");
+                        warn!("do you (or i) have permission to write to it?");
                     }
-                    _ => warn!("(here's the error: {})\n", e),
+                    _ => {}
                 }
             } else {
                 // notify we wrote the file
-                info!(
-                    "hi! i'm munibot! i've written my default configuration file to {} for you :3 \
-                     <3",
-                    p.display()
-                );
+                info!("hi! i'm munibot! i've written my default configuration file for you :3 <3");
             }
 
             // and return the config
@@ -92,8 +89,8 @@ impl Config {
                 ))
             })?;
 
-            // notify we read the config
-            info!("hiya! configuration has been read from {} ^u^", p.display());
+            // notify we read the config (path comes from the span field)
+            info!("hiya! configuration has been read ^u^");
 
             // return the config
             Ok(config)
