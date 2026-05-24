@@ -29,7 +29,7 @@ in
       description = ''
         Path to the environment file for munibot containing secrets for database, Discord, and Twitch authentication.
 
-        munibot requires the following variables to be set: DATABASE_URL, DATABASE_PASS, DISCORD_APPLICATION_ID, DISCORD_CLIENT_SECRET, DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, and TWITCH_TOKEN.
+        munibot requires the following variables to be set: DATABASE_URL, DISCORD_APPLICATION_ID, DISCORD_CLIENT_SECRET, DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, and TWITCH_TOKEN.
 
         Note: DATABASE_URL should use unix socket authentication -- e.g. mysql://munibot@localhost/munibot -- since the munibot system user is granted passwordless access via the unix_socket plugin.
       '';
@@ -102,7 +102,6 @@ in
             ExecStart = "${lib.getExe cfg.package} --config-file ${configFile}";
             PassEnvironment = [
               "DATABASE_URL"
-              "DATABASE_PASS"
               "DISCORD_APPLICATION_ID"
               "DISCORD_CLIENT_SECRET"
               "DISCORD_PUBLIC_KEY"
