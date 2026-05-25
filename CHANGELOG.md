@@ -177,7 +177,7 @@
 - introduce GlobalAccess type
 - **discord:** add LoggingHandler in DiscordState
 - **discord:** improve some error messages
-- **admin:** allow setting logging channel to current by ommission
+- **admin:** allow setting logging channel to current by omission
 - add basic vc greeter functionality
 - allow for missing log channels without errors
 - skip launching twitch integration if misconfigured
