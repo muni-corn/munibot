@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "munibot"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "dotenvy",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "munibot_core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1493,7 +1493,7 @@ dependencies = [
 
 [[package]]
 name = "munibot_discord"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1522,7 +1522,7 @@ dependencies = [
 
 [[package]]
 name = "munibot_twitch"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-trait",
