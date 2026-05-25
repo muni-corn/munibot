@@ -1,11 +1,11 @@
 use poise::serenity_prelude::MessageBuilder;
 
-use crate::{DiscordContext, commands::DiscordCommandProvider, error::MuniBotError};
+use crate::{DiscordContext, commands::DiscordCommandProvider, error::MunibotDiscordError};
 
 pub struct SimpleCommandProvider;
 
 impl DiscordCommandProvider for SimpleCommandProvider {
-    fn commands(&self) -> Vec<poise::Command<crate::state::DiscordState, MuniBotError>> {
+    fn commands(&self) -> Vec<poise::Command<crate::state::DiscordState, MunibotDiscordError>> {
         vec![tone_indicators()]
     }
 }
@@ -40,7 +40,7 @@ const UNCOMMON_TONE_INDICATORS: &[(&str, &str)] = &[
 
 /// display a guide on tone indicators.
 #[poise::command(slash_command, rename = "tone-indicators", ephemeral)]
-async fn tone_indicators(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn tone_indicators(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     let mut msg = MessageBuilder::new();
     msg.push_line("## a guide on tone indicators")
         .push_line(

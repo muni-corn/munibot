@@ -23,22 +23,23 @@ pub mod state;
 pub mod utils;
 pub mod vc_greeter;
 
-pub use error::MuniBotError as DiscordError;
+pub use error::MunibotDiscordError as DiscordError;
 pub use state::{DiscordMessageHandlerCollection, DiscordState};
 
 use crate::{
     admin::AdminCommandProvider,
     autodelete::AutoDeleteHandler,
     commands::{DiscordCommandProvider, DiscordCommandProviderCollection},
-    error::MuniBotError,
+    error::MunibotDiscordError,
 };
 
 /// Poise command type for the discord integration.
-pub type DiscordCommand = poise::Command<DiscordState, MuniBotError>;
+pub type DiscordCommand = poise::Command<DiscordState, MunibotDiscordError>;
 /// Poise context type for the discord integration.
-pub type DiscordContext<'a> = poise::Context<'a, DiscordState, MuniBotError>;
+pub type DiscordContext<'a> = poise::Context<'a, DiscordState, MunibotDiscordError>;
 /// Poise framework context type for the discord integration.
-pub type DiscordFrameworkContext<'a> = poise::FrameworkContext<'a, DiscordState, MuniBotError>;
+pub type DiscordFrameworkContext<'a> =
+    poise::FrameworkContext<'a, DiscordState, MunibotDiscordError>;
 
 /// Starts the Discord integration. Runs until the Discord client stops.
 pub async fn start_discord_integration(
@@ -61,7 +62,7 @@ pub async fn start_discord_integration(
     // always add admin commands
     commands.append(&mut AdminCommandProvider.commands());
 
-    let options = poise::FrameworkOptions::<DiscordState, MuniBotError> {
+    let options = poise::FrameworkOptions::<DiscordState, MunibotDiscordError> {
         event_handler: |ctx, event, framework, data| {
             Box::pin(event_handler(ctx, event, framework, data))
         },
@@ -80,7 +81,7 @@ pub async fn start_discord_integration(
         | serenity::GatewayIntents::MESSAGE_CONTENT
         | serenity::GatewayIntents::GUILD_MEMBERS;
 
-    let framework = poise::Framework::<DiscordState, MuniBotError>::builder()
+    let framework = poise::Framework::<DiscordState, MunibotDiscordError>::builder()
         .setup(move |ctx, ready, framework| {
             Box::pin(on_ready(ctx, ready, framework, handlers, config, pool))
         })
@@ -104,11 +105,11 @@ pub async fn start_discord_integration(
 async fn on_ready(
     ctx: &serenity::Context,
     ready: &serenity::Ready,
-    framework: &poise::Framework<DiscordState, MuniBotError>,
+    framework: &poise::Framework<DiscordState, MunibotDiscordError>,
     handlers: DiscordMessageHandlerCollection,
     config: Config,
     pool: DbPool,
-) -> serenity::Result<DiscordState, MuniBotError> {
+) -> serenity::Result<DiscordState, MunibotDiscordError> {
     register_globally(ctx, &framework.options().commands)
         .await
         .expect("failed to register commands globally");
@@ -131,7 +132,7 @@ async fn event_handler(
     event: &serenity::FullEvent,
     framework_context: DiscordFrameworkContext<'_>,
     data: &DiscordState,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotDiscordError> {
     // create a per-event span so every downstream event carries the event kind
     let event_span = info_span!("discord_event", event = event.snake_case_name());
     let _guard = event_span.enter();

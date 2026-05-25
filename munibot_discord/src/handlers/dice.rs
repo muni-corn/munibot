@@ -4,7 +4,7 @@ use rand::{RngExt, seq::IndexedRandom};
 use crate::{
     DiscordCommand, DiscordContext,
     commands::{DiscordCommandError, DiscordCommandProvider},
-    error::MuniBotError,
+    error::MunibotDiscordError,
 };
 
 pub struct DiceHandler;
@@ -36,7 +36,7 @@ async fn roll(
     ctx: DiscordContext<'_>,
     #[description = "number of sides on the die you want to roll"] sides: u8,
     #[description = "specify what you're rolling for"] purpose: Option<String>,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotDiscordError> {
     let mut builder = MessageBuilder::new();
     if let Some(p) = purpose {
         builder.push(format!("rolling {p}: "));

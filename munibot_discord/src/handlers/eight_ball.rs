@@ -4,7 +4,7 @@ use rand::seq::IndexedRandom;
 use crate::{
     DiscordCommand, DiscordContext,
     commands::{DiscordCommandError, DiscordCommandProvider},
-    error::MuniBotError,
+    error::MunibotDiscordError,
 };
 
 pub struct EightBallProvider;
@@ -30,7 +30,7 @@ impl EightBallProvider {
 async fn eight_ball(
     ctx: DiscordContext<'_>,
     #[description = "A yes-or-no question about the future."] question: String,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotDiscordError> {
     let shake_message = EightBallProvider::get_shake_message();
     let eight_ball_response = EightBallProvider::get_response();
     let message = MessageBuilder::new()

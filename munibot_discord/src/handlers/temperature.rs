@@ -1,7 +1,7 @@
 use munibot_core::error::MuniBotError as CoreError;
 
 use crate::{
-    DiscordCommand, DiscordContext, commands::DiscordCommandProvider, error::MuniBotError,
+    DiscordCommand, DiscordContext, commands::DiscordCommandProvider, error::MunibotDiscordError,
 };
 
 pub struct TemperatureConversionProvider;
@@ -11,7 +11,7 @@ pub struct TemperatureConversionProvider;
 async fn convert_temperature(
     ctx: DiscordContext<'_>,
     #[description = "temperature to convert, ending in 'F' or 'C'"] temperature: String,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotDiscordError> {
     let temperature = temperature.to_string().trim().to_lowercase();
 
     let quantity = temperature

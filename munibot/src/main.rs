@@ -8,7 +8,7 @@ use munibot_core::{
 use munibot_discord::{
     DiscordMessageHandlerCollection,
     commands::DiscordCommandProviderCollection,
-    error::MuniBotError,
+    error::MunibotDiscordError,
     handlers::{
         bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
         greeting::GreetingHandler as DiscordGreetingHandler,
@@ -32,7 +32,7 @@ struct Args {
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
-async fn main() -> Result<(), Box<MuniBotError>> {
+async fn main() -> Result<(), Box<MunibotDiscordError>> {
     dotenvy::dotenv().ok();
 
     // initialize the tracing subscriber with an env filter, bridging any
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<MuniBotError>> {
     );
 
     let config = Config::read_or_write_default_from(&args.config_file)
-        .map_err(|e| Box::new(MuniBotError::Core(*e)))?;
+        .map_err(|e| Box::new(MunibotDiscordError::Core(*e)))?;
 
     // first things first, perform database migrations
     run_pending_migrations().await;

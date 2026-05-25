@@ -5,7 +5,7 @@ use tokio::time::sleep;
 use crate::{
     DiscordCommand, DiscordContext,
     commands::{DiscordCommandError, DiscordCommandProvider},
-    error::MuniBotError,
+    error::MunibotDiscordError,
     state::DiscordState,
 };
 
@@ -85,7 +85,7 @@ impl BotAffectionProvider {
         ctx: DiscordContext<'_>,
         prefixes: ResponseSelection<'_>,
         actions: ResponseSelection<'_>,
-    ) -> Result<(), MuniBotError> {
+    ) -> Result<(), MunibotDiscordError> {
         ctx.say(Self::get_generic_response(prefixes, actions))
             .await
             .map_err(|e| DiscordCommandError {
@@ -104,7 +104,9 @@ fn get_str_or_empty(mut rng: impl Rng, s: &str, p: f64) -> &str {
 
 /// Boop the bot!
 #[poise::command(slash_command, prefix_command)]
-async fn boop(ctx: poise::Context<'_, DiscordState, MuniBotError>) -> Result<(), MuniBotError> {
+async fn boop(
+    ctx: poise::Context<'_, DiscordState, MunibotDiscordError>,
+) -> Result<(), MunibotDiscordError> {
     // rarely throw a fake error message
     if rand::rng().random_bool(BOOP_ERROR_CHANCE) {
         ctx.say(
@@ -141,7 +143,7 @@ async fn boop(ctx: poise::Context<'_, DiscordState, MuniBotError>) -> Result<(),
 
 /// Pat the bot! >w<
 #[poise::command(slash_command, prefix_command)]
-async fn pat(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn pat(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     BotAffectionProvider::handle_generic_affection(
         ctx,
         ResponseSelection::Always(&PAT_PREFIXES),
@@ -152,7 +154,7 @@ async fn pat(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 
 /// Hug the bot! <3
 #[poise::command(slash_command, prefix_command)]
-async fn hug(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn hug(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     BotAffectionProvider::handle_generic_affection(
         ctx,
         ResponseSelection::Always(&HUG_PREFIXES),
@@ -163,7 +165,7 @@ async fn hug(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 
 /// Bite the bot! >:3
 #[poise::command(slash_command, prefix_command)]
-async fn bite(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn bite(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     BotAffectionProvider::handle_generic_affection(
         ctx,
         ResponseSelection::Always(&BITE_PREFIXES),

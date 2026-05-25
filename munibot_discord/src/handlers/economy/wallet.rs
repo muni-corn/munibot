@@ -5,7 +5,7 @@ use munibot_core::{
 use poise::serenity_prelude::{GuildId, UserId};
 use thiserror::Error;
 
-use crate::error::MuniBotError;
+use crate::error::MunibotDiscordError;
 
 #[derive(Debug)]
 pub struct Wallet {
@@ -71,7 +71,7 @@ pub enum WalletError {
     InsufficientFunds,
 }
 
-impl From<WalletError> for MuniBotError {
+impl From<WalletError> for MunibotDiscordError {
     fn from(e: WalletError) -> Self {
         Self::Core(CoreError::Other(format!("{e}")))
     }

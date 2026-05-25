@@ -7,7 +7,7 @@ use poise::serenity_prelude::{GuildId, UserId};
 use thiserror::Error;
 
 use super::wallet::{Wallet, WalletError};
-use crate::error::MuniBotError;
+use crate::error::MunibotDiscordError;
 
 const PAYOUT_INTERVAL: chrono::Duration = chrono::Duration::milliseconds(1000 * 60 * 5);
 
@@ -117,7 +117,7 @@ pub enum PayoutError {
     NothingToClaim,
 }
 
-impl From<PayoutError> for MuniBotError {
+impl From<PayoutError> for MunibotDiscordError {
     fn from(e: PayoutError) -> Self {
         Self::Core(CoreError::Other(format!("{e}")))
     }

@@ -8,7 +8,7 @@ use poise::serenity_prelude::{Cache, Http, Result};
 use tokio::sync::Mutex;
 
 use crate::{
-    autodelete::AutoDeleteHandler, error::MuniBotError, handler::DiscordEventHandler,
+    autodelete::AutoDeleteHandler, error::MunibotDiscordError, handler::DiscordEventHandler,
     handlers::logging::LoggingHandler,
 };
 
@@ -62,7 +62,7 @@ impl DiscordState {
         db: DbPool,
         http: Arc<Http>,
         cache: Arc<Cache>,
-    ) -> Result<Self, MuniBotError> {
+    ) -> Result<Self, MunibotDiscordError> {
         let global_access = GlobalAccess { db, http, cache };
 
         // add the logging handler to the list of handlers

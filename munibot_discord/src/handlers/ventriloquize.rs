@@ -5,7 +5,8 @@ use tokio::time::sleep;
 use tracing::{Instrument, error, info_span, instrument};
 
 use crate::{
-    DiscordContext, commands::DiscordCommandProvider, error::MuniBotError, state::DiscordState,
+    DiscordContext, commands::DiscordCommandProvider, error::MunibotDiscordError,
+    state::DiscordState,
 };
 
 pub struct VentriloquizeProvider;
@@ -19,7 +20,7 @@ pub struct VentriloquizeProvider;
 async fn ventriloquize<'a, 'b: 'a>(
     ctx: DiscordContext<'b>,
     message: String,
-) -> Result<(), MuniBotError> {
+) -> Result<(), MunibotDiscordError> {
     let channel_id = ctx.channel_id();
     let http = ctx.serenity_context().http.to_owned();
 
@@ -53,12 +54,12 @@ async fn ventriloquize<'a, 'b: 'a>(
 }
 
 impl DiscordCommandProvider for VentriloquizeProvider {
-    fn commands(&self) -> Vec<Command<DiscordState, MuniBotError>> {
+    fn commands(&self) -> Vec<Command<DiscordState, MunibotDiscordError>> {
         vec![ventriloquize()]
     }
 }
 
-async fn is_ventriloquist(ctx: DiscordContext<'_>) -> Result<bool, MuniBotError> {
+async fn is_ventriloquist(ctx: DiscordContext<'_>) -> Result<bool, MunibotDiscordError> {
     let author_id = ctx.author().id.get();
     Ok(ctx.data().config.ventriloquists.contains(&author_id))
 }

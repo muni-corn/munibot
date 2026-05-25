@@ -14,7 +14,7 @@ use strum::EnumString;
 use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 use tracing::{Instrument, debug, error, info, info_span, instrument, warn};
 
-use crate::{error::MuniBotError, handlers::logging::LoggingHandler, state::GlobalAccess};
+use crate::{error::MunibotDiscordError, handlers::logging::LoggingHandler, state::GlobalAccess};
 
 #[derive(Debug)]
 pub struct AutoDeleteHandler {
@@ -31,7 +31,7 @@ impl AutoDeleteHandler {
     pub async fn new(
         global_access: GlobalAccess,
         logging: Arc<Mutex<LoggingHandler>>,
-    ) -> Result<Self, MuniBotError> {
+    ) -> Result<Self, MunibotDiscordError> {
         let mut timers = HashMap::new();
 
         let db_records = operations::get_all_autodelete_timers(global_access.db())
