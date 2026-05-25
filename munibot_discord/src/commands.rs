@@ -5,6 +5,8 @@ use std::{
 
 use crate::DiscordCommand;
 
+pub mod fox;
+
 pub trait DiscordCommandProvider: Send {
     fn commands(&self) -> Vec<DiscordCommand>;
 }

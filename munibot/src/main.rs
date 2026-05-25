@@ -7,7 +7,7 @@ use munibot_core::{
 };
 use munibot_discord::{
     DiscordMessageHandlerCollection,
-    commands::DiscordCommandProviderCollection,
+    commands::{DiscordCommandProviderCollection, fox::FoxCommandProvider},
     error::MunibotDiscordError,
     handlers::{
         bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
@@ -134,6 +134,7 @@ fn start_discord(config: Config) -> tokio::task::JoinHandle<()> {
         Box::new(EconomyProvider),
         Box::new(TemperatureConversionProvider),
         Box::new(SimpleCommandProvider),
+        Box::new(FoxCommandProvider),
     ];
 
     // attach a root span so all events from within the discord integration
