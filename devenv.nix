@@ -21,8 +21,6 @@ let
   ];
 in
 {
-  dotenv.enable = true;
-
   enterTest = ''
     cargo test
   '';
