@@ -3,7 +3,7 @@ resolver = "3"
 members = ["munibot", "munibot_core", "munibot_discord", "munibot_twitch"]
 
 [workspace.package]
-version = "0.2.4"
+version = "0.3.0"
 edition = "2024"
 authors = ["municorn <municorn@musicaloft.com>"]
 license = "GPL-3.0-or-later"
