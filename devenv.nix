@@ -76,6 +76,34 @@ in
 
   outputs.default =
     let
+      # Bypass devenv's config.languages.rust.import, which assumes a single
+      # root crate and fails for workspaces (cachix/devenv#2672). Instead,
+      # call crate2nix directly and access the workspace member by name.
+      crate2nixInput = config.lib.getInput {
+        name = "crate2nix";
+        url = "github:nix-community/crate2nix";
+        attribute = "outputs.default";
+        follows = [ "nixpkgs" ];
+      };
+
+      crate2nixTools = pkgs.callPackage "${crate2nixInput}/tools.nix" { };
+
+      cargoNix =
+        pkgs.callPackage
+          (crate2nixTools.generatedCargoNix {
+            name = pname;
+            src = ./.;
+          })
+          {
+            # use the same nightly toolchain configured for the dev shell
+            buildRustCrateForPkgs =
+              _:
+              pkgs.buildRustCrate.override {
+                rustc = config.languages.rust.toolchainPackage;
+                cargo = config.languages.rust.toolchainPackage;
+              };
+          };
+
       args = {
         crateOverrides = pkgs.defaultCrateOverrides // {
           # libressl provides openssl.pc; give openssl-sys explicit access
@@ -104,6 +132,13 @@ in
           munibot_core = _attrs: {
             inherit buildInputs nativeBuildInputs;
             LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+            # embed_migrations! resolves "../migrations" relative to the build
+            # dir, but crate2nix unpacks each crate in isolation. symlink the
+            # workspace migrations folder into the parent build directory so the
+            # relative path works correctly.
+            preBuild = ''
+              ln -s ${./migrations} ../migrations
+            '';
           };
 
           munibot_discord = _attrs: {
@@ -118,5 +153,5 @@ in
         };
       };
     in
-    config.languages.rust.import ./. args;
+    cargoNix.workspaceMembers.${pname}.build.override args;
 }
