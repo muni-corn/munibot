@@ -181,7 +181,7 @@ async fn boop(
 
 /// Nuzzle the good bot!
 #[poise::command(slash_command, prefix_command)]
-async fn nuzzle(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn nuzzle(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     BotAffectionProvider::handle_generic_affection(
         ctx,
         ResponseSelection::Rare(&NUZZLE_PREFIXES, 0.5),
@@ -192,9 +192,9 @@ async fn nuzzle(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 
 /// Smooch the bot ;3
 #[poise::command(slash_command, prefix_command)]
-async fn kiss(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn kiss(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     // VERY rarely will the bot smooch back.
-    if rand::thread_rng().gen_bool(0.00001) {
+    if rand::rng().random_bool(0.00001) {
         ctx.say("*smooches back~*")
             .await
             .map_err(|e| DiscordCommandError {
@@ -247,7 +247,7 @@ async fn bite(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
 
 /// Lick the bot... for whatever reason.
 #[poise::command(slash_command, prefix_command)]
-async fn lick(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
+async fn lick(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     BotAffectionProvider::handle_generic_affection(
         ctx,
         ResponseSelection::Always(&LICK_PREFIXES),
