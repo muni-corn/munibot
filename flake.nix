@@ -26,10 +26,7 @@
 
     mk-shell-bin.url = "github:rrbutani/nix-mk-shell-bin";
 
-    musicaloft-shell = {
-      url = "github:musicaloft/musicaloft-shell/devenv";
-      flake = false;
-    };
+    musicaloft-shell.url = "github:musicaloft/musicaloft-shell";
 
     nix2container = {
       url = "github:nlewo/nix2container";
