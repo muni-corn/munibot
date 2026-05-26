@@ -258,7 +258,7 @@ async fn lick(ctx: DiscordContext<'_>) -> Result<(), MuniBotError> {
 
 impl DiscordCommandProvider for BotAffectionProvider {
     fn commands(&self) -> Vec<DiscordCommand> {
-        vec![boop(), pat(), hug(), bite()]
+        vec![boop(), nuzzle(), kiss(), pat(), hug(), bite(), lick()]
     }
 }
 
