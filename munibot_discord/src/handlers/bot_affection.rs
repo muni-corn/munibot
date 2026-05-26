@@ -28,17 +28,28 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace";
 const PAT_PREFIXES: [&str; 3] = ["eep!", "hehe!", "meep!"];
 const PAT_ACTIONS: [&str; 4] = ["leans into pats", "happy bot noises", "purrs", "is patted"];
 
-const HUG_PREFIXES: [&str; 4] = ["❤❤❤~", "hehe! love ya too~", "hehe~", "huggleeee~"];
-const HUG_ACTIONS: [&str; 6] = [
+const HUG_PREFIXES: [&str; 5] = [
+    "❤❤❤~",
+    "hehe! love ya too~",
+    "hehe~",
+    "huggleeee~",
+    "hugs hugs hugs!!",
+];
+const HUG_ACTIONS: [&str; 11] = [
     "hugs back",
     "returns hugs",
     "returns soft hugs",
     "snuggles",
     "huggles",
     "gibs hugs",
+    "wraps hooves around you",
+    "nuzzles",
+    "wraps you up with snugs",
+    "hugs warmly",
+    "squeezes you tightly",
 ];
 
-const KISS_PREFIXES: [&str; 8] = [
+const KISS_PREFIXES: [&str; 12] = [
     "oh!",
     "meep~!",
     "uwu~",
@@ -47,22 +58,34 @@ const KISS_PREFIXES: [&str; 8] = [
     "owo th-thank you~",
     "h-huh??",
     "oh my!",
+    "you--!",
+    "what?!",
+    "eek~!",
+    "/)///(\\\\",
 ];
-const KISS_ACTIONS: [&str; 5] = [
+const KISS_ACTIONS: [&str; 7] = [
     "blushes",
     "blushyblush",
     "giggles",
     "hides face",
-    "/)///(\\\\",
+    "wiggle wiggle",
+    "glitchyglitch",
+    "swishes tail",
 ];
 
-const BITE_PREFIXES: [&str; 6] = [
+const BITE_PREFIXES: [&str; 12] = [
     "OW",
     "OWIE",
     "OUCH >.<",
     "HEY D:<",
+    "STOP",
+    "STOP THAT qmq",
+    "STOP IT",
+    "NO >:c",
     "ow!! i hope that was a love bite >:c",
-    "OW. why do i even have pain receptors ;-;",
+    "OW.",
+    "OUCH.",
+    "AAAAA",
 ];
 const BITE_ACTIONS: [&str; 4] = [
     "lightly nomfs back",
@@ -71,15 +94,25 @@ const BITE_ACTIONS: [&str; 4] = [
     "bites back",
 ];
 
-const LICK_PREFIXES: [&str; 8] = [
-    "oh--",
-    "uh...",
-    "h-hi.",
-    "c-can i help you?",
-    "is there something you want?",
-    "oh my...",
+const LICK_PREFIXES: [&str; 18] = [
+    "*gently places a hoof on you. for distance.*",
     "...do i taste good to you?",
     "...well i hope i at least taste good",
+    "c-can i help you?",
+    "d-don't...",
+    "did... did you mean to kiss me?",
+    "do i... do i lick you back??",
+    "h-hi.",
+    "ick.",
+    "is there something you want?",
+    "is this normal for you?",
+    "oh my...",
+    "oh--",
+    "oh... oh my.",
+    "this doesn't feel normal.",
+    "uh...",
+    "what do you want?!",
+    "wow.",
 ];
 
 const CHANCE_OF_EXCLAMATION: f64 = 0.5;
