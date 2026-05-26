@@ -12,6 +12,7 @@ impl DiscordCommandProvider for FoxCommandProvider {
     }
 }
 
+/// See a random fox image!
 #[poise::command(slash_command, prefix_command)]
 pub async fn fox(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
     let response = api::get_fox().await.map_err(|e| DiscordCommandError {
