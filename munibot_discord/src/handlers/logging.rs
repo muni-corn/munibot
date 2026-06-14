@@ -452,7 +452,7 @@ impl DiscordEventHandler for LoggingHandler {
                 old_if_available,
                 new,
                 event,
-            } => handle_message_update(send, old_if_available, new, event).await,
+            } => handle_message_update(send, old_if_available, new, event, &self.pluralkit).await,
 
             FullEvent::ReactionRemove { removed_reaction } => {
                 if let Some(guild_id) = removed_reaction.guild_id {
@@ -822,6 +822,7 @@ async fn handle_message_update<F, X>(
     old_if_available: &Option<Message>,
     new: &Option<Message>,
     event: &MessageUpdateEvent,
+    pluralkit: &PkClient,
 ) -> Result<(), DiscordHandlerError>
 where
     F: Fn(GuildId, CreateEmbed) -> X,
@@ -833,8 +834,20 @@ where
     {
         let mut msg_builder = MessageBuilder::new();
 
-        // add author mention, if available
-        if let Some(author) = &event.author {
+        // if this is a webhook message, look up whether it's a pluralkit proxy so
+        // we can attribute the edit to the real member instead of the webhook
+        let pk_result = if new.webhook_id.is_some() {
+            Some(pluralkit.lookup_message(&new.id.to_string(), false).await)
+        } else {
+            None
+        };
+
+        // add author mention, if available; prefer pk member info for proxy edits
+        if let Some(PkLookup::Proxied(ref pk_msg)) = pk_result {
+            if let Some(member) = &pk_msg.member {
+                msg_builder.push(format!("from {} ", member.display()));
+            }
+        } else if let Some(author) = &event.author {
             msg_builder.push(format!("from {} ", author.mention()));
         }
 
@@ -847,10 +860,15 @@ where
 
         let msg = msg_builder.build().trim().to_owned();
 
-        let fields = vec![
+        let mut fields = vec![
             ("old".into(), old.content.clone(), false),
             ("new".into(), new.content.clone(), false),
         ];
+
+        // enrich with pk member and sender info for proxy edits
+        if let Some(PkLookup::Proxied(ref pk_msg)) = pk_result {
+            fields.push(("proxied by".into(), pk_proxy_info(pk_msg), false));
+        }
 
         send(guild_id, embed_with_fields("message edited", &msg, fields)).await
     } else {
