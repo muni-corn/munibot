@@ -85,7 +85,7 @@ pub enum TwitchAgentError {
     CredentialsError(String),
     MissingCredentials,
     ReqwestError(reqwest::Error),
-    HelixRequestError(ClientRequestError<reqwest::Error>),
+    HelixRequestError(Box<ClientRequestError<reqwest::Error>>),
     Other(String),
 }
 
@@ -97,7 +97,7 @@ impl From<reqwest::Error> for TwitchAgentError {
 
 impl From<ClientRequestError<reqwest::Error>> for TwitchAgentError {
     fn from(e: ClientRequestError<reqwest::Error>) -> Self {
-        Self::HelixRequestError(e)
+        Self::HelixRequestError(Box::new(e))
     }
 }
 

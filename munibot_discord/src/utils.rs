@@ -23,6 +23,9 @@ pub async fn display_name_from_command_context(ctx: DiscordContext<'_>) -> Strin
     }
 }
 
+// serenity::Error is an external type we can't shrink, so the large-err lint is
+// not actionable here
+#[allow(clippy::result_large_err)]
 pub async fn display_name_from_ids(
     http: &Http,
     user_id: UserId,
