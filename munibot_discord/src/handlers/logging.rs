@@ -15,6 +15,7 @@ use tracing::{debug, error, instrument};
 use crate::{
     DiscordFrameworkContext,
     handler::{DiscordEventHandler, DiscordHandlerError},
+    pluralkit::PkClient,
     state::GlobalAccess,
 };
 
@@ -33,6 +34,11 @@ pub struct LoggingHandler {
     /// messages to ignore logs for, to be used with things like autodelete to
     /// prevent log spam
     ignored_messages: HashSet<MessageId>,
+
+    /// client for the pluralkit api, used to suppress or enrich logs for
+    /// proxied messages
+    #[allow(dead_code)]
+    pluralkit: PkClient,
 
     access: GlobalAccess,
 }
@@ -576,6 +582,7 @@ impl LoggingHandler {
         Self {
             pauses: Default::default(),
             ignored_messages: HashSet::new(),
+            pluralkit: PkClient::new(),
             access,
         }
     }
