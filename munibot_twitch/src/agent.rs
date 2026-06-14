@@ -16,7 +16,7 @@ pub struct TwitchAgent<'a> {
 
 impl<'a> TwitchAgent<'a> {
     pub fn new(auth: TwitchAuth) -> Self {
-        let helix_client = HelixClient::default();
+        let helix_client = HelixClient::with_client(reqwest::Client::new());
         Self { helix_client, auth }
     }
 
