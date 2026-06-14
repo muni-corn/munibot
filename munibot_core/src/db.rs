@@ -22,8 +22,8 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
 
 /// Creates a new database connection pool using the `DATABASE_URL` environment
 /// variable.
-#[instrument(skip_all)]
-pub async fn establish_pool() -> Result<DbPool, Box<dyn std::error::Error + Send + Sync>> {
+#[instrument]
+pub async fn establish_pool() -> anyhow::Result<DbPool> {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     let config = AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(&database_url);
