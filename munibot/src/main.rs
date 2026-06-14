@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<MunibotDiscordError>> {
         .map_err(|e| Box::new(MunibotDiscordError::Core(*e)))?;
 
     // first things first, perform database migrations
-    run_pending_migrations().await;
+    run_pending_migrations();
 
     let discord_handle = start_discord(config.clone());
 

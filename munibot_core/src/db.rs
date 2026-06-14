@@ -33,8 +33,8 @@ pub async fn establish_pool() -> Result<DbPool, Box<dyn std::error::Error + Send
 }
 
 /// Runs all pending embedded migrations against the database at `DATABASE_URL`.
-#[instrument(skip_all)]
-pub async fn run_pending_migrations() {
+#[instrument]
+pub fn run_pending_migrations() {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     // run migrations
