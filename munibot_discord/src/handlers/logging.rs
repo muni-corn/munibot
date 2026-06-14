@@ -3,6 +3,7 @@ use std::{
     future::Future,
 };
 
+use chrono::Utc;
 use munibot_core::db::{DbPool, operations};
 use poise::serenity_prelude::{
     self as serenity, CacheHttp, ChannelId, CreateEmbed, CreateMessage, EmbedMessageBuilding,
@@ -15,7 +16,7 @@ use tracing::{debug, error, instrument};
 use crate::{
     DiscordFrameworkContext,
     handler::{DiscordEventHandler, DiscordHandlerError},
-    pluralkit::PkClient,
+    pluralkit::{PkClient, PkLookup},
     state::GlobalAccess,
 };
 
@@ -37,7 +38,6 @@ pub struct LoggingHandler {
 
     /// client for the pluralkit api, used to suppress or enrich logs for
     /// proxied messages
-    #[allow(dead_code)]
     pluralkit: PkClient,
 
     access: GlobalAccess,
@@ -338,6 +338,26 @@ impl DiscordEventHandler for LoggingHandler {
                         self.ignored_messages.remove(deleted_message_id);
 
                         return Ok(());
+                    }
+
+                    // the pluralkit api can only look up messages by original id within ~30
+                    // minutes of when they were sent, so we skip the api call for older messages
+                    let message_age = Utc::now() - deleted_message_id.created_at().to_utc();
+                    let within_pk_window = message_age < chrono::Duration::minutes(30);
+
+                    if within_pk_window {
+                        let pk_result = self
+                            .pluralkit
+                            .lookup_message(&deleted_message_id.to_string(), true)
+                            .await;
+
+                        if let PkLookup::Proxied(pk_msg) = pk_result
+                            && pk_msg.original == deleted_message_id.to_string()
+                        {
+                            // this is the original trigger message that pluralkit deleted
+                            // immediately after creating its proxy — suppress the log entirely
+                            return Ok(());
+                        }
                     }
 
                     let mut msg = MessageBuilder::new();
