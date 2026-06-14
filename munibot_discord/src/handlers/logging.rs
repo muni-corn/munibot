@@ -16,7 +16,7 @@ use tracing::{debug, error, instrument};
 use crate::{
     DiscordFrameworkContext,
     handler::{DiscordEventHandler, DiscordHandlerError},
-    pluralkit::{PkClient, PkLookup},
+    pluralkit::{PkClient, PkLookup, models::PkMessage},
     state::GlobalAccess,
 };
 
@@ -345,20 +345,34 @@ impl DiscordEventHandler for LoggingHandler {
                     let message_age = Utc::now() - deleted_message_id.created_at().to_utc();
                     let within_pk_window = message_age < chrono::Duration::minutes(30);
 
-                    if within_pk_window {
-                        let pk_result = self
-                            .pluralkit
-                            .lookup_message(&deleted_message_id.to_string(), true)
-                            .await;
+                    // look up the deleted message in pluralkit to detect proxy deletions
+                    let pk_result = if within_pk_window {
+                        Some(
+                            self.pluralkit
+                                .lookup_message(&deleted_message_id.to_string(), true)
+                                .await,
+                        )
+                    } else {
+                        None
+                    };
 
-                        if let PkLookup::Proxied(pk_msg) = pk_result
-                            && pk_msg.original == deleted_message_id.to_string()
-                        {
-                            // this is the original trigger message that pluralkit deleted
-                            // immediately after creating its proxy — suppress the log entirely
-                            return Ok(());
-                        }
+                    if let Some(PkLookup::Proxied(ref pk_msg)) = pk_result
+                        && pk_msg.original == deleted_message_id.to_string()
+                    {
+                        // this is the original trigger message that pluralkit deleted
+                        // immediately after creating its proxy; suppress the log entirely
+                        return Ok(());
                     }
+
+                    // if this was the proxy webhook message being explicitly deleted, carry
+                    // the pk data forward to enrich the log embed with member info
+                    let pk_proxy_deletion = if let Some(PkLookup::Proxied(ref pk_msg)) = pk_result
+                        && pk_msg.id == deleted_message_id.to_string()
+                    {
+                        Some(pk_msg)
+                    } else {
+                        None
+                    };
 
                     let mut msg = MessageBuilder::new();
                     let mut fields = vec![];
@@ -388,6 +402,12 @@ impl DiscordEventHandler for LoggingHandler {
                             .push(
                                 " was deleted. there is no cache to retrieve message content from.",
                             );
+                    }
+
+                    // if this deletion was of a pluralkit proxy message, enrich the embed
+                    // with the proxying member and system so moderators can identify the author
+                    if let Some(pk_msg) = pk_proxy_deletion {
+                        fields.push(("proxied by".into(), pk_proxy_info(pk_msg), false));
                     }
 
                     send(
@@ -773,6 +793,28 @@ fn embed_with_fields(
     }
 
     embed
+}
+
+/// Formats a human-readable description of who proxied a message for use in
+/// log embed fields. Shows member display name, system name if available, and
+/// the original sender's Discord mention.
+fn pk_proxy_info(pk_msg: &PkMessage) -> String {
+    let mut parts = vec![];
+
+    if let Some(member) = &pk_msg.member {
+        if let Some(system) = &pk_msg.system {
+            let system_name = system.name.as_deref().unwrap_or(&system.id);
+            parts.push(format!("{} ({})", member.display(), system_name));
+        } else {
+            parts.push(member.display().to_owned());
+        }
+    }
+
+    // always include the original sender's mention so moderators can identify
+    // the account even if the member/system has been deleted
+    parts.push(format!("sent by <@{}>", pk_msg.sender));
+
+    parts.join(" • ")
 }
 
 async fn handle_message_update<F, X>(
