@@ -703,11 +703,11 @@
     "musicaloft-shell_2": {
       "flake": false,
       "locked": {
-        "lastModified": 1780674958,
-        "narHash": "sha256-J7DR63zkHTKN8yUCuw4aLrSLNSOj9u7eLFEx7TGqg1M=",
+        "lastModified": 1781655077,
+        "narHash": "sha256-Ot4a2bFfD6RCyxSW6EoFdvShBc9Rh1tqRSl3/U+Jxh8=",
         "owner": "musicaloft",
         "repo": "musicaloft-shell",
-        "rev": "d9b77eb838ca17a0555494b2142e7cad4b6b20a9",
+        "rev": "8a4ccd8975d85962081b16e5aba8bf07b3e9fc3e",
         "type": "github"
       },
       "original": {
