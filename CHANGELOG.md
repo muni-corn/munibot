@@ -1,5 +1,34 @@
 # Changelog
 
+## **v0.3.2**
+
+### new features
+
+- **discord:** enrich proxied message edit logs
+- **discord:** enrich proxied message deletion logs
+- **discord:** suppress pluralkit proxy-trigger deletions
+- **discord:** construct pluralkit client in logging handler
+- **discord:** add pluralkit api client
+- **bot_affection:** expand affection response options
+
+### bug fixes
+
+- box large error variants to resolve clippy result_large_err
+- **agent:** use explicit reqwest client for helix initialization
+- **bot_affection:** update error types and random generation after reverts
+
+### build system
+
+- **devenv:** use crate2nix directly for workspace support
+
+### documentation
+
+- note pluralkit compatibility behavior and caveats
+- **fox:** add documentation comment to fox command
+- fix typo in changelog
+
+---
+
 ## **v0.3.1**
 
 ---
@@ -177,7 +206,7 @@
 - introduce GlobalAccess type
 - **discord:** add LoggingHandler in DiscordState
 - **discord:** improve some error messages
-- **admin:** allow setting logging channel to current by omission
+- **admin:** allow setting logging channel to current by ommission
 - add basic vc greeter functionality
 - allow for missing log channels without errors
 - skip launching twitch integration if misconfigured
