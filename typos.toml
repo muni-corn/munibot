@@ -1,1 +1,1 @@
-files.extend-exclude = ["*.surql"]
+files.extend-exclude = ["*.surql", "CHANGELOG.md"]
