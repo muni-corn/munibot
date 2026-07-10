@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::pages::home::Home;
+use crate::pages::{dashboard::Dashboard, home::Home};
 
 /// Application root — mounts the router and injects global head elements.
 #[component]
@@ -30,6 +30,8 @@ pub enum Route {
     #[layout(MainLayout)]
         #[route("/")]
         Home,
+        #[route("/dashboard")]
+        Dashboard,
     #[end_layout]
 
     // catch-all — must be outside the layout so 404 is not wrapped
