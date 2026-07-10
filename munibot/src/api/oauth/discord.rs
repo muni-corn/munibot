@@ -139,3 +139,49 @@ pub async fn get_current_user(access_token: &str) -> Result<DiscordUser, Discord
         .json::<DiscordUser>()
         .await?)
 }
+
+/// The `MANAGE_GUILD` permission bit, per discord's permissions bitfield.
+const MANAGE_GUILD: u64 = 0x20;
+
+/// A guild (server) the user is a member of, as returned by
+/// `/users/@me/guilds`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscordGuild {
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub owner: bool,
+    /// Stringified permission bitfield for this user in this guild.
+    pub permissions: String,
+}
+
+impl DiscordGuild {
+    /// Whether this user owns or can manage (i.e. administrate) this guild.
+    pub fn is_administered_by_user(&self) -> bool {
+        self.owner
+            || self
+                .permissions
+                .parse::<u64>()
+                .is_ok_and(|bits| bits & MANAGE_GUILD != 0)
+    }
+
+    /// This guild's full icon URL, if it has one set.
+    pub fn icon_url(&self) -> Option<String> {
+        self.icon
+            .as_ref()
+            .map(|hash| format!("https://cdn.discordapp.com/icons/{}/{hash}.png", self.id))
+    }
+}
+
+/// Fetches the guilds the user who owns `access_token` is a member of.
+pub async fn get_current_user_guilds(
+    access_token: &str,
+) -> Result<Vec<DiscordGuild>, DiscordOAuthError> {
+    Ok(reqwest::Client::new()
+        .get(format!("{API_BASE}/users/@me/guilds"))
+        .bearer_auth(access_token)
+        .send()
+        .await?
+        .json::<Vec<DiscordGuild>>()
+        .await?)
+}
