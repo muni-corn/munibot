@@ -2,6 +2,9 @@ use dioxus::{fullstack::AsStatusCode, prelude::*};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[cfg(feature = "server")]
+pub mod server;
+
 /// User data safe to send to and render on the client.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct UserData {
