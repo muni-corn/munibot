@@ -48,6 +48,24 @@ diesel::table! {
 }
 
 diesel::table! {
+    linked_accounts (id) {
+        id -> Bigint,
+        user_id -> Bigint,
+        #[max_length = 32]
+        provider -> Varchar,
+        #[max_length = 64]
+        provider_user_id -> Varchar,
+        #[max_length = 255]
+        username -> Varchar,
+        access_token -> Text,
+        refresh_token -> Nullable<Text>,
+        token_expires_at -> Nullable<Datetime>,
+        created_at -> Datetime,
+        updated_at -> Datetime,
+    }
+}
+
+diesel::table! {
     quotes (id) {
         id -> Bigint,
         community_id -> Bigint,
@@ -63,6 +81,18 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    users (id) {
+        id -> Bigint,
+        #[max_length = 255]
+        display_name -> Varchar,
+        #[max_length = 255]
+        avatar_url -> Nullable<Varchar>,
+        created_at -> Datetime,
+    }
+}
+
+diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -71,5 +101,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     guild_configs,
     guild_payouts,
     guild_wallets,
+    linked_accounts,
     quotes,
+    users,
 );
