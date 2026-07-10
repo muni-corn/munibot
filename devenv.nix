@@ -44,11 +44,10 @@ in
   languages.rust = {
     enable = true;
     channel = "nightly";
-    mold.enable = true;
-    # add wasm target for web gui
+    # mold.enable is off: it sets RUSTFLAGS=-C link-arg=-fuse-ld=mold
+    # globally, which breaks the wasm32-unknown-unknown build (rust-lld
+    # doesn't understand -fuse-ld, since wasm has no cc-style linker driver)
     targets = [ "wasm32-unknown-unknown" ];
-    # embed rpath so dev binaries find dynamic libs without LD_LIBRARY_PATH
-    rustflags = "-C link-args=-Wl,-rpath,${pkgs.lib.makeLibraryPath buildInputs}";
   };
 
   packages =
