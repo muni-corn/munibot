@@ -1,10 +1,15 @@
 {
   config,
+  lib,
   pkgs,
   ...
 }:
 let
   pname = "munibot";
+
+  # the dioxus crate lives in its own directory, not the workspace root, so
+  # dx/tailwind need to be run from there
+  guiRoot = "${config.git.root}/munibot";
 
   # runtime dependencies
   buildInputs = with pkgs; [
@@ -32,6 +37,8 @@ in
   env = {
     RUST_LOG = "error,munibot=debug,munibot_core=debug,munibot_discord=debug,munibot_twitch=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+    # matches the redirect URI registered with discord for local development
+    PORT = 8080;
   };
 
   languages.rust = {
@@ -49,6 +56,7 @@ in
     [
       diesel-cli
       flyctl
+      tailwindcss_4
       wasm-bindgen-cli_0_2_122
     ]
     ++ buildInputs
@@ -77,6 +85,36 @@ in
       { name = "munibot"; }
       { name = "munibot_test"; }
     ];
+  };
+
+  # backs gui login sessions (see munibot/src/api/auth)
+  services.redis.enable = true;
+
+  processes = {
+    tailwind = {
+      exec = "${lib.getExe pkgs.tailwindcss_4} -i ./tailwind.css -o ./assets/tailwind.css";
+      cwd = guiRoot;
+      watch = {
+        # watch the whole gui crate so tailwind rebuilds on any component change
+        paths = [ guiRoot ];
+        extensions = [
+          "css"
+          "rs"
+          "toml"
+        ];
+        ignore = [ "target" ];
+      };
+    };
+
+    dx-serve = {
+      exec = "secretspec run -- ${lib.getExe pkgs.dioxus-cli} serve";
+      cwd = guiRoot;
+      after = [
+        "devenv:processes:mysql"
+        "devenv:processes:redis"
+      ];
+      ready.http.get.port = 8080;
+    };
   };
 
   outputs.default =
