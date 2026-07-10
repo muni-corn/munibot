@@ -1,14 +1,16 @@
 use dioxus::prelude::*;
 
-use crate::api::server_fns::auth::get_authenticated_user;
+use crate::{api::server_fns::auth::get_authenticated_user, app::Route};
 
 /// Shows the current sign-in state: a "sign in with discord" link when
-/// signed out, or a greeting and a sign-out link when signed in.
+/// signed out, or a greeting, a link to the dashboard, and a sign-out link
+/// when signed in.
 ///
 /// `/auth/discord/authorize` and `/auth/logout` are plain server routes, not
-/// dioxus router routes, so these are ordinary `a` tags rather than `Link`s
+/// dioxus router routes, so those are ordinary `a` tags rather than `Link`s
 /// -- the browser needs to actually navigate (and follow discord's redirect
-/// chain), not perform a client-side route change.
+/// chain), not perform a client-side route change. `/dashboard` is a real
+/// dioxus route, so that one is a `Link`.
 #[component]
 pub fn AccountStatus() -> Element {
     let user = use_resource(get_authenticated_user);
@@ -18,6 +20,8 @@ pub fn AccountStatus() -> Element {
             let name = user.display_name.clone();
             rsx! {
                 span { "hi, {name}! ^-^ " }
+                Link { to: Route::Dashboard {}, "your servers" }
+                " · "
                 a { href: "/auth/logout", "sign out" }
             }
         }
