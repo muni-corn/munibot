@@ -1,9 +1,24 @@
 #[cfg(feature = "server")]
+use axum::Extension;
+#[cfg(feature = "server")]
+use axum_session::{SessionConfig, SessionLayer, SessionStore};
+#[cfg(feature = "server")]
+use axum_session_auth::{AuthConfig, AuthSessionLayer};
+#[cfg(feature = "server")]
+use axum_session_redispool::SessionRedisPool;
+#[cfg(feature = "server")]
 use clap::Parser;
 #[cfg(feature = "server")]
 use dioxus::prelude::*;
 #[cfg(feature = "server")]
-use munibot_core::{config::Config, db::run_pending_migrations};
+use munibot::api::auth::server::User;
+#[cfg(feature = "server")]
+use munibot_core::{
+    config::Config,
+    db::{establish_pool, run_pending_migrations},
+};
+#[cfg(feature = "server")]
+use redis_pool::RedisPool;
 #[cfg(feature = "server")]
 use tracing::info;
 #[cfg(feature = "server")]
@@ -60,8 +75,32 @@ async fn main() -> anyhow::Result<()> {
         info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }
 
+    // the gui's own db pool: sessions load the current user through this,
+    // and it's also injected as an Extension for server functions that need
+    // direct db access (e.g. fetching a linked account's oauth token)
+    let pool = establish_pool()
+        .await
+        .expect("couldn't establish database connection pool for the gui");
+
+    // login sessions live in redis, keyed by an opaque session id cookie
+    let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
+    let redis_client = redis::Client::open(redis_url).expect("couldn't create redis client");
+    let session_pool = SessionRedisPool::from(RedisPool::from(redis_client));
+    let session_store = SessionStore::<SessionRedisPool>::new(
+        Some(session_pool),
+        SessionConfig::default().with_table_name("munibot_sessions"),
+    )
+    .await?;
+
     let address = dioxus::cli_config::fullstack_address_or_localhost();
-    let app = axum::Router::new().serve_dioxus_application(ServeConfig::new(), munibot::app::App);
+    let app = axum::Router::new()
+        .serve_dioxus_application(ServeConfig::new(), munibot::app::App)
+        .layer(
+            AuthSessionLayer::<User, String, SessionRedisPool, _>::new(Some(pool.clone()))
+                .with_config(AuthConfig::<String>::default()),
+        )
+        .layer(SessionLayer::new(session_store))
+        .layer(Extension(pool));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "listening");
