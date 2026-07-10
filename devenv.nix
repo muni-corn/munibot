@@ -21,6 +21,10 @@ let
   ];
 in
 {
+  # pins dioxus-cli and wasm-bindgen-cli to match the versions the `dioxus`
+  # and `wasm-bindgen` crates resolve to in Cargo.lock
+  overlays = [ (import ./nix/dioxus-overlay.nix) ];
+
   enterTest = ''
     cargo test
   '';
@@ -45,6 +49,7 @@ in
     [
       diesel-cli
       flyctl
+      wasm-bindgen-cli_0_2_122
     ]
     ++ buildInputs
     ++ nativeBuildInputs
