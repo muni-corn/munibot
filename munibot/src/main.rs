@@ -1,18 +1,33 @@
+#[cfg(feature = "server")]
 use clap::Parser;
+#[cfg(feature = "server")]
+use dioxus::prelude::*;
+#[cfg(feature = "server")]
 use munibot_core::{config::Config, db::run_pending_migrations};
-use munibot_discord::error::MunibotDiscordError;
-use tracing::{error, info, warn};
+#[cfg(feature = "server")]
+use tracing::info;
+#[cfg(feature = "server")]
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
+#[cfg(feature = "server")]
 #[derive(Parser, Debug)]
 struct Args {
-    /// Path to a config file.
+    /// Path to a config file. Overridden by `MUNIBOT_CONFIG_FILE` if set,
+    /// since `dx serve` doesn't forward CLI args to the server binary.
     #[clap(short, long, default_value = "/etc/muni_bot/config.toml")]
     config_file: String,
 }
 
+// web entry point — dioxus handles hydration automatically
+#[cfg(not(feature = "server"))]
+fn main() {
+    dioxus::launch(munibot::app::App);
+}
+
+// server entry point: runs the discord/twitch bots alongside the gui server
+#[cfg(feature = "server")]
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
-async fn main() -> Result<(), Box<MunibotDiscordError>> {
+async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
     // initialize the tracing subscriber with an env filter, bridging any
@@ -24,38 +39,33 @@ async fn main() -> Result<(), Box<MunibotDiscordError>> {
         .init();
 
     let args = Args::parse();
+    let config_file = std::env::var("MUNIBOT_CONFIG_FILE").unwrap_or(args.config_file);
 
     info!(
         version = env!("CARGO_PKG_VERSION"),
-        config = %args.config_file,
+        config = %config_file,
         "starting munibot"
     );
 
-    let config = Config::read_or_write_default_from(&args.config_file)
-        .map_err(|e| Box::new(MunibotDiscordError::Core(*e)))?;
+    let config = Config::read_or_write_default_from(&config_file)?;
 
     // first things first, perform database migrations
     run_pending_migrations();
 
-    let discord_handle = munibot::bot::start_discord(config.clone());
-    let twitch_handle = munibot::bot::start_twitch(&config).await;
-
-    // wait for the discord bot to stop, if ever
-    match discord_handle.await {
-        Ok(_) => warn!("discord bot stopped o.o  this is probably not supposed to happen..."),
-        Err(e) => error!(error = %e, "discord bot died"),
+    // start the bots alongside the gui server, unless explicitly disabled for
+    // local gui development (so `dx serve` reloads don't reconnect discord)
+    if std::env::var("MUNIBOT_DISABLE_BOTS").is_err() {
+        munibot::bot::start(config.clone()).await;
+    } else {
+        info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }
 
-    if let Some(twitch_handle) = twitch_handle {
-        match twitch_handle.await {
-            Ok(_) => warn!("twitch bot stopped o.o  this is probably not supposed to happen..."),
-            Err(e) => error!(error = %e, "twitch bot died"),
-        }
-    }
+    let address = dioxus::cli_config::fullstack_address_or_localhost();
+    let app = axum::Router::new().serve_dioxus_application(ServeConfig::new(), munibot::app::App);
 
-    warn!(
-        "all bot integrations have unexpectedly stopped. i can't do anything else right now. \
-         goodbye! ^-^"
-    );
+    let listener = tokio::net::TcpListener::bind(address).await?;
+    info!(address = %address, "listening");
+    axum::serve(listener, app.into_make_service()).await?;
+
     Ok(())
 }
