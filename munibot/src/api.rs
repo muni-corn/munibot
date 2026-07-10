@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod guilds;
 
 #[cfg(feature = "server")]
 pub mod oauth;
