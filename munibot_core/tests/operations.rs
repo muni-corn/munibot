@@ -555,3 +555,125 @@ async fn test_count_quotes() {
         .expect("count failed");
     assert_eq!(count, 5);
 }
+
+#[tokio::test]
+async fn test_get_or_create_user_from_linked_account_creates_new() {
+    let db = TestDb::new().await;
+
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "111222333",
+        "muni",
+        "muni",
+        Some("https://cdn.discordapp.com/avatars/111222333/abc.png"),
+        "access-token-1",
+        Some("refresh-token-1"),
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    assert_eq!(user.display_name, "muni");
+    assert_eq!(
+        user.avatar_url.as_deref(),
+        Some("https://cdn.discordapp.com/avatars/111222333/abc.png")
+    );
+
+    let link = operations::get_linked_account(&db.pool, user.id, "discord")
+        .await
+        .expect("get_linked_account failed")
+        .expect("linked account should exist");
+
+    assert_eq!(link.provider_user_id, "111222333");
+    assert_eq!(link.access_token, "access-token-1");
+    assert_eq!(link.refresh_token.as_deref(), Some("refresh-token-1"));
+}
+
+#[tokio::test]
+async fn test_get_or_create_user_from_linked_account_returns_existing() {
+    let db = TestDb::new().await;
+
+    let first = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "444555666",
+        "old_username",
+        "Old Name",
+        None,
+        "access-token-old",
+        None,
+        None,
+    )
+    .await
+    .expect("first sign-in failed");
+
+    // sign in again with an updated username/display name/token, as if the
+    // user changed their discord profile between logins
+    let second = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "444555666",
+        "new_username",
+        "New Name",
+        Some("https://cdn.discordapp.com/avatars/444555666/def.png"),
+        "access-token-new",
+        Some("refresh-token-new"),
+        None,
+    )
+    .await
+    .expect("second sign-in failed");
+
+    assert_eq!(second.id, first.id, "should not create a duplicate user");
+    assert_eq!(
+        second.display_name, "New Name",
+        "display name should refresh"
+    );
+    assert_eq!(
+        second.avatar_url.as_deref(),
+        Some("https://cdn.discordapp.com/avatars/444555666/def.png")
+    );
+
+    let link = operations::get_linked_account(&db.pool, second.id, "discord")
+        .await
+        .expect("get_linked_account failed")
+        .expect("linked account should exist");
+
+    assert_eq!(link.username, "new_username");
+    assert_eq!(link.access_token, "access-token-new");
+    assert_eq!(link.refresh_token.as_deref(), Some("refresh-token-new"));
+}
+
+#[tokio::test]
+async fn test_get_linked_account_missing_returns_none() {
+    let db = TestDb::new().await;
+
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "777888999",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let missing = operations::get_linked_account(&db.pool, user.id, "twitch")
+        .await
+        .expect("query failed");
+    assert!(missing.is_none());
+}
+
+#[tokio::test]
+async fn test_get_user_missing_returns_none() {
+    let db = TestDb::new().await;
+
+    let missing = operations::get_user(&db.pool, 999_999_999)
+        .await
+        .expect("query failed");
+    assert!(missing.is_none());
+}
