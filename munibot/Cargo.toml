@@ -39,6 +39,7 @@ redis_pool = { version = "0.10.0", optional = true }
 diesel = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
+reqwest = { workspace = true, optional = true }
 
 [features]
 default = ["web"]
@@ -62,4 +63,5 @@ server = [
   "dep:redis",
   "dep:redis_pool",
   "dep:diesel",
+  "dep:reqwest",
 ]
