@@ -56,3 +56,14 @@ impl From<anyhow::Error> for AuthError {
         })
     }
 }
+
+#[cfg(feature = "server")]
+impl From<crate::api::oauth::discord::DiscordOAuthError> for AuthError {
+    fn from(e: crate::api::oauth::discord::DiscordOAuthError) -> Self {
+        Self::ServerFnError(ServerFnError::ServerError {
+            message: e.to_string(),
+            code: StatusCode::INTERNAL_SERVER_ERROR.into(),
+            details: None,
+        })
+    }
+}
