@@ -6,13 +6,19 @@ use rand::seq::IndexedRandom;
 use crate::db::{
     DbPool,
     models::{
-        AutoDeleteTimerRow, CommunityLink, GuildConfig, GuildPayout, GuildWallet, NewCommunityLink,
-        NewGuildPayout, NewGuildWallet, NewQuote, Quote, UpdateAutoDeleteTimer,
+        AutoDeleteTimerRow, CommunityLink, GuildConfig, GuildPayout, GuildWallet, LinkedAccount,
+        NewCommunityLink, NewGuildPayout, NewGuildWallet, NewLinkedAccount, NewQuote, NewUser,
+        Quote, UpdateAutoDeleteTimer, User,
     },
     schema::{
-        autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets, quotes,
+        autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets,
+        linked_accounts, quotes, users,
     },
 };
+
+// mysql has no `RETURNING` clause, so the usual way to learn the id an insert
+// just generated is a second, same-connection `SELECT LAST_INSERT_ID()`
+diesel::define_sql_function!(fn last_insert_id() -> diesel::sql_types::Unsigned<diesel::sql_types::Bigint>);
 
 // guild_configs
 
@@ -434,5 +440,123 @@ pub async fn count_quotes(pool: &DbPool, community_id: i64) -> QueryResult<i64> 
         .filter(quotes::community_id.eq(community_id))
         .count()
         .get_result(&mut conn)
+        .await
+}
+
+// users / linked_accounts
+
+/// Returns a user by ID, if any.
+pub async fn get_user(pool: &DbPool, user_id: i64) -> QueryResult<Option<User>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    users::table
+        .find(user_id)
+        .select(User::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+}
+
+/// Returns the linked account for a user on a given provider (e.g.
+/// `"discord"`), if one exists.
+pub async fn get_linked_account(
+    pool: &DbPool,
+    user_id: i64,
+    provider: &str,
+) -> QueryResult<Option<LinkedAccount>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    linked_accounts::table
+        .filter(linked_accounts::user_id.eq(user_id))
+        .filter(linked_accounts::provider.eq(provider))
+        .select(LinkedAccount::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+}
+
+/// Finds the user linked to a provider account, or creates both the user and
+/// the link if this is the account's first sign-in. Either way, the linked
+/// account's token fields and the user's display name/avatar are refreshed
+/// to match what the provider returned for this sign-in.
+#[allow(clippy::too_many_arguments)]
+pub async fn get_or_create_user_from_linked_account(
+    pool: &DbPool,
+    provider: &str,
+    provider_user_id: &str,
+    username: &str,
+    display_name: &str,
+    avatar_url: Option<&str>,
+    access_token: &str,
+    refresh_token: Option<&str>,
+    token_expires_at: Option<NaiveDateTime>,
+) -> QueryResult<User> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    let now = chrono::Utc::now().naive_utc();
+
+    let existing_link = linked_accounts::table
+        .filter(linked_accounts::provider.eq(provider))
+        .filter(linked_accounts::provider_user_id.eq(provider_user_id))
+        .select(LinkedAccount::as_select())
+        .first(&mut conn)
+        .await
+        .optional()?;
+
+    let user_id = if let Some(link) = existing_link {
+        diesel::update(linked_accounts::table.find(link.id))
+            .set((
+                linked_accounts::username.eq(username),
+                linked_accounts::access_token.eq(access_token),
+                linked_accounts::refresh_token.eq(refresh_token),
+                linked_accounts::token_expires_at.eq(token_expires_at),
+                linked_accounts::updated_at.eq(now),
+            ))
+            .execute(&mut conn)
+            .await?;
+
+        diesel::update(users::table.find(link.user_id))
+            .set((
+                users::display_name.eq(display_name),
+                users::avatar_url.eq(avatar_url),
+            ))
+            .execute(&mut conn)
+            .await?;
+
+        link.user_id
+    } else {
+        diesel::insert_into(users::table)
+            .values(NewUser {
+                display_name: display_name.to_owned(),
+                avatar_url: avatar_url.map(str::to_owned),
+                created_at: now,
+            })
+            .execute(&mut conn)
+            .await?;
+
+        let new_user_id: u64 = diesel::select(last_insert_id())
+            .get_result(&mut conn)
+            .await?;
+        let new_user_id = new_user_id as i64;
+
+        diesel::insert_into(linked_accounts::table)
+            .values(NewLinkedAccount {
+                user_id: new_user_id,
+                provider: provider.to_owned(),
+                provider_user_id: provider_user_id.to_owned(),
+                username: username.to_owned(),
+                access_token: access_token.to_owned(),
+                refresh_token: refresh_token.map(str::to_owned),
+                token_expires_at,
+                created_at: now,
+                updated_at: now,
+            })
+            .execute(&mut conn)
+            .await?;
+
+        new_user_id
+    };
+
+    users::table
+        .find(user_id)
+        .select(User::as_select())
+        .first(&mut conn)
         .await
 }
