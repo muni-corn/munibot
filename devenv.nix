@@ -5,8 +5,6 @@
   ...
 }:
 let
-  pname = "munibot";
-
   # the dioxus crate lives in its own directory, not the workspace root, so
   # dx/tailwind need to be run from there
   guiRoot = "${config.git.root}/munibot";
@@ -19,6 +17,7 @@ let
 
   # native build-time dependencies
   nativeBuildInputs = with pkgs; [
+    binaryen
     clang
     glibc
     dioxus-cli
@@ -116,84 +115,8 @@ in
     };
   };
 
-  outputs.default =
-    let
-      # Bypass devenv's config.languages.rust.import, which assumes a single
-      # root crate and fails for workspaces (cachix/devenv#2672). Instead,
-      # call crate2nix directly and access the workspace member by name.
-      crate2nixInput = config.lib.getInput {
-        name = "crate2nix";
-        url = "github:nix-community/crate2nix";
-        attribute = "outputs.default";
-        follows = [ "nixpkgs" ];
-      };
-
-      crate2nixTools = pkgs.callPackage "${crate2nixInput}/tools.nix" { };
-
-      cargoNix =
-        pkgs.callPackage
-          (crate2nixTools.generatedCargoNix {
-            name = pname;
-            src = ./.;
-          })
-          {
-            # use the same nightly toolchain configured for the dev shell
-            buildRustCrateForPkgs =
-              _:
-              pkgs.buildRustCrate.override {
-                rustc = config.languages.rust.toolchainPackage;
-                cargo = config.languages.rust.toolchainPackage;
-              };
-          };
-
-      args = {
-        crateOverrides = pkgs.defaultCrateOverrides // {
-          # libressl provides openssl.pc; give openssl-sys explicit access
-          openssl-sys = _attrs: {
-            buildInputs = [ pkgs.libressl_4_2.dev ];
-            nativeBuildInputs = [ pkgs.pkg-config ];
-          };
-          # mysql client bindings need libmysqlclient via pkg-config
-          mysqlclient-sys = _attrs: {
-            buildInputs = [ pkgs.libmysqlclient ];
-            nativeBuildInputs = [ pkgs.pkg-config ];
-          };
-
-          # customize munibot binary's build inputs
-          ${pname} = _attrs: {
-            inherit buildInputs nativeBuildInputs;
-
-            # embed rpath so the installed binary finds its dynamic libraries
-            runtimeDependencies = buildInputs;
-
-            # required by bindgen (mysql, openssl build scripts)
-            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-          };
-
-          # workspace crates that also need native libs
-          munibot_core = _attrs: {
-            inherit buildInputs nativeBuildInputs;
-            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-            # embed_migrations! resolves "../migrations" relative to the build
-            # dir, but crate2nix unpacks each crate in isolation. symlink the
-            # workspace migrations folder into the parent build directory so the
-            # relative path works correctly.
-            preBuild = ''
-              ln -s ${./migrations} ../migrations
-            '';
-          };
-
-          munibot_discord = _attrs: {
-            inherit buildInputs nativeBuildInputs;
-            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-          };
-
-          munibot_twitch = _attrs: {
-            inherit buildInputs nativeBuildInputs;
-            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-          };
-        };
-      };
-    in
-    cargoNix.workspaceMembers.${pname}.build.override args;
+  # dx bundle produces munibot's fullstack binary (bots + gui) directly, now
+  # that munibot is a dioxus app rather than a plain bot binary -- see
+  # nix/build.nix. this replaced a crate2nix-based build.
+  outputs.default = import ./nix/build.nix { inherit config pkgs; };
 }
