@@ -4,11 +4,6 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
-  crate2nix:
-    url: github:nix-community/crate2nix
-    inputs:
-      nixpkgs:
-        follows: nixpkgs
   git-hooks:
     url: github:cachix/git-hooks.nix
     inputs:
