@@ -2,7 +2,8 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::db::schema::{
-    autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets, quotes,
+    autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets,
+    linked_accounts, quotes, users,
 };
 
 // guild_configs
@@ -136,4 +137,62 @@ pub struct NewQuote {
     pub invoker: String,
     pub stream_category: String,
     pub stream_title: String,
+}
+
+// users
+
+/// A row in the `users` table. Represents a single munibot account, which may
+/// have one or more `LinkedAccount`s (discord, and eventually twitch/github).
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = users)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct User {
+    pub id: i64,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable shape for `users`.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = users)]
+pub struct NewUser {
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub created_at: NaiveDateTime,
+}
+
+// linked_accounts
+
+/// A row in the `linked_accounts` table: one external provider account
+/// (identified by `provider` + `provider_user_id`) linked to a munibot user.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = linked_accounts)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct LinkedAccount {
+    pub id: i64,
+    pub user_id: i64,
+    pub provider: String,
+    pub provider_user_id: String,
+    pub username: String,
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub token_expires_at: Option<NaiveDateTime>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+/// Insertable shape for `linked_accounts`.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = linked_accounts)]
+pub struct NewLinkedAccount {
+    pub user_id: i64,
+    pub provider: String,
+    pub provider_user_id: String,
+    pub username: String,
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub token_expires_at: Option<NaiveDateTime>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
