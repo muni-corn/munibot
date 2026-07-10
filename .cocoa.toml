@@ -7,6 +7,3 @@ docs = "documentation"
 test = "tests"
 build = "build system"
 ci = "continuous integration"
-
-[version]
-commit_version_files = ["Cargo.toml"]
