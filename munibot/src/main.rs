@@ -95,6 +95,9 @@ async fn main() -> anyhow::Result<()> {
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), munibot::app::App)
+        // merged before the layers below so sign-in/logout see the same
+        // session + db state as everything else
+        .merge(munibot::api::oauth::routes::router())
         .layer(
             AuthSessionLayer::<User, String, SessionRedisPool, _>::new(Some(pool.clone()))
                 .with_config(AuthConfig::<String>::default()),

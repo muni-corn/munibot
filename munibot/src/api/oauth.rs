@@ -2,3 +2,4 @@
 // bearer tokens that must never reach the wasm client.
 
 pub mod discord;
+pub mod routes;
