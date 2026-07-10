@@ -27,9 +27,9 @@ in
     environmentFile = mkOption {
       type = types.str;
       description = ''
-        Path to the environment file for munibot containing secrets for database, Discord, and Twitch authentication.
+        Path to the environment file for munibot containing secrets for database, redis, Discord, and Twitch authentication.
 
-        munibot requires the following variables to be set: DATABASE_URL, DISCORD_APPLICATION_ID, DISCORD_CLIENT_SECRET, DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, and TWITCH_TOKEN.
+        munibot requires the following variables to be set: DISCORD_APPLICATION_ID, DISCORD_CLIENT_SECRET, DISCORD_PUBLIC_KEY, DISCORD_TOKEN, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, and TWITCH_TOKEN. DATABASE_URL and REDIS_URL are also required unless createDatabase/createRedis (respectively) are left at their defaults.
 
         Note: DATABASE_URL should use unix socket authentication -- e.g. mysql://munibot@localhost/munibot -- since the munibot system user is granted passwordless access via the unix_socket plugin.
       '';
@@ -41,9 +41,23 @@ in
       default = { };
     };
 
+    baseUrl = mkOption {
+      type = types.str;
+      description = ''
+        The public base URL munibot's gui is served at, e.g. "https://munibot.example.com". Used to build OAuth2 redirect URIs -- this must match what's registered with each provider (discord, etc).
+      '';
+      example = "https://munibot.example.com";
+    };
+
     createDatabase = mkOption {
       type = types.bool;
       description = "Whether to create a local MySQL/MariaDB database automatically.";
+      default = true;
+    };
+
+    createRedis = mkOption {
+      type = types.bool;
+      description = "Whether to create a local redis instance automatically, for gui login sessions.";
       default = true;
     };
 
@@ -77,10 +91,18 @@ in
         ];
       };
 
+      # backs gui login sessions
+      services.redis.servers.munibot = lib.mkIf cfg.createRedis {
+        enable = true;
+        port = 6379;
+        bind = "127.0.0.1";
+      };
+
       systemd.services.munibot =
         let
           configFile = toml.generate "munibot.toml" cfg.settings;
           mysqlName = config.systemd.services.mysql.name;
+          redisName = "redis-munibot.service";
         in
         {
           enable = true;
@@ -88,13 +110,16 @@ in
 
           after = [
             "network.target"
-            mysqlName
-          ];
-          requires = [ mysqlName ];
+          ]
+          ++ lib.optional cfg.createDatabase mysqlName
+          ++ lib.optional cfg.createRedis redisName;
+          requires = lib.optional cfg.createDatabase mysqlName ++ lib.optional cfg.createRedis redisName;
 
           environment = {
             RUST_LOG = "error,munibot=info";
+            MUNIBOT_BASE_URL = cfg.baseUrl;
             DATABASE_URL = lib.mkIf cfg.createDatabase "mysql://${cfg.user}@localhost/munibot?socket=/run/mysqld/mysqld.sock";
+            REDIS_URL = lib.mkIf cfg.createRedis "redis://127.0.0.1:6379";
           };
 
           serviceConfig = {
@@ -102,6 +127,8 @@ in
             ExecStart = "${lib.getExe cfg.package} --config-file ${configFile}";
             PassEnvironment = [
               "DATABASE_URL"
+              "REDIS_URL"
+              "MUNIBOT_BASE_URL"
               "DISCORD_APPLICATION_ID"
               "DISCORD_CLIENT_SECRET"
               "DISCORD_PUBLIC_KEY"
