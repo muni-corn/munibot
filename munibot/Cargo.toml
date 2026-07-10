@@ -12,11 +12,38 @@ rand_chacha = "0.3"
 tempfile = "3.27.0"
 
 [dependencies]
-munibot_core = { path = "../munibot_core" }
-munibot_discord = { path = "../munibot_discord" }
-munibot_twitch = { path = "../munibot_twitch" }
-clap.workspace = true
-dotenvy.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
+# always required: dioxus itself, and its wasm-target transitive dep that
+# needs the `js` feature explicitly activated for the web build
+dioxus = { version = "0.7.9", features = ["fullstack", "router"] }
+dioxus-html = "0.7.9"
+getrandom = { version = "0.2.17", features = ["js"] }
+
+# server-only deps, enabled by the `server` feature. these pull in the bots,
+# native networking, and everything that can't compile for wasm32
+munibot_core = { path = "../munibot_core", optional = true }
+munibot_discord = { path = "../munibot_discord", optional = true }
+munibot_twitch = { path = "../munibot_twitch", optional = true }
+clap = { workspace = true, optional = true }
+dotenvy = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+axum = { version = "0.8.9", features = ["macros"], optional = true }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+server = [
+  "dioxus/server",
+  "dep:munibot_core",
+  "dep:munibot_discord",
+  "dep:munibot_twitch",
+  "dep:clap",
+  "dep:dotenvy",
+  "dep:tokio",
+  "dep:tracing",
+  "dep:tracing-subscriber",
+  "dep:anyhow",
+  "dep:axum",
+]

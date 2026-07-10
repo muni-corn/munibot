@@ -93,3 +93,36 @@ pub async fn start_twitch(config: &Config) -> Option<tokio::task::JoinHandle<()>
         }
     }
 }
+
+/// Starts the discord and twitch integrations, then spawns a supervisor task
+/// that logs if either one unexpectedly stops.
+///
+/// This must be `.await`ed directly on the caller's task rather than wrapped
+/// in its own `tokio::spawn`: setting up twitch briefly holds a `TwitchBot`
+/// across an `.await`, and its handler collection isn't `Sync`, so the setup
+/// future itself isn't `Send`. The supervisor task spawned internally only
+/// captures the resulting `JoinHandle`s, which are always `Send`, so it's
+/// safe to run in the background once setup completes.
+pub async fn start(config: Config) {
+    let discord_handle = start_discord(config.clone());
+    let twitch_handle = start_twitch(&config).await;
+
+    tokio::spawn(async move {
+        // wait for the discord bot to stop, if ever
+        match discord_handle.await {
+            Ok(_) => warn!("discord bot stopped o.o  this is probably not supposed to happen..."),
+            Err(e) => error!(error = %e, "discord bot died"),
+        }
+
+        if let Some(twitch_handle) = twitch_handle {
+            match twitch_handle.await {
+                Ok(_) => {
+                    warn!("twitch bot stopped o.o  this is probably not supposed to happen...")
+                }
+                Err(e) => error!(error = %e, "twitch bot died"),
+            }
+        }
+
+        warn!("all bot integrations have unexpectedly stopped o.o");
+    });
+}
