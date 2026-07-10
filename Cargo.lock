@@ -3094,6 +3094,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "redis",
  "redis_pool",
+ "reqwest 0.12.28",
  "serde",
  "tempfile",
  "thiserror 2.0.18",
