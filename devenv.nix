@@ -14,8 +14,14 @@ let
 
   # runtime dependencies
   buildInputs = with pkgs; [
-    libressl_4_2
+    atk
+    glib
+    gtk3
     libmysqlclient
+    libressl_4_2
+    libsoup_3
+    webkitgtk_4_1
+    xdotool
   ];
 
   # native build-time dependencies
@@ -25,6 +31,7 @@ let
     glibc
     dioxus-cli
     pkg-config
+    wrapGAppsHook4
   ];
 in
 {
