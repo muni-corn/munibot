@@ -36,7 +36,7 @@ struct Args {
 // web entry point — dioxus handles hydration automatically
 #[cfg(not(feature = "server"))]
 fn main() {
-    dioxus::launch(munibot_gui::app::App);
+    munibot_gui::launch_web();
 }
 
 // server entry point: runs the discord/twitch bots alongside the gui server
