@@ -15,7 +15,7 @@ use munibot_core::db::{DbPool, operations};
 use serde::Deserialize;
 use tracing::{error, warn};
 
-use crate::api::{auth::server::AuthSession, oauth::discord};
+use crate::{auth::server::AuthSession, oauth::discord};
 
 /// Mounts `/auth/discord/authorize`, `/auth/discord/callback`, and
 /// `/auth/logout`.

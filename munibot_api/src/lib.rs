@@ -5,3 +5,10 @@
 // server function bodies plus everything native-only (db access, the
 // discord oauth client, axum session/auth glue) that can't compile for
 // wasm32.
+
+pub mod auth;
+pub mod guilds;
+
+#[cfg(feature = "server")]
+pub mod oauth;
+pub mod server_fns;

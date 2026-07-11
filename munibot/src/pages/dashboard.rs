@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
-
-use crate::api::server_fns::guilds::get_guilds;
+use munibot_api::server_fns::guilds::get_guilds;
 
 /// Shows the discord servers the signed-in user owns or administrates.
 #[component]
@@ -39,7 +38,7 @@ pub fn Dashboard() -> Element {
 }
 
 #[component]
-fn GuildRow(guild: crate::api::guilds::GuildSummary) -> Element {
+fn GuildRow(guild: munibot_api::guilds::GuildSummary) -> Element {
     rsx! {
         li { class: "flex gap-3 items-center p-3 bg-slate-800 rounded-lg",
             if let Some(icon_url) = &guild.icon_url {

@@ -4,7 +4,7 @@ use axum_session_redispool::SessionRedisPool;
 use munibot_core::db::{DbPool, operations};
 use serde::{Deserialize, Serialize};
 
-use crate::api::auth::UserData;
+use crate::auth::UserData;
 
 /// Alias for the session type this app uses everywhere: `String` session
 /// IDs, redis-backed session storage, and a real diesel pool for loading the

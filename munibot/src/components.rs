@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
+use munibot_api::server_fns::auth::get_authenticated_user;
 
-use crate::{api::server_fns::auth::get_authenticated_user, app::Route};
+use crate::app::Route;
 
 /// Shows the current sign-in state: a "sign in with discord" link when
 /// signed out, or a greeting, a link to the dashboard, and a sign-out link
