@@ -5,3 +5,7 @@
 // axum server that renders the gui, serves munibot_api's server functions,
 // and backs login sessions -- everything native-only is gated behind it so
 // the wasm build never sees it.
+
+pub mod app;
+pub mod components;
+pub mod pages;

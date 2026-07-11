@@ -2,13 +2,10 @@
 //
 // this crate compiles to two very different targets depending on which cargo
 // feature is active:
-//   - `web`: the wasm client, hydrated into the page by dioxus
-//   - `server`: the axum server that renders the gui, serves server functions,
-//     and runs the discord/twitch bots alongside it
+//   - `web`: the wasm client, hydrated into the page by dioxus via munibot_gui
+//   - `server`: the axum server that renders the gui (munibot_gui), serves
+//     server functions (munibot_api), and runs the discord/twitch bots
+//     alongside it
 
 #[cfg(feature = "server")]
 pub mod bot;
-
-pub mod app;
-pub mod components;
-pub mod pages;

@@ -5,9 +5,12 @@
   ...
 }:
 let
-  # the dioxus crate lives in its own directory, not the workspace root, so
-  # dx/tailwind need to be run from there
-  guiRoot = "${config.git.root}/munibot";
+  # dx serves/bundles the binary crate, not the workspace root
+  appRoot = "${config.git.root}/munibot";
+
+  # tailwind scans munibot_gui's components and outputs into its assets/,
+  # since that's the crate whose asset!() reference resolves the css
+  guiRoot = "${config.git.root}/munibot_gui";
 
   # runtime dependencies
   buildInputs = with pkgs; [
@@ -85,7 +88,7 @@ in
     ];
   };
 
-  # backs gui login sessions (see munibot/src/api/auth)
+  # backs gui login sessions (see munibot_api/src/auth)
   services.redis.enable = true;
 
   processes = {
@@ -106,7 +109,7 @@ in
 
     dx-serve = {
       exec = "secretspec run -- ${lib.getExe pkgs.dioxus-cli} serve";
-      cwd = guiRoot;
+      cwd = appRoot;
       after = [
         "devenv:processes:mysql"
         "devenv:processes:redis"

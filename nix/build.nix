@@ -37,8 +37,9 @@ let
 
   # source filter for the dx bundle build. this must include the *whole
   # workspace*, not just munibot/, since munibot path-depends on
-  # munibot_core/munibot_discord/munibot_twitch. migrations/ and
-  # diesel.toml live at the workspace root; munibot_core's embed_migrations!
+  # munibot_gui/munibot_api/munibot_core/munibot_discord/munibot_twitch.
+  # migrations/ and diesel.toml live at the workspace root; munibot_core's
+  # embed_migrations!
   # resolves "../migrations" relative to its own directory, which this
   # preserves correctly (unlike crate2nix, which unpacks each crate in
   # isolation and needed a symlink workaround for this).
@@ -109,13 +110,15 @@ pkgs.stdenvNoCC.mkDerivation {
     # tell dx to use the PATH wasm-opt instead of downloading its own copy
     export NO_DOWNLOADS=1
 
+    # manganis validates asset paths at compile time; pre-generate the
+    # tailwind output -- in munibot_gui, since that's the crate whose
+    # asset!("/assets/tailwind.css") reference resolves the css -- before
+    # dx bundle runs
+    mkdir -p munibot_gui/assets
+    tailwindcss -i munibot_gui/tailwind.css -o munibot_gui/assets/tailwind.css --minify
+
     # the dioxus crate lives in its own directory, not the workspace root
     cd munibot
-
-    # manganis validates asset paths at compile time; pre-generate the
-    # tailwind output so the asset!("/assets/tailwind.css") macro resolves
-    mkdir -p assets
-    tailwindcss -i ./tailwind.css -o assets/tailwind.css --minify
 
     # dx's wasm-opt invocation triggers SIGABRT under the nix sandbox because
     # binaryen's thread pool spawning is blocked by the seccomp profile.

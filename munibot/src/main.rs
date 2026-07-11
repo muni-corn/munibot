@@ -36,7 +36,7 @@ struct Args {
 // web entry point — dioxus handles hydration automatically
 #[cfg(not(feature = "server"))]
 fn main() {
-    dioxus::launch(munibot::app::App);
+    dioxus::launch(munibot_gui::app::App);
 }
 
 // server entry point: runs the discord/twitch bots alongside the gui server
@@ -94,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
 
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
-        .serve_dioxus_application(ServeConfig::new(), munibot::app::App)
+        .serve_dioxus_application(ServeConfig::new(), munibot_gui::app::App)
         // merged before the layers below so sign-in/logout see the same
         // session + db state as everything else
         .merge(munibot_api::oauth::routes::router())
