@@ -23,7 +23,7 @@ final: prev: {
     }
   );
 
-  wasm-bindgen-cli_0_2_122 =
+  wasm-bindgen-cli-pinned =
     let
       src = final.fetchCrate {
         pname = "wasm-bindgen-cli";
