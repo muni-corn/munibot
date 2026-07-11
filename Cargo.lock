@@ -3178,6 +3178,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "munibot_gui"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "axum",
+ "axum_session",
+ "axum_session_auth",
+ "axum_session_redispool",
+ "dioxus",
+ "dioxus-html",
+ "munibot_api",
+ "munibot_core",
+ "redis",
+ "redis_pool",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "munibot_twitch"
 version = "0.3.2"
 dependencies = [
