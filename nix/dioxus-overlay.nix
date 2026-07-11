@@ -1,12 +1,31 @@
-# pins dioxus-cli and wasm-bindgen-cli to the exact versions the `dioxus` and
-# `wasm-bindgen` crates resolve to in Cargo.lock. these two must always match
-# each other and the crate versions -- see devenv.nix for where this is
-# applied, and Cargo.lock for the versions currently in use.
-final: prev: {
+# pins dioxus-cli and wasm-bindgen-cli-pinned to the exact versions the
+# `dioxus` and `wasm-bindgen` crates resolve to in Cargo.lock -- see
+# devenv.nix for where this is applied.
+#
+# the *version* of each cli below is read straight out of Cargo.lock, so it
+# can never drift out of sync with the crates again. the fetch hashes can't
+# be derived the same way -- Cargo.lock only records checksums for the
+# library crates, not for these cli tools or their vendored dependencies --
+# so they still need a manual bump whenever the version changes. nix will
+# fail the build and print the correct hash to paste in when that happens.
+final: prev:
+let
+  inherit (final) lib;
+
+  cargoLock = builtins.fromTOML (builtins.readFile ../Cargo.lock);
+
+  # looks up the version of `name` resolved in Cargo.lock
+  crateVersion =
+    name:
+    (lib.findFirst (
+      pkg: pkg.name == name
+    ) (throw "'${name}' not found in Cargo.lock") cargoLock.package).version;
+in
+{
   dioxus-cli = prev.dioxus-cli.overrideAttrs (
     _:
     let
-      version = "0.7.9";
+      version = crateVersion "dioxus";
       src = final.fetchCrate {
         pname = "dioxus-cli";
         inherit version;
@@ -25,10 +44,11 @@ final: prev: {
 
   wasm-bindgen-cli-pinned =
     let
+      version = crateVersion "wasm-bindgen";
       src = final.fetchCrate {
         pname = "wasm-bindgen-cli";
-        version = "0.2.122";
-        hash = "sha256-vO4RSxi/sMWxmsEs3GuljdMfIRSu75A+Q+c5wgYToRU=";
+        inherit version;
+        hash = "sha256-H6Is3fiZVxZCfOMWK5dWMSrtn50VGv0sfdnsT+cTtyk=";
       };
     in
     final.buildWasmBindgenCli {
@@ -36,7 +56,7 @@ final: prev: {
       cargoDeps = prev.rustPlatform.fetchCargoVendor {
         inherit src;
         inherit (src) pname version;
-        hash = "sha256-Inup6vvJSG5ghNyeDPyZbfZo4d0LsMG2OJfStoaeDBs=";
+        hash = "sha256-VucqkXbCi4qtQzY/HrXiDnbSURsagPsdNVMn1Tw3UiY=";
       };
     };
 }
