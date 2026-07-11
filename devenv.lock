@@ -168,11 +168,11 @@
     "devenv_2": {
       "locked": {
         "dir": "src/modules",
-        "lastModified": 1781627264,
-        "narHash": "sha256-TPj5d5MUyvuQZjsfDAAoYJ0SB+tNNNBrdCpD8XL0WeU=",
+        "lastModified": 1783538213,
+        "narHash": "sha256-jNjKlmrejUrBgVAeiavlMLlkmC7ZEv1D9nhfuwMW5Q8=",
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "0fe5629a2955141c336b95e384e2c793c01214fb",
+        "rev": "d1fb321e73048d0e1e2b523580268ebb3df2ae90",
         "type": "github"
       },
       "original": {
@@ -392,17 +392,16 @@
     "git-hooks_3": {
       "inputs": {
         "flake-compat": "flake-compat_3",
-        "gitignore": "gitignore_4",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1778507602,
-        "narHash": "sha256-kTwur1wV+01SdqskVMSo6JMEpg71ps3HpbFY2GsflKs=",
+        "lastModified": 1783008725,
+        "narHash": "sha256-jGiy6+sxjNWXSjp25uoJuNfyH9zBK1PEDY0lVoL4ibQ=",
         "owner": "cachix",
         "repo": "git-hooks.nix",
-        "rev": "61ab0e80d9c7ab14c256b5b453d8b3fb0189ba0a",
+        "rev": "bca82caa46d5ec0f5d422c61fb1e30bc51313cbe",
         "type": "github"
       },
       "original": {
@@ -481,27 +480,6 @@
         "type": "github"
       }
     },
-    "gitignore_4": {
-      "inputs": {
-        "nixpkgs": [
-          "git-hooks",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1709087332,
-        "narHash": "sha256-HG2cCnktfHsKV0s4XW83gU3F57gaTljL9KNSuG6bnQs=",
-        "owner": "hercules-ci",
-        "repo": "gitignore.nix",
-        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
-        "type": "github"
-      },
-      "original": {
-        "owner": "hercules-ci",
-        "repo": "gitignore.nix",
-        "type": "github"
-      }
-    },
     "musicaloft-shell": {
       "flake": false,
       "locked": {
@@ -522,11 +500,11 @@
     "musicaloft-shell_2": {
       "flake": false,
       "locked": {
-        "lastModified": 1781655077,
-        "narHash": "sha256-Ot4a2bFfD6RCyxSW6EoFdvShBc9Rh1tqRSl3/U+Jxh8=",
+        "lastModified": 1783389060,
+        "narHash": "sha256-aXS3SJ23DTI6dwwipw0UUAGE1qdN5CgmH6ydqDm9VOY=",
         "owner": "musicaloft",
         "repo": "musicaloft-shell",
-        "rev": "8a4ccd8975d85962081b16e5aba8bf07b3e9fc3e",
+        "rev": "37d9b1a9ceb39f5b1ec2b97fb95041bd528fadea",
         "type": "github"
       },
       "original": {
@@ -644,11 +622,11 @@
     "nixpkgs-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1781454065,
-        "narHash": "sha256-d2xfDjnfRuf/xYGdu9VVRHiav/2w5hDL/5cw2TuVAXw=",
+        "lastModified": 1783279667,
+        "narHash": "sha256-/NAkDSsve+GNM0Bt6tleJdCGfsTlK89nPjkVOzZMo0s=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "9eac87a12312b8f60dd52e1c6e1a265f6fc7f5fc",
+        "rev": "f205b5574fd0cb7da5b702a2da51507b7f4fdd1b",
         "type": "github"
       },
       "original": {
@@ -663,11 +641,11 @@
         "nixpkgs-src": "nixpkgs-src"
       },
       "locked": {
-        "lastModified": 1781620901,
-        "narHash": "sha256-UF6scQlG+6lRkZBUpn/3KNavhOo5G8kDWhjVHcno8uc=",
+        "lastModified": 1783345554,
+        "narHash": "sha256-LZhOm4kqjHUnwP4CNHpaqqEVcumGNd1PvOEOad8LkS0=",
         "owner": "cachix",
         "repo": "devenv-nixpkgs",
-        "rev": "2df109b343d3c68efd752e32a444a1d9b9f89afa",
+        "rev": "6004ea8c229fe9d41b21c6f4c76bf6c2e10771dd",
         "type": "github"
       },
       "original": {
@@ -766,11 +744,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1781580018,
-        "narHash": "sha256-BlTedbM77FmesD2ZqR73vhFy+y77UrhefV7IYw1pDsk=",
+        "lastModified": 1783747106,
+        "narHash": "sha256-KlepQu/O5m11lAjcJ4ER5bc6bIzyX2UMPDARzMzQfIw=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "8bceba21a1ebea535c27c4dc723a0d5a4db9e386",
+        "rev": "e598b37857b895b81020a65a802ef55f5bbed72f",
         "type": "github"
       },
       "original": {
