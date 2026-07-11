@@ -1,5 +1,5 @@
 {
-  description = "munibot, the cutest bot for Discord and Twitch, personality included";
+  description = "munibot, the universe's most lovable bot, personality included";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
