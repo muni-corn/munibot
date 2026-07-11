@@ -65,7 +65,7 @@ in
       diesel-cli
       flyctl
       tailwindcss_4
-      wasm-bindgen-cli_0_2_122
+      wasm-bindgen-cli-pinned
     ]
     ++ buildInputs
     ++ nativeBuildInputs
