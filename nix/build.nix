@@ -70,7 +70,7 @@ pkgs.stdenvNoCC.mkDerivation {
   nativeBuildInputs = [
     toolchain
     pkgs.dioxus-cli
-    pkgs.wasm-bindgen-cli_0_2_122
+    pkgs.wasm-bindgen-cli-pinned
     pkgs.binaryen
     pkgs.tailwindcss_4
     pkgs.makeWrapper
