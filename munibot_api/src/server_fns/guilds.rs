@@ -4,8 +4,8 @@ use dioxus::prelude::*;
 // never runs this function's body, so importing it unconditionally would
 // warn as unused when compiling for web
 #[cfg(feature = "server")]
-use crate::api::auth::AuthError;
-use crate::api::{auth::AuthResult, guilds::GuildSummary};
+use crate::auth::AuthError;
+use crate::{auth::AuthResult, guilds::GuildSummary};
 
 /// Returns the discord guilds (servers) the signed-in user owns or can
 /// manage.
@@ -15,13 +15,13 @@ use crate::api::{auth::AuthResult, guilds::GuildSummary};
 /// an optional, server-only dependency, so a plain `use axum::...` would
 /// fail to resolve when compiling the wasm client.
 #[server(
-    auth: crate::api::auth::server::AuthSession,
+    auth: crate::auth::server::AuthSession,
     pool: axum::extract::Extension<munibot_core::db::DbPool>,
 )]
 pub async fn get_guilds() -> AuthResult<Vec<GuildSummary>> {
     use munibot_core::db::operations;
 
-    use crate::api::oauth::discord;
+    use crate::oauth::discord;
 
     let user = auth.current_user.ok_or(AuthError::NoAuthSession)?;
 

@@ -11,7 +11,7 @@ use clap::Parser;
 #[cfg(feature = "server")]
 use dioxus::prelude::*;
 #[cfg(feature = "server")]
-use munibot::api::auth::server::User;
+use munibot_api::auth::server::User;
 #[cfg(feature = "server")]
 use munibot_core::{
     config::Config,
@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
         .serve_dioxus_application(ServeConfig::new(), munibot::app::App)
         // merged before the layers below so sign-in/logout see the same
         // session + db state as everything else
-        .merge(munibot::api::oauth::routes::router())
+        .merge(munibot_api::oauth::routes::router())
         .layer(
             AuthSessionLayer::<User, String, SessionRedisPool, _>::new(Some(pool.clone()))
                 .with_config(AuthConfig::<String>::default()),
