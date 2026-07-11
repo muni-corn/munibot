@@ -11,13 +11,20 @@ license = "GPL-3.0-or-later"
 [workspace.dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
+axum = { version = "0.8.9", features = ["macros"] }
+axum_session = "0.20.1"
+axum_session_auth = "0.20.0"
+axum_session_redispool = "0.11.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.4", features = ["derive"] }
 decancer = "3.2.4"
 diesel = { version = "2.3.6", features = ["chrono", "mysql", "uuid"] }
 diesel-async = { version = "0.9", features = ["mysql", "bb8"] }
 diesel_migrations = "2.3.1"
+dioxus = { version = "0.7.9", features = ["fullstack", "router"] }
+dioxus-html = "0.7.9"
 dotenvy = "0.15"
+getrandom = { version = "0.2.17", features = ["js"] }
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
 tracing = "0.1"
@@ -30,6 +37,8 @@ num-format = "0.4"
 once_cell = "1.18"
 poise = { version = "0.6", features = ["cache"] }
 rand = { version = "0.10.1", features = ["std_rng"] }
+redis = "1.3.0"
+redis_pool = "0.10.0"
 regex = "1"
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
