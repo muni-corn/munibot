@@ -12,15 +12,20 @@ rand_chacha = "0.3"
 tempfile = "3.27.0"
 
 [dependencies]
-# always required: dioxus itself, and its wasm-target transitive dep that
-# needs the `js` feature explicitly activated for the web build
+# always required: dioxus itself (dx's platform detection looks for the
+# binary crate enabling dioxus/web and dioxus/server directly), and its
+# wasm-target transitive dep that needs the `js` feature explicitly
+# activated for the web build
 dioxus.workspace = true
-dioxus-html.workspace = true
 getrandom.workspace = true
 
-# the rpc boundary: wire dtos and server functions, needed on both targets
-# (the client calls the generated stubs; the server runs the bodies) -- its
-# own web/server features are forwarded below
+# munibot_gui owns the App/Route/components/pages and the web/server
+# entrypoints; munibot's main.rs just calls into it. its own web/server
+# features are forwarded below
+munibot_gui = { path = "../munibot_gui", default-features = false }
+
+# the rpc boundary: wire dtos and server functions, needed directly here
+# too for the auth session glue main.rs still wires up
 munibot_api = { path = "../munibot_api", default-features = false }
 
 # server-only deps, enabled by the `server` feature. these pull in the bots,
@@ -49,9 +54,10 @@ chrono = { workspace = true, optional = true }
 
 [features]
 default = ["web"]
-web = ["dioxus/web", "munibot_api/web"]
+web = ["dioxus/web", "munibot_gui/web", "munibot_api/web"]
 server = [
   "dioxus/server",
+  "munibot_gui/server",
   "munibot_api/server",
   "dep:munibot_core",
   "dep:munibot_discord",
