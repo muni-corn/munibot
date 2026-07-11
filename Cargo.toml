@@ -5,6 +5,7 @@ members = [
   "munibot_api",
   "munibot_core",
   "munibot_discord",
+  "munibot_gui",
   "munibot_twitch",
 ]
 
