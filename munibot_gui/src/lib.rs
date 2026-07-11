@@ -10,6 +10,9 @@ pub mod app;
 pub mod components;
 pub mod pages;
 
+#[cfg(feature = "server")]
+pub mod server;
+
 /// Launches the wasm client, hydrating into the page rendered by the
 /// server half of this app.
 ///
