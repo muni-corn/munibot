@@ -9,3 +9,14 @@
 pub mod app;
 pub mod components;
 pub mod pages;
+
+/// Launches the wasm client, hydrating into the page rendered by the
+/// server half of this app.
+///
+/// Only compiled without the `server` feature, since it's the web entry
+/// point -- the server half serves the gui through [`app::App`] directly
+/// (see the `server` module).
+#[cfg(not(feature = "server"))]
+pub fn launch_web() {
+    dioxus::launch(app::App);
+}
