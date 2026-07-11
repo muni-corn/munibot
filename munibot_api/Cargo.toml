@@ -1,0 +1,45 @@
+[package]
+name = "munibot_api"
+description = "server functions and wire types for munibot's gui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# always required: the server function macro, error types, and the wire
+# dtos it serializes -- these must build for both wasm and native targets
+dioxus.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+
+# server-only deps, enabled by the `server` feature: db access, the oauth
+# client, the axum session/auth stack, and everything native-only that
+# can't compile for wasm32
+munibot_core = { path = "../munibot_core", optional = true }
+anyhow = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+axum_session_auth = { workspace = true, optional = true }
+axum_session_redispool = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+diesel = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+
+[features]
+default = []
+web = ["dioxus/web"]
+server = [
+  "dioxus/server",
+  "dep:munibot_core",
+  "dep:anyhow",
+  "dep:async-trait",
+  "dep:axum",
+  "dep:axum_session_auth",
+  "dep:axum_session_redispool",
+  "dep:chrono",
+  "dep:diesel",
+  "dep:reqwest",
+  "dep:tracing",
+]

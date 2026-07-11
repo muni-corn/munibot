@@ -3105,6 +3105,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "munibot_api"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "axum_session_auth",
+ "axum_session_redispool",
+ "chrono",
+ "diesel",
+ "dioxus",
+ "munibot_core",
+ "reqwest 0.12.28",
+ "serde",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "munibot_core"
 version = "0.3.2"
 dependencies = [
