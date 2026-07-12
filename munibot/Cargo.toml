@@ -14,10 +14,9 @@ tempfile = "3.27.0"
 [dependencies]
 # always required: dioxus itself (dx's platform detection looks for the
 # binary crate enabling dioxus/web and dioxus/server directly), and its
-# wasm-target transitive dep that needs the `js` feature explicitly
+# wasm-target transitive dep that needs the `wasm_js` feature explicitly
 # activated for the web build
 dioxus.workspace = true
-getrandom.workspace = true
 
 # munibot_gui owns the App/Route/components/pages and the web/server
 # entrypoints (including the axum/redis/session setup); munibot's main.rs
@@ -35,6 +34,9 @@ tokio = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
+
+[target.wasm32-unknown-unknown.dependencies]
+getrandom = { version = "0.3.4", features = ["wasm_js"] }
 
 [features]
 default = ["web"]
