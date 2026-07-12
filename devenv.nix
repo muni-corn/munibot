@@ -5,9 +5,6 @@
   ...
 }:
 let
-  # dx serves/bundles the binary crate, not the workspace root
-  appRoot = "${config.git.root}/munibot";
-
   # tailwind scans munibot_gui's components and outputs into its assets/,
   # since that's the crate whose asset!() reference resolves the css
   guiRoot = "${config.git.root}/munibot_gui";
@@ -115,8 +112,7 @@ in
     };
 
     dx-serve = {
-      exec = "secretspec run -- ${lib.getExe pkgs.dioxus-cli} serve";
-      cwd = appRoot;
+      exec = "secretspec run -- ${lib.getExe pkgs.dioxus-cli} serve --package munibot";
       after = [
         "devenv:processes:mysql"
         "devenv:processes:redis"
