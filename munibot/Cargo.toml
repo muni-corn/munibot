@@ -39,6 +39,7 @@ anyhow = { workspace = true, optional = true }
 [features]
 default = ["web"]
 web = ["dioxus/web", "munibot_gui/web"]
+desktop = ["dioxus/desktop", "munibot_gui/desktop"]
 server = [
   "dioxus/server",
   "munibot_gui/server",
