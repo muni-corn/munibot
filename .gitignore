@@ -17,6 +17,7 @@ devenv.local.yaml
 .cargo/config.toml
 .cargo/mutants.toml
 .cargo/nextest.toml
+.helix/languages.toml
 .oxfmtrc.json
 .pre-commit-config.yaml
 .rustfmt.toml

@@ -47,6 +47,37 @@ in
     PORT = 8080;
   };
 
+  # setup helix to format dioxus rust and scss with treefmt
+  files.".helix/languages.toml".toml.language = [
+    {
+      name = "rust";
+      formatter = {
+        command = "treefmt";
+        args = [
+          "--stdin"
+          "foo.rs"
+        ];
+      };
+    }
+    {
+      name = "scss";
+      formatter = {
+        command = "treefmt";
+        args = [
+          "--stdin"
+          "foo.scss"
+        ];
+      };
+      language-servers = [
+        {
+          name = "vscode-css-language-server";
+          except-features = [ "format" ];
+        }
+        "tailwindcss"
+      ];
+    }
+  ];
+
   languages.rust = {
     enable = true;
     channel = "nightly";
