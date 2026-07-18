@@ -78,13 +78,25 @@ in
     }
   ];
 
-  languages.rust = {
-    enable = true;
-    channel = "nightly";
-    # mold.enable is off: it sets RUSTFLAGS=-C link-arg=-fuse-ld=mold
-    # globally, which breaks the wasm32-unknown-unknown build (rust-lld
-    # doesn't understand -fuse-ld, since wasm has no cc-style linker driver)
-    targets = [ "wasm32-unknown-unknown" ];
+  languages = {
+    javascript = {
+      enable = true;
+      directory = "./munibot_gui";
+      lsp.enable = false;
+      nodejs.enable = false;
+      pnpm = {
+        enable = true;
+        install.enable = true;
+      };
+    };
+    rust = {
+      enable = true;
+      channel = "nightly";
+      # mold.enable is off: it sets RUSTFLAGS=-C link-arg=-fuse-ld=mold
+      # globally, which breaks the wasm32-unknown-unknown build (rust-lld
+      # doesn't understand -fuse-ld, since wasm has no cc-style linker driver)
+      targets = [ "wasm32-unknown-unknown" ];
+    };
   };
 
   packages =
