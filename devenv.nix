@@ -58,6 +58,13 @@ in
           "foo.rs"
         ];
       };
+      language-servers = [
+        {
+          name = "rust-analyzer";
+          except-features = [ "format" ];
+        }
+        "tailwind"
+      ];
     }
     {
       name = "scss";
@@ -73,7 +80,7 @@ in
           name = "vscode-css-language-server";
           except-features = [ "format" ];
         }
-        "tailwindcss"
+        "tailwind"
       ];
     }
   ];
