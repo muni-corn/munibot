@@ -83,7 +83,6 @@ in
       enable = true;
       directory = "./munibot_gui";
       lsp.enable = false;
-      nodejs.enable = false;
       pnpm = {
         enable = true;
         install.enable = true;
