@@ -31,3 +31,14 @@ pub fn AccountStatus() -> Element {
         },
     }
 }
+
+#[component]
+pub fn Spinner() -> Element {
+    rsx! {
+        i {
+            font_size: "24pt",
+            color: "white",
+            class: "animate-spin me-2 ph-duotone ph-circle-notch",
+        }
+    }
+}
