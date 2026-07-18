@@ -7,6 +7,7 @@ use crate::pages::{dashboard::Dashboard, home::Home};
 pub fn App() -> Element {
     rsx! {
         document::Stylesheet { href: asset!("/assets/tailwind.css") }
+        document::Stylesheet { href: "https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/duotone/style.css" }
         Router::<Route> {}
     }
 }
