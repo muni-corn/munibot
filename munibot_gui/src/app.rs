@@ -19,7 +19,7 @@ pub fn App() -> Element {
 #[component]
 fn MainLayout() -> Element {
     rsx! {
-        main { class: "min-h-screen bg-slate-900 text-white", Outlet::<Route> {} }
+        main { class: "min-h-screen bg-radial-[circle_at_100%_100%] to-slate-900 via-emerald-700 from-sky-500 text-white", Outlet::<Route> {} }
     }
 }
 
