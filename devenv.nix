@@ -170,6 +170,26 @@ in
     };
   };
 
+  # add `dx fmt` to the treefmt config provided by musicaloft-shell. all
+  # other formatters (nixfmt, oxfmt, kdlfmt, typos) come from there.
+  treefmt.config.settings.formatter.dx-fmt =
+    let
+      dx = lib.getExe pkgs.dioxus-cli;
+    in
+    {
+      command = lib.getExe pkgs.bash;
+      options = [
+        "-euc"
+        ''
+          for file in "$@"; do
+            cat "$file" | ${dx} fmt -c -f - || ${dx} fmt -f "$file"
+          done
+        ''
+        "--" # bash swallows the second argument when using -c
+      ];
+      includes = [ "*.rs" ];
+    };
+
   # dx bundle produces munibot's fullstack binary (bots + gui) directly, now
   # that munibot is a dioxus app rather than a plain bot binary -- see
   # nix/build.nix. this replaced a crate2nix-based build.
