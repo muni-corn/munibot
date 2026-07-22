@@ -27,7 +27,7 @@ pub fn AccountStatus() -> Element {
             }
         }
         _ => rsx! {
-            a { href: "/auth/discord/authorize", "sign in with discord" }
+            a { class: "btn btn-primary", href: "/auth/discord/authorize", "Sign in with discord" }
         },
     }
 }
