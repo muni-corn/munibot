@@ -38,7 +38,7 @@ pub fn Spinner() -> Element {
         i {
             font_size: "24pt",
             color: "white",
-            class: "animate-spin me-2 ph-duotone ph-circle-notch",
+            class: "me-2 animate-spin ph-duotone ph-circle-notch",
         }
     }
 }
