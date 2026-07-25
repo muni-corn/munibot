@@ -4182,6 +4182,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "munibot_config"
+version = "0.3.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "munibot_core"
 version = "0.3.2"
 dependencies = [
