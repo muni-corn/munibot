@@ -11,11 +11,13 @@
 // see docs/plans/gui-configuration.md for the full design.
 
 pub mod descriptor;
+pub mod field;
 pub mod path;
 pub mod scope;
 pub mod value;
 
 pub use descriptor::ProviderDescriptor;
+pub use field::{ChoiceOption, Condition, Field, FieldKind, KeyKind, RefKind};
 pub use path::{ConfigPath, ConfigPathError, PathSegment};
 pub use scope::{ConfigScope, ScopeKind};
 pub use value::{ConfigValue, ConfigValues};
