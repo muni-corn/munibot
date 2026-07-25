@@ -10,25 +10,23 @@ pub fn Dashboard() -> Element {
 
     let content = match &*guilds.read() {
         Some(Ok(guilds)) if guilds.is_empty() => rsx! {
-            p { class: "text-slate-300 p-4",
+            p { class: "p-4 text-slate-300",
                 "you don't own or manage any discord servers munibot can see yet."
             }
         },
         Some(Ok(guilds)) => rsx! {
-            div {
-                class: "flex flex-row h-full",
+            div { class: "flex h-full flex-row",
                 DiscordSidebar { guilds: guilds.to_vec() }
-                div {
-                    class: "grow bg-slate-950/50 sm:rounded-ss-3xl",
-                    Outlet::<Route> {}
-                }
+                div { class: "grow bg-slate-950/50 sm:rounded-ss-3xl", Outlet::<Route> {} }
             }
         },
         Some(Err(_)) => rsx! {
-            div { class: "grow flex flex-col gap-4 place-content-center items-center h-full",
-                h2 { class: "font-black text-3xl", "who are you?" }
+            div { class: "flex h-full grow flex-col place-content-center items-center gap-4",
+                h2 { class: "text-3xl font-black", "who are you?" }
                 p { "you need to sign in to see your servers." }
-                a { href: "/auth/discord/authorize", class: "btn btn-primary", "Sign in with discord" }
+                a { href: "/auth/discord/authorize", class: "btn btn-primary",
+                    "Sign in with discord"
+                }
             }
         },
         None => rsx! {
@@ -45,13 +43,13 @@ pub fn Dashboard() -> Element {
 #[component]
 pub fn DiscordSidebar(guilds: Vec<GuildSummary>) -> Element {
     rsx! {
-        div { class: "w-20 p-4 sm:rounded-ss-3xl flex flex-col gap-4 items-center h-full",
+        div { class: "flex h-full w-20 flex-col items-center gap-4 p-4 sm:rounded-ss-3xl",
 
-                ul { class: "flex flex-col gap-4",
-                    for guild in guilds.iter() {
-                        GuildRow { key: "{guild.id}", guild: guild.clone() }
-                    }
+            ul { class: "flex flex-col gap-4",
+                for guild in guilds.iter() {
+                    GuildRow { key: "{guild.id}", guild: guild.clone() }
                 }
+            }
         }
     }
 }
@@ -64,8 +62,7 @@ fn GuildRow(guild: GuildSummary) -> Element {
         }
     } else {
         rsx! {
-            div {
-                class: "flex justify-center items-center size-12 font-bold bg-slate-800 rounded-full text-slate-300",
+            div { class: "flex size-12 items-center justify-center rounded-full bg-slate-800 font-bold text-slate-300",
                 "{guild.name.chars().next().unwrap_or('?')}"
             }
         }
