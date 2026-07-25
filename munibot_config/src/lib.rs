@@ -9,3 +9,9 @@
 // of any particular provider).
 //
 // see docs/plans/gui-configuration.md for the full design.
+
+pub mod descriptor;
+pub mod scope;
+
+pub use descriptor::ProviderDescriptor;
+pub use scope::{ConfigScope, ScopeKind};
