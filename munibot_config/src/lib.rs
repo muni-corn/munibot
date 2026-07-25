@@ -11,7 +11,9 @@
 // see docs/plans/gui-configuration.md for the full design.
 
 pub mod descriptor;
+pub mod path;
 pub mod scope;
 
 pub use descriptor::ProviderDescriptor;
+pub use path::{ConfigPath, ConfigPathError, PathSegment};
 pub use scope::{ConfigScope, ScopeKind};
