@@ -13,7 +13,9 @@
 pub mod descriptor;
 pub mod path;
 pub mod scope;
+pub mod value;
 
 pub use descriptor::ProviderDescriptor;
 pub use path::{ConfigPath, ConfigPathError, PathSegment};
 pub use scope::{ConfigScope, ScopeKind};
+pub use value::{ConfigValue, ConfigValues};
