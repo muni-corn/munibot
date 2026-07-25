@@ -9,6 +9,10 @@ let
   # since that's the crate whose asset!() reference resolves the css
   guiRoot = "${config.git.root}/munibot_gui";
 
+  # treefmt formatter that combines `dx fmt` (rsx) and `rustywind`
+  # (tailwind class sorting) -- see nix/dx-fmt.nix for why
+  dxFmt = import ./nix/dx-fmt.nix { inherit pkgs guiRoot; };
+
   # runtime dependencies
   buildInputs = with pkgs; [
     atk
@@ -170,25 +174,13 @@ in
     };
   };
 
-  # add `dx fmt` to the treefmt config provided by musicaloft-shell. all
-  # other formatters (nixfmt, oxfmt, kdlfmt, typos) come from there.
-  treefmt.config.settings.formatter.dx-fmt =
-    let
-      dx = lib.getExe pkgs.dioxus-cli;
-    in
-    {
-      command = lib.getExe pkgs.bash;
-      options = [
-        "-euc"
-        ''
-          for file in "$@"; do
-            cat "$file" | ${dx} fmt -c -f - || ${dx} fmt -f "$file"
-          done
-        ''
-        "--" # bash swallows the second argument when using -c
-      ];
-      includes = [ "*.rs" ];
-    };
+  # add `dx-fmt` to the treefmt config provided by musicaloft-shell. all
+  # other formatters (nixfmt, oxfmt, kdlfmt, typos, rustfmt) come from
+  # there.
+  treefmt.config.settings.formatter.dx-fmt = {
+    command = lib.getExe dxFmt;
+    includes = [ "*.rs" ];
+  };
 
   # dx bundle produces munibot's fullstack binary (bots + gui) directly, now
   # that munibot is a dioxus app rather than a plain bot binary -- see
