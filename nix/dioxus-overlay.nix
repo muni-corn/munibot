@@ -12,7 +12,7 @@ final: prev:
 let
   inherit (final) lib;
 
-  cargoLock = builtins.fromTOML (builtins.readFile ../Cargo.lock);
+  cargoLock = fromTOML (builtins.readFile ../Cargo.lock);
 
   # looks up the version of `name` resolved in Cargo.lock
   crateVersion =
@@ -29,7 +29,7 @@ in
       src = final.fetchCrate {
         pname = "dioxus-cli";
         inherit version;
-        hash = "sha256-tLMtUlohSJt3okdJh+ARweQNGmzj/vYiNl8iZhDbSAc=";
+        hash = "sha256-gEC5MtvkTBAhv2ChvWPQIx4u/OJ5Qx2sN2+epdcXwSA=";
       };
     in
     {
@@ -37,7 +37,7 @@ in
       cargoDeps = final.rustPlatform.fetchCargoVendor {
         inherit src;
         inherit (src) pname version;
-        hash = "sha256-h5wkxHP8ehZLHqcUsro08/dpqSPnPuBbZuUGG8i4nBc=";
+        hash = "sha256-znRYZFhWP5PzS6ftcShzNBvRqJXRjnM10OZ+KzUOOsg=";
       };
     }
   );

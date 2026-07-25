@@ -28,9 +28,9 @@ decancer = "3.2.4"
 diesel = { version = "2.3.6", features = ["chrono", "mysql", "uuid"] }
 diesel-async = { version = "0.9", features = ["mysql", "bb8"] }
 diesel_migrations = "2.3.1"
-dioxus = { version = "0.7.9", features = ["fullstack", "router"] }
-dioxus-desktop = "0.7.9"
-dioxus-html = "0.7.9"
+dioxus = { version = "0.8.0-alpha.0", features = ["fullstack", "router"] }
+dioxus-desktop = "0.8.0-alpha.0"
+dioxus-html = "0.8.0-alpha.0"
 dotenvy = "0.15"
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
