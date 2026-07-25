@@ -179,6 +179,9 @@ in
   # there.
   treefmt.config.settings.formatter.dx-fmt = {
     command = lib.getExe dxFmt;
+    # runs after rustfmt (priority 0) so rsx gets formatted against
+    # already-settled rust code, rather than the other way around
+    priority = 1;
     includes = [ "*.rs" ];
   };
 
