@@ -19,7 +19,9 @@ pub fn App() -> Element {
 #[component]
 fn MainLayout() -> Element {
     rsx! {
-        main { class: "min-h-screen bg-radial-[circle_at_100%_100%] to-slate-900 via-emerald-700 from-sky-500 text-white", Outlet::<Route> {} }
+        main { class: "min-h-screen bg-radial-[circle_at_100%_100%] from-sky-500 via-emerald-700 to-slate-900 text-white",
+            Outlet::<Route> {}
+        }
     }
 }
 
@@ -49,7 +51,7 @@ pub enum Route {
 fn NotFound(segments: Vec<String>) -> Element {
     rsx! {
         document::Title { "not found ~ munibot" }
-        div { class: "flex flex-col place-content-center items-center gap-4 h-screen",
+        div { class: "flex h-screen flex-col place-content-center items-center gap-4",
             h1 { class: "text-6xl font-bold", "404" }
             p { class: "text-slate-300", "there's nothing here for path /{segments.join(\"/\")}" }
         }
