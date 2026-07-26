@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod bot;
+
 const API_BASE: &str = "https://discord.com/api/v10";
 
 /// Scopes requested during the authorize step: `identify` for basic account
