@@ -12,6 +12,9 @@ pub mod dyn_provider;
 pub mod registry;
 pub mod typed;
 
+#[cfg(test)]
+mod end_to_end;
+
 pub use collection::{CollectionDelta, collection_diff};
 pub use context::{ConfigContext, ConfigError};
 pub use dyn_provider::DynConfigProvider;

@@ -28,4 +28,8 @@ tokio.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+# derive isn't needed by munibot_core's own code (real providers derive
+# their Config structs downstream, in munibot_discord), only by these
+# tests, to build realistic fixtures with less boilerplate.
+munibot_config = { path = "../munibot_config", features = ["derive"] }
 tempfile = "3.27.0"
