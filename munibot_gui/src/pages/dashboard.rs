@@ -83,10 +83,13 @@ fn GuildRow(guild: GuildSummary) -> Element {
     };
 
     rsx! {
-        div {
-            class: "tooltip tooltip-right cursor-pointer",
-            "data-tip": guild.name,
-            {icon}
+        div { class: "tooltip tooltip-right", "data-tip": guild.name,
+            Link {
+                to: Route::GuildSettings {
+                    guild_id: guild.id.clone(),
+                },
+                {icon}
+            }
         }
     }
 }
