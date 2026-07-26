@@ -12,6 +12,7 @@
 
 pub mod descriptor;
 pub mod field;
+pub mod field_value;
 pub mod node;
 pub mod path;
 pub mod scope;
@@ -19,6 +20,7 @@ pub mod value;
 
 pub use descriptor::ProviderDescriptor;
 pub use field::{ChoiceOption, Condition, Field, FieldKind, KeyKind, RefKind};
+pub use field_value::{ConfigField, ValueError};
 pub use node::{ConfigNode, ConfigSchema};
 pub use path::{ConfigPath, ConfigPathError, PathSegment};
 pub use scope::{ConfigScope, ScopeKind};
