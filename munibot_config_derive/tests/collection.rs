@@ -5,79 +5,18 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use munibot_config::{
-    ChannelRef, ChoiceOption, ConfigChoice, ConfigField, ConfigNode, ConfigPatch, ConfigValue,
-    Configurable, FieldKind, KeyKind, SettingDuration, ValueError, choice_field_kind,
-    choice_from_value, choice_to_value,
+    ChannelRef, ConfigNode, ConfigPatch, ConfigValue, Configurable, KeyKind, SettingDuration,
 };
-use munibot_config_derive::Configurable;
-use serde::{Deserialize, Serialize, Serializer, de::Deserializer};
+use munibot_config_derive::{ConfigChoice, Configurable};
+use serde::{Deserialize, Serialize};
 
-// hand-rolled rather than #[derive(ConfigChoice)]: that derive doesn't
-// exist until the next commit. This is the same prototype pattern used in
-// munibot_config/tests/end_to_end.rs.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+// now the real derive, upgraded from the hand-rolled prototype this test
+// used before ConfigChoice existed -- proves the two derives compose.
+#[derive(Clone, Copy, Debug, Default, PartialEq, ConfigChoice)]
 enum CleanupMode {
     Always,
     #[default]
     AfterSilence,
-}
-
-impl ConfigChoice for CleanupMode {
-    fn choice_options() -> Vec<ChoiceOption> {
-        vec![
-            ChoiceOption {
-                id: "always".to_owned(),
-                label: "always".to_owned(),
-            },
-            ChoiceOption {
-                id: "after_silence".to_owned(),
-                label: "after silence".to_owned(),
-            },
-        ]
-    }
-
-    fn choice_id(&self) -> String {
-        match self {
-            Self::Always => "always".to_owned(),
-            Self::AfterSilence => "after_silence".to_owned(),
-        }
-    }
-
-    fn from_choice_id(id: &str) -> Option<Self> {
-        match id {
-            "always" => Some(Self::Always),
-            "after_silence" => Some(Self::AfterSilence),
-            _ => None,
-        }
-    }
-}
-
-impl ConfigField for CleanupMode {
-    fn field_kind() -> FieldKind {
-        choice_field_kind::<Self>()
-    }
-
-    fn to_value(&self) -> ConfigValue {
-        choice_to_value(self)
-    }
-
-    fn from_value(value: &ConfigValue) -> Result<Self, ValueError> {
-        choice_from_value(value)
-    }
-}
-
-impl Serialize for CleanupMode {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.choice_id())
-    }
-}
-
-impl<'de> Deserialize<'de> for CleanupMode {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let id = String::deserialize(deserializer)?;
-        Self::from_choice_id(&id)
-            .ok_or_else(|| serde::de::Error::custom(format!("unknown cleanup mode `{id}`")))
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Configurable)]

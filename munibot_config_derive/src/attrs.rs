@@ -106,6 +106,35 @@ pub fn parse_field_attrs(attrs: &[Attribute]) -> Result<FieldAttrs> {
     Ok(out)
 }
 
+/// Parsed `#[config(...)]` attributes from one variant of a `ConfigChoice`
+/// enum.
+#[derive(Debug, Default)]
+pub struct VariantAttrs {
+    pub id: Option<LitStr>,
+    pub label: Option<LitStr>,
+}
+
+/// Parses every `#[config(...)]` attribute on an enum variant into one
+/// `VariantAttrs`, later keys overwriting earlier ones of the same name.
+pub fn parse_variant_attrs(attrs: &[Attribute]) -> Result<VariantAttrs> {
+    let mut out = VariantAttrs::default();
+
+    for attr in config_attrs(attrs) {
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("id") {
+                out.id = Some(meta.value()?.parse()?);
+            } else if meta.path.is_ident("label") {
+                out.label = Some(meta.value()?.parse()?);
+            } else {
+                return Err(meta.error("unrecognized variant #[config(...)] key"));
+            }
+            Ok(())
+        })?;
+    }
+
+    Ok(out)
+}
+
 fn config_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
     attrs.iter().filter(|attr| attr.path().is_ident("config"))
 }
@@ -114,7 +143,7 @@ fn config_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
 mod tests {
     use syn::{DeriveInput, parse_quote};
 
-    use super::{parse_container_attrs, parse_field_attrs};
+    use super::{parse_container_attrs, parse_field_attrs, parse_variant_attrs};
 
     #[test]
     fn test_parse_container_attrs_reads_every_key() {
@@ -222,5 +251,37 @@ mod tests {
         };
         let field = data.fields.iter().next().expect("one field");
         assert!(parse_field_attrs(&field.attrs).is_err());
+    }
+
+    #[test]
+    fn test_parse_variant_attrs_reads_id_and_label() {
+        let input: DeriveInput = parse_quote! {
+            enum X {
+                #[config(id = "after_silence", label = "after silence")]
+                AfterSilence,
+            }
+        };
+        let syn::Data::Enum(data) = &input.data else {
+            panic!("expected an enum")
+        };
+        let variant = data.variants.iter().next().expect("one variant");
+        let attrs = parse_variant_attrs(&variant.attrs).expect("should parse");
+
+        assert_eq!(attrs.id.unwrap().value(), "after_silence");
+        assert_eq!(attrs.label.unwrap().value(), "after silence");
+    }
+
+    #[test]
+    fn test_parse_variant_attrs_defaults_to_none() {
+        let input: DeriveInput = parse_quote! {
+            enum X { Always }
+        };
+        let syn::Data::Enum(data) = &input.data else {
+            panic!("expected an enum")
+        };
+        let variant = data.variants.iter().next().expect("one variant");
+        let attrs = parse_variant_attrs(&variant.attrs).expect("should parse");
+        assert!(attrs.id.is_none());
+        assert!(attrs.label.is_none());
     }
 }

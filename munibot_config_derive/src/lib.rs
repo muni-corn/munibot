@@ -10,6 +10,7 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
 mod attrs;
+mod choice;
 mod configurable;
 mod shape;
 
@@ -29,6 +30,9 @@ pub fn derive_configurable(input: TokenStream) -> TokenStream {
 ///
 /// See the crate-level docs for the attributes this supports.
 #[proc_macro_derive(ConfigChoice, attributes(config))]
-pub fn derive_config_choice(_input: TokenStream) -> TokenStream {
-    TokenStream::new()
+pub fn derive_config_choice(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    choice::expand(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
