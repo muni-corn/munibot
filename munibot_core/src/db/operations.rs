@@ -24,12 +24,19 @@ diesel::define_sql_function!(fn last_insert_id() -> diesel::sql_types::Unsigned<
 
 /// Inserts or updates a guild config row, returning the saved record.
 ///
-/// Uses MySQL's `REPLACE INTO` which deletes the old row and inserts the new
-/// one when a duplicate primary key is found.
+/// Uses MySQL's `INSERT ... ON DUPLICATE KEY UPDATE` rather than
+/// `REPLACE INTO`. `REPLACE INTO` deletes the existing row and reinserts it,
+/// which would null out every column not present in `config` -- as soon as
+/// `guild_configs` gains a second setting, a write to one column would
+/// silently erase the other. `ON DUPLICATE KEY UPDATE` only touches the
+/// columns named in the changeset.
 pub async fn upsert_guild_config(pool: &DbPool, config: GuildConfig) -> QueryResult<GuildConfig> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
-    diesel::replace_into(guild_configs::table)
+    diesel::insert_into(guild_configs::table)
         .values(&config)
+        .on_conflict(diesel::dsl::DuplicatedKeys)
+        .do_update()
+        .set(&config)
         .execute(&mut conn)
         .await?;
     guild_configs::table
