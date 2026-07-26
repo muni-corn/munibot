@@ -62,3 +62,71 @@ path that didn't exist before just gets defaults for its other fields via
 `unflatten`'s fallback to `field.default`), so this makes removal the
 symmetric inverse of that, using a value (`Unset`) that already existed
 rather than growing the value/patch model further.
+
+## Phase 2 (derive macros) scope decisions
+
+Made while designing `munibot_config_derive`, before writing any codegen.
+None of these are visible yet in committed code -- recorded here so the
+codegen commits that follow don't need to re-litigate them.
+
+**Only three field shapes are recognized**, by name-based syntax matching
+(a proc macro sees syntax, not resolved types): `Toggled<T>` becomes a
+toggled `Section`, `BTreeMap<K, V>` becomes a `Collection`, and every
+other type is assumed to implement `ConfigField` directly (a `Field`).
+There is deliberately **no support for a plain, un-toggled nested
+`Section`** in v1 -- neither `LoggingConfig` nor `AutoDeleteConfig` needs
+one (logging's section is always toggled; autodelete's collection has no
+enclosing section at all), and without an explicit opt-in attribute a
+plain nested struct field is syntactically indistinguishable from a
+`ConfigChoice`-derived enum field (both are just "some other type used
+directly"). If a future provider needs an un-toggled section, the clean
+extension is an explicit `#[config(section)]` field attribute rather than
+trying to guess from the type alone.
+
+**Dropped the `default` field attribute.** `Configurable: Default` is
+already a supertrait bound, so a field's schema default can always be
+computed as `<FieldType as ConfigField>::to_value(&Self::default().field)`
+-- extracted from the struct's own `Default` impl, which is the one place
+a provider author should ever need to state a default. A parallel
+`#[config(default = ...)]` attribute would just be a second place the
+same fact could drift from the first (e.g. `#[derive(Default)]` giving
+one answer, a stale attribute giving another). Where a provider wants a
+non-derived default (e.g. autodelete's 24-hour lifetime, since
+`Duration::default()` is zero), it should implement `Default` by hand
+instead of deriving it.
+
+**`min`/`max` are plain numbers, not human-readable duration strings.**
+The plan's `AutoDeleteConfig` example (section 6.3) showed
+`#[config(min = "1h", default = "24h")]` on a `SettingDuration` field,
+implying compile-time `humantime` parsing inside the proc macro. Combined
+with dropping `default` above, and to avoid a proc-macro crate needing
+`humantime` purely to parse attribute strings at macro-expansion time,
+`min`/`max` are plain expressions (see `FieldAttrs` in `attrs.rs`)
+interpreted as whatever unit the field's `FieldKind` uses -- seconds for
+`SettingDuration`. `#[config(min = 3600)]` instead of `min = "1h"`. A
+provider can still name a `const MINIMUM_LIFETIME_SECS: u64 = 3600;` next
+to the struct for readability.
+
+**`required` is a schema/display-only hint in v1, with no generated
+runtime check.** The obvious real use -- "a log channel is required once
+logging is enabled" -- is a _conditional_ requirement (only matters while
+a sibling toggle is on), and generating that generally means the derive
+would need to understand `Toggled<T>` gating inside `validate()`, not
+just inside schema generation. Deferred; a provider that genuinely needs
+this can still override `Configurable::validate` by hand (it's a normal
+trait method, independent of what the derive generates).
+
+**`visible_when` has no field attribute in v1.** The only case either
+real provider needs -- a toggled section's children only mattering while
+its toggle is on -- is already covered by `Toggled<T>`'s automatic
+wiring. An explicit `#[config(visible_when = "...")]` for arbitrary
+cross-field conditions is deferred until a provider actually needs one.
+
+**`ConfigChoice`-derived enums must keep their `Serialize`/`Deserialize`
+in sync with their choice ids by construction, not by convention.**
+Rather than requiring `#[derive(Serialize, Deserialize)]` plus a matching
+`#[serde(rename_all = ...)]` on the enum (two independent derives that
+could drift), `#[derive(ConfigChoice)]` generates `Serialize`/
+`Deserialize` itself, delegating to `choice_id`/`from_choice_id`. This
+was prototyped by hand in phase 1's `munibot_config/tests/end_to_end.rs`
+(`CleanupMode`) before committing to generating it.
