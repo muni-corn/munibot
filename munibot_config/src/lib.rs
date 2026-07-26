@@ -12,6 +12,7 @@
 
 pub mod choice;
 pub mod configurable;
+pub mod constraint;
 pub mod descriptor;
 pub mod duration;
 pub mod field;
@@ -28,6 +29,7 @@ pub mod value;
 
 pub use choice::{ConfigChoice, choice_field_kind, choice_from_value, choice_to_value};
 pub use configurable::Configurable;
+pub use constraint::{validate_numeric_bounds, validate_text_length};
 pub use descriptor::ProviderDescriptor;
 pub use duration::SettingDuration;
 pub use field::{ChoiceOption, Condition, Field, FieldKind, KeyKind, RefKind};

@@ -44,6 +44,18 @@ impl ConfigPath {
         self
     }
 
+    /// Appends every segment of `suffix`, returning the extended path.
+    ///
+    /// Used to prefix a nested `Configurable` value's own (relative)
+    /// `FieldError` paths with the field that nests it, e.g. turning a
+    /// `Section` field's inner error at `channel` into `logging.channel`,
+    /// or a `Collection` item's inner error at `mode` into
+    /// `timers[6437].mode`.
+    pub fn join(mut self, suffix: &ConfigPath) -> Self {
+        self.0.extend(suffix.0.iter().cloned());
+        self
+    }
+
     /// This path's segments, in order from the root.
     pub fn segments(&self) -> &[PathSegment] {
         &self.0
@@ -256,5 +268,25 @@ mod tests {
         map.insert(ConfigPath::root().field("channel"), 1);
         let json = serde_json::to_string(&map).expect("serialize");
         assert_eq!(json, "{\"channel\":1}");
+    }
+
+    #[test]
+    fn test_join_prefixes_a_section_fields_relative_error_path() {
+        let prefix = ConfigPath::root().field("logging");
+        let relative = ConfigPath::root().field("channel");
+        assert_eq!(prefix.join(&relative).to_string(), "logging.channel");
+    }
+
+    #[test]
+    fn test_join_prefixes_a_collection_items_relative_error_path() {
+        let prefix = ConfigPath::root().field("timers").key("6437");
+        let relative = ConfigPath::root().field("mode");
+        assert_eq!(prefix.join(&relative).to_string(), "timers[6437].mode");
+    }
+
+    #[test]
+    fn test_join_with_an_empty_suffix_is_a_no_op() {
+        let prefix = ConfigPath::root().field("logging");
+        assert_eq!(prefix.clone().join(&ConfigPath::root()), prefix);
     }
 }
