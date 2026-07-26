@@ -9,6 +9,7 @@
 use proc_macro::TokenStream;
 
 mod attrs;
+mod shape;
 
 /// Derives `munibot_config::Configurable` for a struct.
 ///
