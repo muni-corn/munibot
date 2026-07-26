@@ -2,14 +2,15 @@ use dioxus::prelude::*;
 use munibot_api::{
     server_fns::settings::{
         channels::get_guild_channels,
+        discord::get_discord_invite_link,
         logging::{get_guild_logging_settings, set_guild_logging_settings},
     },
-    settings::GuildLoggingSettings,
+    settings::{GuildLoggingSettings, SettingsError},
 };
 
 use crate::components::{
     Spinner,
-    settings::{ChannelSelect, SaveBar, SettingsRow, SettingsSection},
+    settings::{ChannelSelect, InviteMunibotPrompt, SaveBar, SettingsRow, SettingsSection},
 };
 
 /// A guild's logging settings: which channel (if any) server events are
@@ -27,6 +28,11 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
         let guild_id = settings_guild_id.clone();
         async move { get_guild_logging_settings(guild_id).await }
     });
+
+    // only fetched for the BotNotInGuild case below, so it's fine that this
+    // makes a request up front regardless -- it's a single cheap read of an
+    // env-derived config value, not a per-guild call
+    let invite_link = use_resource(get_discord_invite_link);
 
     // the form's current selection, and the last-saved value it's compared
     // against for dirty tracking -- both stay `None` (and the form stays
@@ -99,6 +105,17 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
                 on_discard,
             }
         },
+        (Some(Err(SettingsError::BotNotInGuild)), _) => {
+            let invite_link = invite_link
+                .read()
+                .as_ref()
+                .and_then(|link| link.as_ref().ok())
+                .cloned()
+                .flatten();
+            rsx! {
+                InviteMunibotPrompt { invite_link }
+            }
+        }
         (Some(Err(_)), _) | (_, Some(Err(_))) => rsx! {
             div { class: "alert alert-error", "couldn't load this server's logging settings :<" }
         },
@@ -110,7 +127,7 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
     rsx! {
         document::Title { "logging settings ~ munibot" }
         div { class: "flex h-full flex-col gap-4 p-6",
-            h2 { class: "font-black text-2xl", "logging" }
+            h2 { class: "text-2xl font-black", "logging" }
             {content}
         }
     }

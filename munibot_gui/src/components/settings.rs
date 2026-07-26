@@ -10,7 +10,7 @@ pub fn SettingsSection(title: String, description: Option<String>, children: Ele
     rsx! {
         section { class: "flex flex-col gap-4 rounded-box bg-slate-900/50 p-6",
             div { class: "flex flex-col gap-1",
-                h3 { class: "font-black text-xl", {title} }
+                h3 { class: "text-xl font-black", {title} }
                 if let Some(description) = description {
                     p { class: "text-sm text-slate-400", {description} }
                 }
@@ -26,7 +26,7 @@ pub fn SettingsSection(title: String, description: Option<String>, children: Ele
 #[component]
 pub fn SettingsRow(label: String, description: Option<String>, children: Element) -> Element {
     rsx! {
-        div { class: "flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between",
+        div { class: "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
             div { class: "flex flex-col",
                 span { class: "font-semibold", {label} }
                 if let Some(description) = description {
@@ -52,8 +52,8 @@ pub fn SaveBar(
     }
 
     rsx! {
-        div { class: "flex items-center gap-4 bg-slate-800 p-4 sticky bottom-0 justify-between rounded-box shadow-lg",
-            span { class: "text-slate-300 text-sm", "you have unsaved changes." }
+        div { class: "sticky bottom-0 flex items-center justify-between gap-4 rounded-box bg-slate-800 p-4 shadow-lg",
+            span { class: "text-sm text-slate-300", "you have unsaved changes." }
             div { class: "flex gap-2",
                 button {
                     class: "btn btn-ghost",
@@ -116,6 +116,27 @@ pub fn ChannelSelect(
                     for channel in items {
                         option { value: "{channel.id}", "#{channel.name}" }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Shown in place of a guild's settings when munibot hasn't been invited to
+/// that server yet -- a real, distinct state, not a generic error.
+#[component]
+pub fn InviteMunibotPrompt(invite_link: Option<String>) -> Element {
+    rsx! {
+        div { class: "flex flex-col items-center gap-4 p-6 text-center",
+            h3 { class: "text-xl font-black", "munibot isn't here yet" }
+            p { class: "text-slate-400", "invite munibot to this server to manage its settings." }
+            if let Some(invite_link) = invite_link {
+                a {
+                    class: "btn btn-primary",
+                    href: invite_link,
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    "invite munibot"
                 }
             }
         }
