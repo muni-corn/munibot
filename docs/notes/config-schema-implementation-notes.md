@@ -193,3 +193,39 @@ side by side under one name, which reads like they're related when
 they aren't. Used `munibot_core::provider` instead, matching the
 AGENTS.md module convention (`provider.rs` alongside `provider/`) with
 the same submodule breakdown the plan described.
+
+## `ConfigurationProvider` has no `descriptor()` method (commit 25)
+
+The plan's trait (section 7) had a `fn descriptor(&self) -> ProviderDescriptor`
+method a provider would implement directly. By the time this trait was
+actually written, `Configurable::descriptor()` (phase 1, commit 13)
+already existed as the single source of a provider's identity, populated
+by the derive from the _config struct's own_ `#[config(id = ...)]`
+attributes. A second, separately-implemented `descriptor()` on the
+provider itself would just be a second place that identity could be
+stated, and drift from the first. Dropped it: `DynConfigProvider::descriptor()`
+(commit 26) calls `P::Config::descriptor()` directly, so there remains
+exactly one place a provider's id/label/scope are declared.
+
+## Testing async provider code without a real database (commit 25)
+
+`ConfigContext.db` is a real `DbPool`
+(`bb8::Pool<AsyncDieselConnectionManager<AsyncMysqlConnection>>`), and
+`munibot_core`'s only existing db test harness (`TestDb`, in
+`tests/common`) needs an actual reachable MySQL instance -- fine for
+integration tests, but overkill (and environment-dependent) for unit
+tests of provider glue that never touches the database at all, like
+`ConfigurationProvider`'s default method bodies or the `DynConfigProvider`
+blanket impl.
+
+`bb8::Pool::builder().build_unchecked(manager)` returns immediately
+without waiting for a connection (unlike `.build()`, which `establish_pool`
+uses and which would hang or fail against a bogus address) -- it only
+spawns a background connection attempt. That's safe to construct and
+drop as a `ConfigContext.db` in a unit test, as long as the test's
+`ConfigurationProvider` never actually calls `.get()` on it. See
+`provider::typed::test_support::unconnected_db_pool`. (An earlier
+attempt at this used `std::mem::zeroed()` for a fake pool -- do not do
+this. `Pool` holds an `Arc` internally, and zero-initializing one is
+undefined behavior the instant anything touches it, including dropping
+it at the end of the test.)
