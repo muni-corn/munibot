@@ -13,7 +13,7 @@ pub mod logging;
 pub fn GuildSettings(guild_id: String) -> Element {
     rsx! {
         div { class: "flex h-full flex-col gap-4 p-6",
-            h2 { class: "font-black text-2xl", "server settings" }
+            h2 { class: "text-2xl font-black", "server settings" }
             ul { class: "menu w-full max-w-xs gap-1 rounded-box bg-slate-900/50 p-2",
                 li {
                     Link {
