@@ -11,6 +11,7 @@
 // see docs/plans/gui-configuration.md for the full design.
 
 pub mod choice;
+pub mod configurable;
 pub mod descriptor;
 pub mod duration;
 pub mod field;
@@ -26,6 +27,7 @@ pub mod toggled;
 pub mod value;
 
 pub use choice::{ConfigChoice, choice_field_kind, choice_from_value, choice_to_value};
+pub use configurable::Configurable;
 pub use descriptor::ProviderDescriptor;
 pub use duration::SettingDuration;
 pub use field::{ChoiceOption, Condition, Field, FieldKind, KeyKind, RefKind};
