@@ -170,16 +170,17 @@ fn generate_field_node(
         .unwrap_or_else(|| humanize(&field_name));
     let description = opt_lit_expr(&attrs.description);
     let required = attrs.required;
+    let kind_override = generate_kind_override(attrs);
 
     quote! {
         ::munibot_config::ConfigNode::Field({
             #[allow(unused_mut)]
-            let mut field = ::munibot_config::Field::new(
-                #field_name,
-                #label,
-                <#field_ty as ::munibot_config::ConfigField>::field_kind(),
-            )
-            .default(<#field_ty as ::munibot_config::ConfigField>::to_value(&Self::default().#field_ident));
+            let mut kind = <#field_ty as ::munibot_config::ConfigField>::field_kind();
+            #kind_override
+
+            #[allow(unused_mut)]
+            let mut field = ::munibot_config::Field::new(#field_name, #label, kind)
+                .default(<#field_ty as ::munibot_config::ConfigField>::to_value(&Self::default().#field_ident));
 
             if let ::std::option::Option::Some(description) = #description {
                 field = field.description(description);
@@ -190,6 +191,49 @@ fn generate_field_node(
 
             field
         })
+    }
+}
+
+/// Overrides a `FieldKind`'s own `min`/`max`/`max_len` with the field's
+/// `#[config(...)]` attribute values, if any were given.
+///
+/// This is necessary, not cosmetic: `<FieldType as ConfigField>::field_kind()`
+/// is a per-*type* method (e.g. every `SettingDuration` field reports the
+/// same `FieldKind::Duration { min: None, max: None }`), so it has no way
+/// to know about a *field-specific* constraint. Without this override, a
+/// `#[config(min = ...)]` attribute would only ever reach the derive's own
+/// generated `validate()` (see `generate_field_validation`) and never the
+/// schema itself -- meaning `unflatten`'s bounds checking (which reads the
+/// bounds from the schema's `FieldKind`, not from any attribute) would
+/// silently never see it either. Found via
+/// `munibot_config_derive/tests/end_to_end.rs`.
+fn generate_kind_override(attrs: &FieldAttrs) -> TokenStream {
+    if attrs.min.is_none() && attrs.max.is_none() && attrs.max_len.is_none() {
+        return TokenStream::new();
+    }
+
+    let min_write = attrs
+        .min
+        .as_ref()
+        .map(|e| quote! { *min = ::std::option::Option::Some((#e) as _); });
+    let max_write = attrs
+        .max
+        .as_ref()
+        .map(|e| quote! { *max = ::std::option::Option::Some((#e) as _); });
+    let max_len_write = attrs
+        .max_len
+        .as_ref()
+        .map(|e| quote! { *max_len = ::std::option::Option::Some((#e) as _); });
+
+    quote! {
+        #[allow(unused_variables)]
+        match &mut kind {
+            ::munibot_config::FieldKind::Int { min, max, .. } => { #min_write #max_write }
+            ::munibot_config::FieldKind::Float { min, max, .. } => { #min_write #max_write }
+            ::munibot_config::FieldKind::Duration { min, max } => { #min_write #max_write }
+            ::munibot_config::FieldKind::Text { max_len, .. } => { #max_len_write }
+            _ => {}
+        }
     }
 }
 

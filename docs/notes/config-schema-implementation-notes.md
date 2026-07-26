@@ -130,3 +130,51 @@ could drift), `#[derive(ConfigChoice)]` generates `Serialize`/
 `Deserialize` itself, delegating to `choice_id`/`from_choice_id`. This
 was prototyped by hand in phase 1's `munibot_config/tests/end_to_end.rs`
 (`CleanupMode`) before committing to generating it.
+
+## Two bugs found writing the derive's own end-to-end test (phase 2, commit 23)
+
+### Constraint errors never aggregated with coercion errors in the same patch
+
+`with_patch` called `unflatten(...)?` before `validate()`, so if _any_
+field in a patch had a structural coercion problem (wrong `ConfigValue`
+variant for its `FieldKind`), the whole pipeline returned before
+`validate()` ever ran -- silently hiding a `min`/`max`/`max_len`
+violation on a _different_ field in the same patch. A patch touching one
+bad-type field and one out-of-bounds field reported only the first.
+
+Fixed by moving bounds checking into `unflatten` itself:
+`config_value_to_json` (`munibot_config/src/flatten.rs`) now calls
+`validate_numeric_bounds`/`validate_text_length` for `Int`/`Float`/
+`Duration`/`Text` fields, using the bounds already carried on the
+schema's own `FieldKind`. This means bounds violations aggregate with
+coercion errors in exactly the pass that already aggregates everything
+else. `Configurable::validate()` still independently checks the same
+bounds (see `generate_field_validation`) for the case where a value is
+constructed directly in Rust, never going through a patch at all -- the
+two call sites intentionally share the same `munibot_config` helper
+functions rather than duplicating the comparison logic, so this is a
+second _call site_, not a second _implementation_.
+
+### `#[config(min = ...)]` never reached the schema at all
+
+More fundamental: `<FieldType as ConfigField>::field_kind()` is a
+per-_type_ method -- every `SettingDuration` field, from any struct,
+reports the identical `FieldKind::Duration { min: None, max: None }`.
+A field-specific `#[config(min = 3600)]` attribute had no way to reach
+it, so the schema's `FieldKind` never actually carried a field's real
+bounds; only the derive's separately-generated `validate()` ever saw the
+attribute (via its own, independent `opt_cast_expr`). This is what made
+the bug above possible to miss: `generate_field_validation`'s check
+worked in isolation, so `constraint_validation.rs`'s tests all passed
+despite the schema itself being wrong.
+
+Fixed in `generate_field_node`: it now calls `field_kind()` to get a
+type's default `FieldKind`, then overrides `min`/`max`/`max_len` in
+place from the field's own attributes before building the `Field`. See
+`generate_kind_override`.
+
+Both bugs are exactly the kind of thing an end-to-end test across the
+_whole_ pipeline (schema, patch, coercion, validation) is supposed to
+catch, and neither showed up in any single commit's own narrower tests
+-- worth keeping in mind when tempted to skip the final integration pass
+on a future phase.
