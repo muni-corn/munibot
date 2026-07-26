@@ -16,3 +16,4 @@ syn.workspace = true
 
 [dev-dependencies]
 munibot_config = { path = "../munibot_config" }
+serde = { workspace = true, features = ["derive"] }

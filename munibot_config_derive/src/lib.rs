@@ -7,16 +7,21 @@
 //! else) made while writing this crate.
 
 use proc_macro::TokenStream;
+use syn::{DeriveInput, parse_macro_input};
 
 mod attrs;
+mod configurable;
 mod shape;
 
 /// Derives `munibot_config::Configurable` for a struct.
 ///
 /// See the crate-level docs for the attributes this supports.
 #[proc_macro_derive(Configurable, attributes(config))]
-pub fn derive_configurable(_input: TokenStream) -> TokenStream {
-    TokenStream::new()
+pub fn derive_configurable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    configurable::expand(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 /// Derives `munibot_config::ConfigChoice` (plus `ConfigField`,

@@ -1,8 +1,3 @@
-// not wired into the actual derives yet -- that lands with the codegen
-// commits that follow this one. remove once config_fields/descriptor
-// generation (commit 17) calls these.
-#![allow(dead_code)]
-
 use syn::{Attribute, Expr, Ident, LitStr, Result};
 
 /// Parsed `#[config(...)]` attributes from a `Configurable` container
