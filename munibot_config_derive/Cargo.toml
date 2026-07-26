@@ -1,0 +1,18 @@
+[package]
+name = "munibot_config_derive"
+description = "derive macros for munibot_config: Configurable and ConfigChoice"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+[dev-dependencies]
+munibot_config = { path = "../munibot_config" }

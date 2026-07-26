@@ -4192,6 +4192,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "munibot_config_derive"
+version = "0.3.2"
+dependencies = [
+ "munibot_config",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "munibot_core"
 version = "0.3.2"
 dependencies = [
