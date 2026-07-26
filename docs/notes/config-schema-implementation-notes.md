@@ -5,6 +5,20 @@ Deviations and clarifications discovered while implementing
 other agents) don't have to rediscover them. The plan doc itself is not
 edited in place; it stays the historical high-level design.
 
+## Phase 1 commits 11 and 12 swapped
+
+The plan ordered "add ConfigValues flatten and unflatten" (11) before "add
+ConfigPatch and FieldError types" (12). Building `unflatten` surfaced a
+real dependency the plan didn't anticipate: converting a `ConfigValue`
+back into json can fail (e.g. `ConfigValue::Ref("not a number")` for a
+`ChannelRef` field), and that failure has to be reported as a `FieldError`
+at the offending path -- not silently coerced to `null`/`0`, which would
+turn into a confusing, path-less deserialize failure later in
+`with_patch`. So `unflatten` needs `FieldError` to exist first. Executed
+order: `ConfigPatch`/`FieldError` (formerly 12) landed as commit 11;
+`flatten`/`unflatten` (formerly 11) landed as commit 12. Same content,
+titles unchanged, order flipped.
+
 ## `FieldKind::Float` added (phase 1, commit 5)
 
 The plan's `ConfigValue` (section 5.2) already had a `Float(f64)` variant,
