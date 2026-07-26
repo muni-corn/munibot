@@ -31,6 +31,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     };
 
     let mut field_nodes = Vec::new();
+    let mut validations = Vec::new();
     for field in &fields_named.named {
         let field_attrs = parse_field_attrs(&field.attrs)?;
         if field_attrs.skip {
@@ -41,7 +42,8 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         // don't, and those were already rejected above.
         let field_ident = field.ident.as_ref().expect("named field has an ident");
 
-        let node = match classify_field_shape(&field.ty) {
+        let shape = classify_field_shape(&field.ty);
+        let node = match shape {
             FieldShape::Leaf => generate_field_node(field_ident, &field.ty, &field_attrs),
             FieldShape::Toggled { settings_ty } => {
                 generate_section_node(field_ident, settings_ty, &field_attrs)
@@ -51,7 +53,25 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
         };
         field_nodes.push(node);
+
+        match shape {
+            FieldShape::Leaf => {
+                if let Some(validation) =
+                    generate_field_validation(field_ident, &field.ty, &field_attrs)
+                {
+                    validations.push(validation);
+                }
+            }
+            FieldShape::Toggled { .. } => {
+                validations.push(generate_section_validation(field_ident));
+            }
+            FieldShape::Collection { key_ty, .. } => {
+                validations.push(generate_collection_validation(field_ident, key_ty));
+            }
+        }
     }
+
+    let validate_impl = generate_validate(&validations);
 
     Ok(quote! {
         impl ::munibot_config::Configurable for #ident {
@@ -60,6 +80,8 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
 
             #descriptor_impl
+
+            #validate_impl
         }
     })
 }
@@ -244,6 +266,135 @@ fn generate_collection_node(
             add_label: #add_label.to_owned(),
             item: <#value_ty as ::munibot_config::Configurable>::config_fields(),
         }
+    }
+}
+
+/// Builds `fn validate(&self) -> Result<(), Vec<FieldError>> { ... }` from
+/// every field's validation block, or `None` if there are none (relying on
+/// the trait's default `Ok(())`).
+///
+/// Aggregates every block's errors rather than returning on the first:
+/// a patch touching several fields at once should be able to report every
+/// problem in one round trip, matching how `unflatten` already behaves.
+fn generate_validate(validations: &[TokenStream]) -> Option<TokenStream> {
+    if validations.is_empty() {
+        return None;
+    }
+
+    Some(quote! {
+        fn validate(&self) -> ::std::result::Result<(), ::std::vec::Vec<::munibot_config::FieldError>> {
+            let mut errors: ::std::vec::Vec<::munibot_config::FieldError> = ::std::vec::Vec::new();
+            #(#validations)*
+            if errors.is_empty() {
+                ::std::result::Result::Ok(())
+            } else {
+                ::std::result::Result::Err(errors)
+            }
+        }
+    })
+}
+
+/// Builds a constraint-check block for a leaf field with
+/// `#[config(min/max/max_len = ...)]`, or `None` if it has none.
+///
+/// Goes through `ConfigField::to_value` rather than comparing
+/// `self.#field_ident` directly: that already handles `Option<T>`
+/// unwrapping generically (an unset field is `ConfigValue::Unset`, which
+/// `validate_numeric_bounds`/`validate_text_length` both treat as "nothing
+/// to check"), so this doesn't need its own logic for whether the field's
+/// declared type is optional.
+fn generate_field_validation(
+    field_ident: &Ident,
+    field_ty: &syn::Type,
+    attrs: &FieldAttrs,
+) -> Option<TokenStream> {
+    if attrs.min.is_none() && attrs.max.is_none() && attrs.max_len.is_none() {
+        return None;
+    }
+
+    let field_name = field_ident.to_string();
+    let min = opt_cast_expr(&attrs.min, quote! { f64 });
+    let max = opt_cast_expr(&attrs.max, quote! { f64 });
+    let max_len = opt_cast_expr(&attrs.max_len, quote! { usize });
+
+    Some(quote! {
+        {
+            let value = <#field_ty as ::munibot_config::ConfigField>::to_value(&self.#field_ident);
+            if let ::std::option::Option::Some(message) =
+                ::munibot_config::validate_numeric_bounds(&value, #min, #max)
+            {
+                errors.push(::munibot_config::FieldError::new(
+                    ::munibot_config::ConfigPath::root().field(#field_name),
+                    message,
+                ));
+            }
+            if let ::std::option::Option::Some(message) =
+                ::munibot_config::validate_text_length(&value, #max_len)
+            {
+                errors.push(::munibot_config::FieldError::new(
+                    ::munibot_config::ConfigPath::root().field(#field_name),
+                    message,
+                ));
+            }
+        }
+    })
+}
+
+/// Builds a block that recurses into a `Toggled<T>` field's own
+/// `validate()`, prefixing its (relative) `FieldError` paths with this
+/// field's id.
+///
+/// Runs unconditionally, regardless of whether the toggle is enabled --
+/// v1 has no notion of "only required/validated while some sibling is
+/// enabled" (see docs/notes on `required`). In practice this rarely
+/// matters: an unset `Option<T>` field is `ConfigValue::Unset`, which
+/// never violates a bound, so a disabled section with nothing filled in
+/// still passes.
+fn generate_section_validation(field_ident: &Ident) -> TokenStream {
+    let field_name = field_ident.to_string();
+    quote! {
+        if let ::std::result::Result::Err(nested_errors) =
+            ::munibot_config::Configurable::validate(&self.#field_ident.settings)
+        {
+            for mut error in nested_errors {
+                error.path = ::munibot_config::ConfigPath::root().field(#field_name).join(&error.path);
+                errors.push(error);
+            }
+        }
+    }
+}
+
+/// Builds a block that recurses into every item of a `BTreeMap<K, V>`
+/// field's own `validate()`, prefixing its (relative) `FieldError` paths
+/// with this field's id and the item's key.
+fn generate_collection_validation(field_ident: &Ident, key_ty: &syn::Type) -> TokenStream {
+    let field_name = field_ident.to_string();
+    quote! {
+        for (key, item) in &self.#field_ident {
+            if let ::std::result::Result::Err(nested_errors) = ::munibot_config::Configurable::validate(item) {
+                let key_string = <#key_ty as ::munibot_config::ConfigKey>::to_key_string(key);
+                for mut error in nested_errors {
+                    error.path = ::munibot_config::ConfigPath::root()
+                        .field(#field_name)
+                        .key(key_string.clone())
+                        .join(&error.path);
+                    errors.push(error);
+                }
+            }
+        }
+    }
+}
+
+/// Builds an explicitly-typed `Option<#cast_ty>` expression from a parsed
+/// `Option<syn::Expr>` attribute value, casting the expression to
+/// `#cast_ty` (always `f64` or `usize` here).
+///
+/// Same reasoning as `opt_lit_expr`: an untyped `None` here would leave
+/// rustc unable to infer the type parameter at the call site.
+fn opt_cast_expr(expr: &Option<syn::Expr>, cast_ty: TokenStream) -> TokenStream {
+    match expr {
+        Some(e) => quote! { ::std::option::Option::<#cast_ty>::Some((#e) as #cast_ty) },
+        None => quote! { ::std::option::Option::<#cast_ty>::None },
     }
 }
 
