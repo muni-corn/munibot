@@ -11,19 +11,23 @@
 // see docs/plans/gui-configuration.md for the full design.
 
 pub mod descriptor;
+pub mod duration;
 pub mod field;
 pub mod field_value;
 pub mod node;
 pub mod path;
 pub mod refs;
 pub mod scope;
+pub mod toggled;
 pub mod value;
 
 pub use descriptor::ProviderDescriptor;
+pub use duration::SettingDuration;
 pub use field::{ChoiceOption, Condition, Field, FieldKind, KeyKind, RefKind};
 pub use field_value::{ConfigField, ValueError};
 pub use node::{ConfigNode, ConfigSchema};
 pub use path::{ConfigPath, ConfigPathError, PathSegment};
 pub use refs::{ChannelRef, RoleRef, UserRef};
 pub use scope::{ConfigScope, ScopeKind};
+pub use toggled::Toggled;
 pub use value::{ConfigValue, ConfigValues};
