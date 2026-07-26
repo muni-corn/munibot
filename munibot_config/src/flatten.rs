@@ -234,10 +234,29 @@ fn config_value_to_json(
             Ok(Json::String(s.clone()))
         }
         (FieldKind::Duration { .. }, ConfigValue::Duration(secs)) => Ok(Json::from(*secs)),
-        (FieldKind::Choice { .. }, ConfigValue::Choice(id)) => Ok(Json::String(id.clone())),
-        (FieldKind::MultiChoice { .. }, ConfigValue::MultiChoice(ids)) => Ok(Json::Array(
-            ids.iter().map(|id| Json::String(id.clone())).collect(),
-        )),
+        // validated against the schema's own option list here, not left to
+        // fail later during Self's deserialize: an unknown id is
+        // structurally a valid ConfigValue::Choice, so without this check
+        // it would slip past unflatten's per-field error collection and
+        // only surface as a single, non-aggregated deserialize error.
+        (FieldKind::Choice { options }, ConfigValue::Choice(id)) => {
+            if options.iter().any(|option| &option.id == id) {
+                Ok(Json::String(id.clone()))
+            } else {
+                Err(format!("`{id}` is not a valid choice"))
+            }
+        }
+        (FieldKind::MultiChoice { options }, ConfigValue::MultiChoice(ids)) => {
+            if let Some(id) = ids
+                .iter()
+                .find(|id| !options.iter().any(|option| &option.id == *id))
+            {
+                return Err(format!("`{id}` is not a valid choice"));
+            }
+            Ok(Json::Array(
+                ids.iter().map(|id| Json::String(id.clone())).collect(),
+            ))
+        }
         (FieldKind::Ref { .. }, ConfigValue::Ref(s)) => s
             .parse::<u64>()
             .map(Json::from)
@@ -299,7 +318,16 @@ mod tests {
                     },
                 )),
                 ConfigNode::Field(Field::new("mode", "cleanup mode", FieldKind::Choice {
-                    options: vec![],
+                    options: vec![
+                        crate::field::ChoiceOption {
+                            id: "always".to_owned(),
+                            label: "always".to_owned(),
+                        },
+                        crate::field::ChoiceOption {
+                            id: "after_silence".to_owned(),
+                            label: "after silence".to_owned(),
+                        },
+                    ],
                 })),
             ],
         }]
@@ -467,5 +495,44 @@ mod tests {
         let values = flatten(&autodelete_schema(), &original);
         let rebuilt = unflatten(&autodelete_schema(), &values).expect("should not error");
         assert_eq!(rebuilt, original);
+    }
+
+    #[test]
+    fn test_unflatten_rejects_a_choice_id_not_in_the_schemas_options() {
+        let mut values = crate::value::ConfigValues::new();
+        values.insert(
+            ConfigPath::root().field("timers").key("6437").field("mode"),
+            ConfigValue::Choice("bogus".to_owned()),
+        );
+
+        let errors = unflatten(&autodelete_schema(), &values).unwrap_err();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0].path,
+            ConfigPath::root().field("timers").key("6437").field("mode")
+        );
+    }
+
+    #[test]
+    fn test_unflatten_rejects_an_unknown_multi_choice_id() {
+        let schema = vec![ConfigNode::Field(Field::new(
+            "tags",
+            "tags",
+            FieldKind::MultiChoice {
+                options: vec![crate::field::ChoiceOption {
+                    id: "a".to_owned(),
+                    label: "a".to_owned(),
+                }],
+            },
+        ))];
+
+        let mut values = crate::value::ConfigValues::new();
+        values.insert(
+            ConfigPath::root().field("tags"),
+            ConfigValue::MultiChoice(vec!["a".to_owned(), "bogus".to_owned()]),
+        );
+
+        let errors = unflatten(&schema, &values).unwrap_err();
+        assert_eq!(errors.len(), 1);
     }
 }
