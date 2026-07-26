@@ -105,9 +105,15 @@ async fn stop_logging(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError
             .map_err(|e| CoreError::Other(format!("error reading guild config: {e}")))?;
 
         if existing.is_some_and(|c| c.logging_channel.is_some()) {
-            operations::delete_guild_config(db, guild_id_i64)
-                .await
-                .map_err(|e| CoreError::Other(format!("error deleting log channel: {e}")))?;
+            // clear just the logging column rather than deleting the whole
+            // row -- guild_configs may carry other settings that shouldn't
+            // be wiped out by turning logging off
+            operations::upsert_guild_config(db, GuildConfig {
+                guild_id: guild_id_i64,
+                logging_channel: None,
+            })
+            .await
+            .map_err(|e| CoreError::Other(format!("error clearing log channel: {e}")))?;
             "done! logging has been disabled for this server."
         } else {
             "no logging channel is set for this server! nothing was done."
