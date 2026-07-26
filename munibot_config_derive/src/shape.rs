@@ -10,10 +10,6 @@ use syn::{GenericArgument, PathArguments, Type};
 /// deliberately no third "plain nested section" shape in v1: without an
 /// explicit opt-in it would be indistinguishable from `Leaf` (a
 /// `ConfigChoice`-derived enum is also "some other type used directly").
-// the Toggled/Collection payloads aren't read yet -- expand() (in
-// configurable.rs) currently just rejects both shapes. real codegen using
-// these fields lands in the next two commits.
-#[allow(dead_code)]
 pub enum FieldShape<'a> {
     /// `Toggled<T>` -> a toggled `Section`, with `T`'s own fields as its
     /// children.

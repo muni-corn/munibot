@@ -46,11 +46,8 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             FieldShape::Toggled { settings_ty } => {
                 generate_section_node(field_ident, settings_ty, &field_attrs)
             }
-            FieldShape::Collection { .. } => {
-                return Err(syn::Error::new_spanned(
-                    field,
-                    "BTreeMap<K, V> fields aren't supported yet",
-                ));
+            FieldShape::Collection { key_ty, value_ty } => {
+                generate_collection_node(field_ident, key_ty, value_ty, &field_attrs)
             }
         };
         field_nodes.push(node);
@@ -213,6 +210,43 @@ fn generate_section_node(
     }
 }
 
+/// Builds a `ConfigNode::Collection` for a `BTreeMap<K, V>` field.
+///
+/// Unlike `Section`, `Collection` has no `description` field in
+/// `munibot_config` -- a `#[config(description = ...)]` on one of these
+/// fields is silently unused rather than rejected, matching how
+/// `required`/`min`/`max`/etc are also just ignored on shapes they don't
+/// apply to in v1 (see docs/notes for the broader "no per-shape attribute
+/// validation yet" scope cut).
+fn generate_collection_node(
+    field_ident: &Ident,
+    key_ty: &syn::Type,
+    value_ty: &syn::Type,
+    attrs: &FieldAttrs,
+) -> TokenStream {
+    let field_name = field_ident.to_string();
+    let label = attrs
+        .label
+        .as_ref()
+        .map(|lit| lit.value())
+        .unwrap_or_else(|| humanize(&field_name));
+    let add_label = attrs
+        .add_label
+        .as_ref()
+        .map(|lit| lit.value())
+        .unwrap_or_else(|| format!("add {label}"));
+
+    quote! {
+        ::munibot_config::ConfigNode::Collection {
+            id: #field_name.to_owned(),
+            label: #label.to_owned(),
+            key: <#key_ty as ::munibot_config::ConfigKey>::key_kind(),
+            add_label: #add_label.to_owned(),
+            item: <#value_ty as ::munibot_config::Configurable>::config_fields(),
+        }
+    }
+}
+
 /// `log_channel` -> `"log channel"`. The fallback label when a field has no
 /// `#[config(label = ...)]`.
 fn humanize(field_name: &str) -> String {
@@ -277,12 +311,12 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_rejects_collection_fields_for_now() {
+    fn test_expand_accepts_a_collection_field() {
         let input = parse_quote! {
             struct X {
                 timers: BTreeMap<ChannelRef, ChannelAutoDelete>,
             }
         };
-        assert!(expand(input).is_err());
+        assert!(expand(input).is_ok());
     }
 }
