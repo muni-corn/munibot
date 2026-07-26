@@ -3,7 +3,10 @@ use munibot_api::{guilds::GuildSummary, server_fns::guilds::get_guilds};
 
 use crate::{app::Route, components::Spinner};
 
-/// Shows the discord servers the signed-in user owns or administrates.
+/// Layout for every `/dashboard/*` route: shows the sidebar of discord
+/// servers the signed-in user owns or administrates, with the current
+/// route's content (the dashboard index, or a guild's settings pages) in
+/// the outlet beside it.
 #[component]
 pub fn Dashboard() -> Element {
     let guilds = use_resource(get_guilds);
@@ -37,6 +40,17 @@ pub fn Dashboard() -> Element {
     rsx! {
         document::Title { "your servers ~ munibot" }
         {content}
+    }
+}
+
+/// Content shown in `Dashboard`'s outlet at the bare `/dashboard` path,
+/// before a server has been picked from the sidebar.
+#[component]
+pub fn DashboardIndex() -> Element {
+    rsx! {
+        div { class: "flex h-full flex-col place-content-center items-center p-4 text-slate-300 gap-2",
+            p { "pick a server from the sidebar to manage its settings." }
+        }
     }
 }
 
