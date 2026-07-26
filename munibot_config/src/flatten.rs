@@ -223,17 +223,51 @@ fn config_value_to_json(
     kind: &crate::field::FieldKind,
     value: &ConfigValue,
 ) -> Result<Json, String> {
-    use crate::field::FieldKind;
+    use crate::{
+        constraint::{validate_numeric_bounds, validate_text_length},
+        field::FieldKind,
+    };
 
     match (kind, value) {
         (_, ConfigValue::Unset) => Ok(Json::Null),
         (FieldKind::Bool, ConfigValue::Bool(b)) => Ok(Json::Bool(*b)),
-        (FieldKind::Int { .. }, ConfigValue::Int(i)) => Ok(Json::from(*i)),
-        (FieldKind::Float { .. }, ConfigValue::Float(f)) => Ok(Json::from(*f)),
-        (FieldKind::Text { .. } | FieldKind::Color | FieldKind::Url, ConfigValue::Text(s)) => {
+        // min/max/max_len are checked here, not left solely to a
+        // Configurable::validate() call after deserializing: a patch that
+        // also has a coercion error elsewhere (a different field entirely)
+        // would otherwise never reach validate() at all, since unflatten
+        // returns before with_patch gets that far -- see
+        // docs/notes/config-schema-implementation-notes.md. Checking
+        // bounds here means both kinds of problems aggregate into one
+        // Err(Vec<FieldError>), whatever else is wrong in the same patch.
+        (FieldKind::Int { min, max, .. }, ConfigValue::Int(i)) => {
+            if let Some(message) =
+                validate_numeric_bounds(value, min.map(|m| m as f64), max.map(|m| m as f64))
+            {
+                return Err(message);
+            }
+            Ok(Json::from(*i))
+        }
+        (FieldKind::Float { min, max, .. }, ConfigValue::Float(f)) => {
+            if let Some(message) = validate_numeric_bounds(value, *min, *max) {
+                return Err(message);
+            }
+            Ok(Json::from(*f))
+        }
+        (FieldKind::Text { max_len, .. }, ConfigValue::Text(s)) => {
+            if let Some(message) = validate_text_length(value, *max_len) {
+                return Err(message);
+            }
             Ok(Json::String(s.clone()))
         }
-        (FieldKind::Duration { .. }, ConfigValue::Duration(secs)) => Ok(Json::from(*secs)),
+        (FieldKind::Color | FieldKind::Url, ConfigValue::Text(s)) => Ok(Json::String(s.clone())),
+        (FieldKind::Duration { min, max }, ConfigValue::Duration(secs)) => {
+            if let Some(message) =
+                validate_numeric_bounds(value, min.map(|m| m as f64), max.map(|m| m as f64))
+            {
+                return Err(message);
+            }
+            Ok(Json::from(*secs))
+        }
         // validated against the schema's own option list here, not left to
         // fail later during Self's deserialize: an unknown id is
         // structurally a valid ConfigValue::Choice, so without this check
