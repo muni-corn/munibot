@@ -85,3 +85,21 @@ suddenly starts failing with the password from `devenv.nix` but an empty passwor
 `ALTER USER 'root'@'localhost' IDENTIFIED BY '<password>';` against the (passwordless) local instance
 brings it back in line with the declared config. This blocked `munibot_core`'s `TestDb` (which needs
 root to create/drop per-test databases) independently of anything gui-related.
+
+Same drift can leave `munibot`/`munibot_test` (the app users `TestDb` and the real pool connect as)
+missing entirely from an old data directory, since `ensureUsers` never ran against it in the first
+place. `CREATE USER IF NOT EXISTS`/`GRANT` by hand, matching `devenv.nix`'s declared
+username/password/privilege scope, brings an old data dir back in line.
+
+**A blank-username anonymous account at the same host silently shadows a real, differently-hosted
+user of the same name.** MySQL/MariaDB sorts `mysql.user` rows by host specificity first (a literal
+host like `localhost` beats a wildcard host like `%`), and only _among rows with the same host_ does
+it prefer a non-blank username over a blank one. So if `''@'localhost'` (an anonymous account --
+common on distro-default installs, not something this project's devenv config creates) exists, and
+the intended account is only registered at `'<user>'@'%'` with no `'<user>'@'localhost'` row, a
+client connecting from the local machine matches the anonymous row _before_ it ever considers the
+wildcard-host row for the real username -- and authentication is silently checked against the
+anonymous account's own credentials instead. The error message still names the client's actual
+username and resolved host (e.g. `Access denied for user 'munibot_test'@'localhost'`), which reads
+like a simple password mismatch and hides the real cause. Fix: `DROP USER ''@'localhost';` (and any
+other anonymous host entries), then `FLUSH PRIVILEGES;`.
