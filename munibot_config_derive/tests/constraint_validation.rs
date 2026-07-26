@@ -7,7 +7,6 @@ use std::{collections::BTreeMap, time::Duration};
 use munibot_config::{
     ChannelRef, ConfigPatch, ConfigValue, Configurable, SettingDuration, Toggled,
 };
-use munibot_config_derive::Configurable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Configurable)]

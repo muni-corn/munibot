@@ -5,9 +5,9 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use munibot_config::{
-    ChannelRef, ConfigNode, ConfigPatch, ConfigValue, Configurable, KeyKind, SettingDuration,
+    ChannelRef, ConfigChoice, ConfigNode, ConfigPatch, ConfigValue, Configurable, KeyKind,
+    SettingDuration,
 };
-use munibot_config_derive::{ConfigChoice, Configurable};
 use serde::{Deserialize, Serialize};
 
 // now the real derive, upgraded from the hand-rolled prototype this test

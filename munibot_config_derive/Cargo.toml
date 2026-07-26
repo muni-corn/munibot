@@ -15,6 +15,9 @@ quote.workspace = true
 syn.workspace = true
 
 [dev-dependencies]
-munibot_config = { path = "../munibot_config" }
+# feature = "derive" (not munibot_config_derive directly): tests exercise
+# the derives the way real consumers will, through munibot_config's own
+# re-export, so this is also what proves that re-export actually works.
+munibot_config = { path = "../munibot_config", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

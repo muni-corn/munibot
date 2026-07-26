@@ -4185,6 +4185,7 @@ dependencies = [
 name = "munibot_config"
 version = "0.3.2"
 dependencies = [
+ "munibot_config_derive",
  "serde",
  "serde_json",
  "serde_path_to_error",

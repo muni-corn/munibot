@@ -3,7 +3,6 @@
 //! implementation, and that ids/labels default sensibly from variant names.
 
 use munibot_config::{ChoiceOption, ConfigChoice, ConfigField, ConfigValue, FieldKind};
-use munibot_config_derive::ConfigChoice;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, ConfigChoice)]
 enum CleanupMode {

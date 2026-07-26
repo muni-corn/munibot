@@ -3,7 +3,6 @@
 //! the hand-written equivalent in `munibot_config/tests/end_to_end.rs`.
 
 use munibot_config::{ChannelRef, ConfigNode, ConfigPatch, ConfigValue, Configurable, Toggled};
-use munibot_config_derive::Configurable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Configurable)]

@@ -7,7 +7,12 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+munibot_config_derive = { path = "../munibot_config_derive", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 serde_path_to_error.workspace = true
 thiserror.workspace = true
+
+[features]
+default = []
+derive = ["dep:munibot_config_derive"]

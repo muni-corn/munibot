@@ -36,6 +36,15 @@ pub use field::{ChoiceOption, Condition, Field, FieldKind, KeyKind, RefKind};
 pub use field_value::{ConfigField, ValueError};
 pub use flatten::{flatten, unflatten};
 pub use key::ConfigKey;
+// re-exports the derive macros under the same names as the traits they
+// implement (`Configurable`, `ConfigChoice`), the same way serde re-exports
+// serde_derive. This is not a name collision: a trait and a derive macro
+// live in different namespaces (type vs macro), so `use
+// munibot_config::Configurable` resolves to whichever one the use site
+// needs -- `#[derive(Configurable)]` finds the macro, `impl Configurable
+// for X` finds the trait.
+#[cfg(feature = "derive")]
+pub use munibot_config_derive::{ConfigChoice, Configurable};
 pub use node::{ConfigNode, ConfigSchema};
 pub use patch::{ConfigChange, ConfigPatch, FieldError};
 pub use path::{ConfigPath, ConfigPathError, PathSegment};

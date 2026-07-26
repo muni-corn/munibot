@@ -5,7 +5,6 @@
 //! expansion doesn't error.
 
 use munibot_config::{ChannelRef, ConfigPatch, ConfigValue, Configurable, ScopeKind};
-use munibot_config_derive::Configurable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Configurable)]
