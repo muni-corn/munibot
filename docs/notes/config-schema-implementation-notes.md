@@ -40,3 +40,25 @@ provider's actual root type; the trait's default `descriptor()` panics,
 which is a fair programmer-error signal since such a type was never meant
 to be registered with a `ConfigurationProvider`). `config_schema()`
 survives as a provided method that just combines the two.
+
+## Collection item removal (phase 1, before commit 14)
+
+The plan never addressed how a patch removes a `Collection` item (e.g.
+deleting an autodelete timer for a channel) -- discovered while writing
+end-to-end tests for commit 14. `Configurable::with_patch` now treats
+setting any path to `ConfigValue::Unset` as removing that path _and
+everything nested under it_ from the merged values, not just that one
+entry:
+
+- For a scalar field, this clears an `Option<T>` back to `None` (it falls
+  through to the field's default, same as never having been set).
+- For a `Collection` item's own bare path (e.g. `timers[9001]`, no field
+  suffix), this removes the entire item: every path nested under it
+  disappears, so `unflatten`'s key scan no longer finds that key at all.
+
+There's no separate "remove" value or a distinct operation on
+`ConfigPatch` -- adding an item already works for free (a change to a
+path that didn't exist before just gets defaults for its other fields via
+`unflatten`'s fallback to `field.default`), so this makes removal the
+symmetric inverse of that, using a value (`Unset`) that already existed
+rather than growing the value/patch model further.

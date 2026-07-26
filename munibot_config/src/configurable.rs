@@ -6,7 +6,7 @@ use crate::{
     node::{ConfigNode, ConfigSchema},
     patch::{ConfigPatch, FieldError},
     path::ConfigPath,
-    value::ConfigValues,
+    value::{ConfigValue, ConfigValues},
 };
 
 /// A struct describing a set of related settings, whose shape is also its
@@ -67,8 +67,21 @@ pub trait Configurable: Serialize + DeserializeOwned + Default + Sized {
 
     /// Applies `patch` on top of `self`, producing a new, validated value.
     ///
-    /// Every changed path is coerced against its field's real type (via
-    /// `unflatten`) before anything is deserialized, so a bad patch is
+    /// Setting a path to `ConfigValue::Unset` removes it, and everything
+    /// nested under it, from the merged values -- not just that one path.
+    /// For a scalar field this is how an `Option<T>` gets cleared back to
+    /// `None` (falling through to the field's default, same as it never
+    /// having been set). For a `Collection` item's own path (e.g.
+    /// `timers[9001]`, with no field suffix), this is also the only way to
+    /// remove that entire item: every path nested under it disappears, so
+    /// `unflatten`'s `collection_keys` scan no longer finds that key at all.
+    /// There's no separate "remove" value or a distinct delete operation on
+    /// `ConfigPatch` -- an add is just a change to a path that didn't
+    /// already exist (its fields fall back to their schema defaults), so
+    /// this is add's natural inverse.
+    ///
+    /// Every changed path is then coerced against its field's real type
+    /// (via `unflatten`) before anything is deserialized, so a bad patch is
     /// reported as `FieldError`s by path rather than a raw, path-less
     /// deserialize failure. `serde_path_to_error` is used as defense in
     /// depth for whatever this crate's own coercion doesn't catch.
@@ -77,7 +90,12 @@ pub trait Configurable: Serialize + DeserializeOwned + Default + Sized {
 
         let mut values = self.to_values();
         for change in &patch.changes {
-            values.insert(change.path.clone(), change.value.clone());
+            if change.value == ConfigValue::Unset {
+                let removed_prefix = change.path.segments();
+                values.retain(|path, _| !path.segments().starts_with(removed_prefix));
+            } else {
+                values.insert(change.path.clone(), change.value.clone());
+            }
         }
 
         let json = unflatten(&fields, &values)?;
@@ -183,6 +201,18 @@ mod tests {
 
         let updated = settings.with_patch(&patch).expect("patch should apply");
         assert_eq!(updated.channel, Some(6437));
+    }
+
+    #[test]
+    fn test_with_patch_unset_clears_an_optional_field_back_to_default() {
+        let settings = LoggingSettings {
+            channel: Some(6437),
+        };
+        let patch =
+            ConfigPatch::new().with(ConfigPath::root().field("channel"), ConfigValue::Unset);
+
+        let updated = settings.with_patch(&patch).expect("patch should apply");
+        assert_eq!(updated.channel, None);
     }
 
     #[test]
