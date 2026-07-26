@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use munibot_api::settings::ChannelSummary;
 
 use crate::components::Spinner;
 
@@ -68,6 +69,53 @@ pub fn SaveBar(
                         Spinner {}
                     }
                     "save"
+                }
+            }
+        }
+    }
+}
+
+/// A `<select>` for choosing one of a guild's text channels, or none,
+/// grouped by category. `value` and `on_change` carry channel ids as
+/// strings, matching `ChannelSummary::id` -- an empty selection means no
+/// channel is chosen.
+#[component]
+pub fn ChannelSelect(
+    channels: Vec<ChannelSummary>,
+    value: Option<String>,
+    none_label: String,
+    on_change: EventHandler<Option<String>>,
+) -> Element {
+    // group consecutive channels sharing a category -- the server already
+    // sorts these so channels in the same category are contiguous
+    let mut groups: Vec<(Option<String>, Vec<ChannelSummary>)> = Vec::new();
+    for channel in channels {
+        match groups.last_mut() {
+            Some((category, items)) if *category == channel.category => items.push(channel),
+            _ => groups.push((channel.category.clone(), vec![channel])),
+        }
+    }
+
+    rsx! {
+        select {
+            class: "select w-full",
+            value: value.unwrap_or_default(),
+            onchange: move |event| {
+                let selected = event.value();
+                on_change.call(if selected.is_empty() { None } else { Some(selected) });
+            },
+            option { value: "", {none_label} }
+            for (category, items) in groups {
+                if let Some(category) = category {
+                    optgroup { label: category,
+                        for channel in items {
+                            option { value: "{channel.id}", "#{channel.name}" }
+                        }
+                    }
+                } else {
+                    for channel in items {
+                        option { value: "{channel.id}", "#{channel.name}" }
+                    }
                 }
             }
         }
