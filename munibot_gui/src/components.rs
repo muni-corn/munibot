@@ -21,7 +21,7 @@ pub fn AccountStatus() -> Element {
             let name = user.display_name.clone();
             rsx! {
                 span { "hi, {name}! ^-^ " }
-                Link { to: Route::Dashboard {}, "your servers" }
+                Link { to: Route::DashboardIndex {}, "your servers" }
                 " · "
                 a { href: "/auth/logout", "sign out" }
             }
