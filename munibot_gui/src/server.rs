@@ -11,7 +11,7 @@ use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_redispool::SessionRedisPool;
 use dioxus::prelude::*;
 use munibot_api::auth::server::User;
-use munibot_core::db::establish_pool;
+use munibot_core::{config::DiscordConfig, db::establish_pool};
 use redis_pool::RedisPool;
 use tracing::info;
 
@@ -23,7 +23,12 @@ use crate::app::App;
 /// Establishes its own db pool: sessions load the current user through it,
 /// and it's also injected as an `Extension` for server functions that need
 /// direct db access (e.g. fetching a linked account's oauth token).
-pub async fn run() -> anyhow::Result<()> {
+///
+/// `discord_config` is injected as an `Extension` too, so a server function
+/// can read `invite_link` for a "munibot isn't in this server yet" call to
+/// action, without the gui needing to load or own the whole bot config file
+/// itself.
+pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
     let pool = establish_pool()
         .await
         .expect("couldn't establish database connection pool for the gui");
@@ -49,7 +54,8 @@ pub async fn run() -> anyhow::Result<()> {
                 .with_config(AuthConfig::<String>::default()),
         )
         .layer(SessionLayer::new(session_store))
-        .layer(Extension(pool));
+        .layer(Extension(pool))
+        .layer(Extension(discord_config));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "listening");
