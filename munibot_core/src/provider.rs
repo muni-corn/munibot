@@ -7,7 +7,9 @@
 // concern -- see docs/notes/config-schema-implementation-notes.md.
 
 pub mod context;
+pub mod dyn_provider;
 pub mod typed;
 
 pub use context::{ConfigContext, ConfigError};
+pub use dyn_provider::DynConfigProvider;
 pub use typed::{ConfigurationProvider, RefOption};
