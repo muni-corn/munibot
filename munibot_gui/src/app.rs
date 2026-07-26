@@ -2,7 +2,11 @@ use dioxus::prelude::*;
 
 use crate::{
     layouts::home::HomeLayout,
-    pages::{dashboard::Dashboard, home::Home},
+    pages::{
+        dashboard::{Dashboard, DashboardIndex},
+        guild_settings::{GuildSettings, logging::LoggingSettingsPage},
+        home::Home,
+    },
 };
 
 /// Application root — mounts the router and injects global head elements.
@@ -37,8 +41,17 @@ pub enum Route {
         #[route("/")]
         Home,
         #[layout(HomeLayout)]
-            #[route("/dashboard")]
-            Dashboard,
+            #[layout(Dashboard)]
+                #[route("/dashboard")]
+                DashboardIndex {},
+                #[route("/dashboard/:guild_id")]
+                GuildSettings { guild_id: String },
+                // renders LoggingSettingsPage rather than a component named
+                // GuildLoggingSettings, so this variant's name doesn't
+                // collide with munibot_api::settings::GuildLoggingSettings
+                #[route("/dashboard/:guild_id/logging", LoggingSettingsPage)]
+                GuildLoggingSettings { guild_id: String },
+            #[end_layout]
         #[end_layout]
     #[end_layout]
 
