@@ -178,3 +178,18 @@ _whole_ pipeline (schema, patch, coercion, validation) is supposed to
 catch, and neither showed up in any single commit's own narrower tests
 -- worth keeping in mind when tempted to skip the final integration pass
 on a future phase.
+
+## Phase 3 lives in `munibot_core::provider`, not `munibot_core::config` (commit 24)
+
+The plan's suggested layout (section 3.10) put the new trait/registry
+code under `munibot_core/src/config/*.rs`, alongside `config.rs`. That
+collides: `munibot_core::config` already exists and is the file-based
+bot `Config`/`DiscordConfig`/`TwitchConfig` (TOML, read once at startup,
+re-exported at the crate root) -- a completely different concern from a
+`ConfigurationProvider`. Nesting the new system under the same module
+name would put `munibot_core::config::Config` (the TOML struct) and
+`munibot_core::config::provider::ConfigurationProvider` (the new trait)
+side by side under one name, which reads like they're related when
+they aren't. Used `munibot_core::provider` instead, matching the
+AGENTS.md module convention (`provider.rs` alongside `provider/`) with
+the same submodule breakdown the plan described.

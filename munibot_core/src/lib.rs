@@ -6,6 +6,7 @@ pub mod error;
 pub mod greeting;
 pub mod magical;
 pub mod passing;
+pub mod provider;
 
 pub use config::{Config, DiscordConfig, TwitchConfig};
 pub use db::{DbPool, establish_pool, run_pending_migrations};

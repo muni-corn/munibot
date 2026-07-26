@@ -4209,12 +4209,14 @@ name = "munibot_core"
 version = "0.3.2"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "diesel",
  "diesel-async",
  "diesel_migrations",
  "dotenvy",
  "humantime",
+ "munibot_config",
  "once_cell",
  "rand 0.10.2",
  "regex",
