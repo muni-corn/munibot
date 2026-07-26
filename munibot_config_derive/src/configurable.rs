@@ -43,10 +43,13 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
         let node = match classify_field_shape(&field.ty) {
             FieldShape::Leaf => generate_field_node(field_ident, &field.ty, &field_attrs),
-            FieldShape::Toggled { .. } | FieldShape::Collection { .. } => {
+            FieldShape::Toggled { settings_ty } => {
+                generate_section_node(field_ident, settings_ty, &field_attrs)
+            }
+            FieldShape::Collection { .. } => {
                 return Err(syn::Error::new_spanned(
                     field,
-                    "Toggled<T> and BTreeMap<K, V> fields aren't supported yet",
+                    "BTreeMap<K, V> fields aren't supported yet",
                 ));
             }
         };
@@ -171,6 +174,45 @@ fn generate_field_node(
     }
 }
 
+/// Builds a `ConfigNode::Section` for a `Toggled<T>` field.
+///
+/// The section's own `label`/`description` come from the field's
+/// `#[config(...)]` attributes, same as a leaf field. The toggle itself
+/// always has the fixed label "enabled" -- the section's own label already
+/// gives context (e.g. a "server logging" card with an "enabled" switch
+/// inside it), so there's no separate attribute for it in v1. This departs
+/// from docs/plans/gui-configuration.md section 6.3's example, whose single
+/// `label` attribute on the field couldn't unambiguously mean both "the
+/// section's heading" and "the toggle's own label" at once.
+fn generate_section_node(
+    field_ident: &Ident,
+    settings_ty: &syn::Type,
+    attrs: &FieldAttrs,
+) -> TokenStream {
+    let field_name = field_ident.to_string();
+    let label = attrs
+        .label
+        .as_ref()
+        .map(|lit| lit.value())
+        .unwrap_or_else(|| humanize(&field_name));
+    let description = opt_lit_expr(&attrs.description);
+
+    quote! {
+        ::munibot_config::ConfigNode::Section {
+            id: #field_name.to_owned(),
+            label: #label.to_owned(),
+            description: #description.map(|s: &str| s.to_owned()),
+            toggle: ::std::option::Option::Some(
+                ::munibot_config::Field::new("enabled", "enabled", ::munibot_config::FieldKind::Bool)
+                    .default(<bool as ::munibot_config::ConfigField>::to_value(
+                        &Self::default().#field_ident.enabled,
+                    )),
+            ),
+            children: <#settings_ty as ::munibot_config::Configurable>::config_fields(),
+        }
+    }
+}
+
 /// `log_channel` -> `"log channel"`. The fallback label when a field has no
 /// `#[config(label = ...)]`.
 fn humanize(field_name: &str) -> String {
@@ -225,19 +267,22 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_rejects_toggled_and_collection_fields_for_now() {
-        let toggled = parse_quote! {
+    fn test_expand_accepts_a_toggled_field() {
+        let input = parse_quote! {
             struct X {
                 logging: Toggled<LoggingSettings>,
             }
         };
-        assert!(expand(toggled).is_err());
+        assert!(expand(input).is_ok());
+    }
 
-        let collection = parse_quote! {
+    #[test]
+    fn test_expand_rejects_collection_fields_for_now() {
+        let input = parse_quote! {
             struct X {
                 timers: BTreeMap<ChannelRef, ChannelAutoDelete>,
             }
         };
-        assert!(expand(collection).is_err());
+        assert!(expand(input).is_err());
     }
 }
