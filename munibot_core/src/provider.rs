@@ -8,8 +8,10 @@
 
 pub mod context;
 pub mod dyn_provider;
+pub mod registry;
 pub mod typed;
 
 pub use context::{ConfigContext, ConfigError};
 pub use dyn_provider::DynConfigProvider;
+pub use registry::ConfigRegistry;
 pub use typed::{ConfigurationProvider, RefOption};
