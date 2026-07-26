@@ -13,7 +13,7 @@ use crate::{
 /// Stored (and serialized) as whole seconds. Sub-second precision has no
 /// use case in any of munibot's settings (e.g. autodelete lifetimes), and
 /// dropping it keeps the type simple.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SettingDuration(#[serde(with = "duration_secs")] Duration);
 
