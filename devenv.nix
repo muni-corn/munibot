@@ -125,10 +125,6 @@ in
     enable = true;
     ensureUsers = [
       {
-        name = "root";
-        password = "sillylittlepassword";
-      }
-      {
         name = "munibot";
         password = "sillylittlepassword";
         ensurePermissions."munibot.*" = "ALL PRIVILEGES";
