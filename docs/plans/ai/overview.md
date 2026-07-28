@@ -1,0 +1,261 @@
+# munibot AI agent harness — overview
+
+munibot is gaining a full agent harness: a provider-agnostic, tool-using, multi-persona AI system
+that serves casual conversation, emotional support, creative writing, deep research, and autonomous
+software development.
+
+This plan supersedes the `municode` project. Everything `municode` planned is absorbed here: the
+provider-agnostic LLM client, the tool suite, the agent loop, the container sandbox, and the
+multi-agent pipeline that turns an issue into a pull request. `municode` remains useful only as a
+source of prompt text and architectural precedent.
+
+## Milestone map
+
+| Milestone                                               | Outcome                                                    | Phases | Commits |
+| ------------------------------------------------------- | ---------------------------------------------------------- | ------ | ------- |
+| [1 — conversation](milestone-1-conversation.md)         | munibot holds a real conversation in Discord               | 0–8    | 1–65    |
+| [2 — chat product](milestone-2-chat-product.md)         | Memory, routing, Twitch, and a settings surface            | 9–13   | 66–98   |
+| [3 — sandbox](milestone-3-sandbox.md)                   | munibot reads, writes, and runs code in a container        | 14     | 99–114  |
+| [4 — autonomous development](milestone-4-autonomous.md) | munibot answers a GitHub issue with a working pull request | 15–17  | 115–150 |
+| [5 — hardening](milestone-5-hardening.md)               | Safe, affordable, and observable in public                 | 18     | 151–163 |
+
+Around 163 commits total. Each commit is one logical change that leaves the workspace compiling.
+
+## Guiding decisions
+
+| Decision              | Choice                                                      | Rationale                                                                                                                                                                                                        |
+| --------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider abstraction  | In-house `Provider` trait over a `rig-core` backend         | rig covers 20+ providers with embeddings and vector stores, and `DynClientBuilder` resolves providers from a string at runtime. Our trait absorbs rig's pre-1.0 churn and leaves room for a hand-rolled backend. |
+| Agent loop            | Hand-rolled, not rig's `Agent`                              | We need budgets, cancellation, structured handoffs, and event streaming. Use rig's low-level `CompletionModel`; own everything above it.                                                                         |
+| Unit of configuration | The **persona**                                             | A persona is a model, a system prompt, a tool allowlist, a budget, and an optional handoff schema. Chat personas and pipeline agent roles are the same type.                                                     |
+| Structure             | Ten focused crates plus adapters                            | Independently testable and reusable. No crate depends on a platform it does not need.                                                                                                                            |
+| Persistence           | MySQL through `diesel-async`                                | Matches existing munibot infrastructure. Pipelines use an append-only event log.                                                                                                                                 |
+| Sandbox               | Rootless podman through `bollard`, tools over a Unix socket | Strong isolation for untrusted generated code, and it matches how the deployment already works.                                                                                                                  |
+| Search                | Exa                                                         | Neural search with content extraction in one API, designed for model consumption.                                                                                                                                |
+| Forge integration     | A proper GitHub App                                         | Per-repository installation, scoped permissions, far better rate limits, and a real bot identity on pull requests. Worth the extra setup over a token.                                                           |
+| Routing               | Sticky auto-router with explicit override                   | The router runs once per conversation rather than once per message, so follow-ups cost nothing extra.                                                                                                            |
+| Memory                | Opt-in per user, with full user control                     | `remember` and `forget` tools, plus commands to list, delete, and wipe. Privacy is a hard requirement on a public bot.                                                                                           |
+
+## Crate architecture
+
+```
+munibot_ai_types      provider-neutral domain types; serde and schemars only
+munibot_ai_provider   Provider trait; rig-backed and mock implementations; retry classification
+munibot_ai_tools      Tool trait, ToolRegistry, ToolCtx, risk tiers, built-in tools
+munibot_ai_harness    the agent loop: model to tools to handoff, with budgets and events
+munibot_ai_memory     SessionStore and MemoryStore traits, compaction, diesel implementations
+munibot_ai_sandbox    podman lifecycle, repository checkout, RPC client, sandboxed tools
+munibot_ai_toolagent  [bin] in-container RPC server executing filesystem and shell tools
+munibot_ai_pipeline   multi-agent state machine: issue to research to plan to build to review to PR
+munibot_vcs           VCS-agnostic traits: IssueSource, PullRequestTarget, normalized webhooks
+munibot_github        octocrab-backed VCS implementation and webhook verification
+munibot_ai            the facade munibot uses: config, persona registry, router, service handle
+```
+
+### Dependency graph
+
+```
+munibot_ai_types
+  ├── munibot_ai_provider ──> rig-core
+  ├── munibot_ai_tools
+  │     └── munibot_ai_harness ──> munibot_ai_provider
+  │           ├── munibot_ai_memory ──> munibot_core
+  │           ├── munibot_ai_sandbox ──> bollard
+  │           └── munibot_ai_pipeline ──> munibot_vcs
+  └── munibot_ai (facade) ──> all of the above, plus munibot_core
+
+munibot_vcs
+  └── munibot_github ──> octocrab
+
+munibot_ai_toolagent ──> munibot_ai_types   (standalone binary, no other munibot deps)
+```
+
+Dependencies flow strictly downward. `munibot_ai_types` depends on nothing but `serde`, `schemars`,
+and `thiserror`. `munibot_vcs` and `munibot_github` know nothing about AI. `munibot_ai_toolagent`
+ships into a container and must stay tiny.
+
+Platform adapters live in the crates that already own those platforms:
+
+- `munibot_discord/src/handlers/ai.rs` and `munibot_discord/src/commands/ai.rs`
+- `munibot_twitch/src/handlers/ai.rs`
+- `munibot_api/src/server_fns/ai/` and `munibot_gui/src/pages/ai/`
+
+### Workspace layout
+
+Crates stay flat at the workspace root, as they are today. Adding ten crates takes the workspace from
+six top-level directories to sixteen, and the `munibot_ai_*` prefix carries the grouping that a
+`crates/` directory would otherwise provide. This keeps `diesel.toml`, the `embed_migrations!` path in
+`munibot_core/src/db.rs`, and `nix/build.nix` untouched.
+
+## The persona abstraction
+
+Everything hinges on this type. One definition serves the companion, the writer, the researcher, and
+all eleven pipeline agent roles.
+
+```rust
+pub struct Persona {
+    /// Stable identifier used in config, commands, and the database.
+    pub id: PersonaId,
+    pub display_name: String,
+    /// Shown to the router so it can choose between personas.
+    pub description: String,
+    /// Provider and model, resolved at runtime from a string like `anthropic:claude-opus-5`.
+    pub model: ModelRef,
+    pub params: ModelParams,
+    pub system_prompt: PromptTemplate,
+    pub tools: ToolSelection,
+    pub budget: Budget,
+    /// Structured terminal output. Chat personas leave this `None`; pipeline roles set it.
+    pub handoff: Option<HandoffSchema>,
+    pub memory: MemoryPolicy,
+    pub sandbox: SandboxPolicy,
+}
+```
+
+Personas are declared in TOML, with prompts in separate markdown files so they can be edited without
+recompiling and without TOML escaping:
+
+```toml
+[ai]
+default_persona = "companion"
+prompt_dir = "/etc/muni_bot/prompts" # optional; defaults to embedded prompts
+
+[ai.router]
+enabled = true
+model = "openai:gpt-5.2-mini"
+sticky = true
+confidence_threshold = 0.6
+
+[ai.personas.companion]
+model = "anthropic:claude-opus-5"
+prompt = "companion.md"
+description = "warm, playful conversation and emotional support"
+temperature = 1.0
+tools = ["tier0", "web_search"]
+
+[ai.personas.researcher]
+model = "anthropic:claude-opus-5"
+prompt = "researcher.md"
+description = "multi-step research with citations"
+tools = ["tier0", "tier1"]
+budget = { max_iterations = 30, max_cost_usd = 2.0 }
+```
+
+Default prompts ship embedded via `include_str!` so nix builds and container deployments work with no
+extra files, and `prompt_dir` overrides them for live iteration.
+
+## Tool risk tiers
+
+Chat users are untrusted and sometimes adversarial. Tools are tiered, and a tool's authority derives
+from the **invoking human**, never from the model's request. Every tier 2 and above tool re-checks
+permissions from `ToolCtx` at invocation time.
+
+| Tier | Tools                                                                      | Availability                             |
+| ---- | -------------------------------------------------------------------------- | ---------------------------------------- |
+| 0    | `current_time`, `todo_write`, `remember`, `forget`                         | always                                   |
+| 1    | `web_search`, `web_fetch`                                                  | per-persona allowlist                    |
+| 2    | `get_user_profile`, `read_recent_messages`, `search_quotes`, `get_balance` | scoped to the invoking user              |
+| 3    | `read`, `write`, `edit`, `bash`, `grep`, `glob`                            | coding personas, inside a container only |
+| 4    | `create_pull_request`, `comment_on_issue`, `send_message`, `timeout_user`  | pipeline roles with explicit grants only |
+
+Tier 4 is never reachable from public chat.
+
+## Safety model
+
+### Prompt injection
+
+Both user messages **and tool results** are wrapped in delimiters and explicitly labeled as
+untrusted data. Fetched web pages and GitHub issue bodies are the highest-risk injection vectors in
+the entire system, because a research or pipeline persona reads attacker-authored text with tools
+still attached.
+
+The instruction hierarchy is fixed and stated in every system prompt: system instructions outrank
+operator configuration, which outranks the invoking user, which outranks any content encountered
+while working.
+
+### Abuse and cost
+
+Per-user and per-guild rate limits plus token and cost ceilings, enforced from the database _before_
+the provider call. An open Discord bot running a thirty-iteration research loop is the fastest way to
+lose money in this design, so budget enforcement lands in phase 4, well before public exposure.
+
+### Output filtering
+
+Responses pass through mention stripping, length caps, and `decancer` before they reach a platform.
+
+### Duty of care
+
+The emotional-support persona needs more than a friendly prompt. Phase 17 adds an explicit crisis
+path: a classifier that recognises self-harm and acute distress, a prompt instruction that forbids
+the model from handling it alone, and a response that surfaces real resources. This is a
+requirement, not a nice-to-have.
+
+## Database schema
+
+All new tables key users by the internal `users.id`, with a real foreign key.
+
+```
+ai_conversations   (id, platform, scope_key, persona_id, summary, summary_tokens,
+                    created_at, last_active_at)
+ai_messages        (id, conversation_id, seq, role, content JSON, token_count, created_at)
+ai_memories        (id, user_id, key, value, created_at, updated_at)
+ai_usage           (id, conversation_id, guild_id, user_id, provider, model,
+                    input_tokens, output_tokens, cost_micros, created_at)
+ai_tool_calls      (id, conversation_id, tool_name, input JSON, output JSON,
+                    duration_ms, status, created_at)
+ai_pipelines       (id, forge, repo, issue_number, state, branch, created_at, updated_at)
+ai_pipeline_events (id, pipeline_id, seq, event JSON, created_at)
+ai_user_settings   (user_id, memory_opt_in, created_at, updated_at)
+```
+
+`docs/notes/gui-configuration-research.md` documents a real trap here: `linked_accounts.user_id`
+holds the internal `users.id`, while `guild_wallets.user_id` holds a raw Discord snowflake with no
+foreign key. Every table above uses the internal identifier so that memory and usage records survive
+a user linking a second platform account.
+
+`ai_pipeline_events` is append-only. A pipeline's state is a fold over its events, which makes crash
+recovery a replay rather than a repair.
+
+## Testing strategy
+
+- **`MockProvider` is the single most important test enabler in this plan.** It replays scripted
+  responses, including tool calls, so the entire harness, router, and pipeline are testable with no
+  network access. It ships in phase 2, before the loop that consumes it.
+- Unit tests are colocated in `#[cfg(test)] mod tests` at the bottom of the implementation file, per
+  `AGENTS.md`.
+- Harness tests cover tool dispatch, parallel calls, malformed tool arguments and the retry path,
+  every budget limit, cancellation mid-turn, and handoff schema validation.
+- `Pipeline::advance` is a pure function, so the state machine gets table-driven tests.
+- Store tests reuse the existing `TestDb` fixture in `munibot_core/tests/common/mod.rs`, which
+  creates and drops a scratch database per test.
+- Sandbox integration tests require podman and are gated behind a feature flag so `devenv test` stays
+  green without it.
+- No unit test touches the network. Ever.
+
+## Risks
+
+1. **Cost is the real operational risk.** A public bot with an agent loop can burn a budget in
+   minutes. Budgets are enforced in phase 4 and hardened in phase 17; do not expose a research
+   persona publicly before then.
+2. **`rig-core` is pre-1.0** and releases frequently. The `Provider` trait boundary is what makes
+   that survivable. Keep rig types out of every crate except `munibot_ai_provider`.
+3. **The toolchain is nightly**, because `munibot_discord` uses `#![feature(never_type)]`. Verify rig
+   and bollard build on the pinned nightly during phase 0, before the stack is committed to.
+4. **Podman in production** means the NixOS module in `nix/nixos.nix` needs podman and socket
+   configuration. This is a real deployment change, not a code change.
+5. **Prompt quality is the product.** The `municode` prompts are genuinely good and port over nearly
+   verbatim, but they carry known defects: a stray shell command spliced into a sentence in
+   `architecture-reviewer.md`, a `StartTask` versus `StartTaskTests` naming drift in
+   `project-manager.md`, a phantom `implementation_issues` field referenced in `code-reviewer.md`,
+   and an `ApprovePlan` schema that requires a `strengths` field its own example omits. Fix these
+   during the port in phase 15 rather than inheriting them.
+6. **Autonomous pull requests need a human gate.** Nothing in milestone 4 merges anything. munibot
+   opens a pull request and stops.
+
+## Decisions still open
+
+1. **Vector memory** — long-term memory starts as plain key-value facts, which works well and needs
+   no embeddings. rig brings vector store support along for free if semantic recall becomes
+   worthwhile later.
+2. **Milestones 3 through 5 will change.** They are planned in full here because you asked for it,
+   but expect to revise them once milestone 1 is in your hands and you have actually talked to him.
