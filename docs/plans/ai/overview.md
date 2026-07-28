@@ -13,28 +13,28 @@ source of prompt text and architectural precedent.
 
 | Milestone                                               | Outcome                                                    | Phases | Commits |
 | ------------------------------------------------------- | ---------------------------------------------------------- | ------ | ------- |
-| [1 — conversation](milestone-1-conversation.md)         | munibot holds a real conversation in Discord               | 0–8    | 1–65    |
-| [2 — chat product](milestone-2-chat-product.md)         | Memory, routing, Twitch, and a settings surface            | 9–13   | 66–98   |
-| [3 — sandbox](milestone-3-sandbox.md)                   | munibot reads, writes, and runs code in a container        | 14     | 99–114  |
-| [4 — autonomous development](milestone-4-autonomous.md) | munibot answers a GitHub issue with a working pull request | 15–17  | 115–150 |
-| [5 — hardening](milestone-5-hardening.md)               | Safe, affordable, and observable in public                 | 18     | 151–163 |
+| [1 — conversation](milestone-1-conversation.md)         | munibot holds a real conversation in Discord               | 0–8    | 1–66    |
+| [2 — chat product](milestone-2-chat-product.md)         | Memory, routing, Twitch, and a settings surface            | 9–13   | 67–99   |
+| [3 — sandbox](milestone-3-sandbox.md)                   | munibot reads, writes, and runs code in a container        | 14     | 100–115 |
+| [4 — autonomous development](milestone-4-autonomous.md) | munibot answers a GitHub issue with a working pull request | 15–17  | 116–151 |
+| [5 — hardening](milestone-5-hardening.md)               | Safe, affordable, and observable in public                 | 18     | 152–164 |
 
-Around 163 commits total. Each commit is one logical change that leaves the workspace compiling.
+Around 164 commits total. Each commit is one logical change that leaves the workspace compiling.
 
 ## Guiding decisions
 
-| Decision              | Choice                                                      | Rationale                                                                                                                                                                                                        |
-| --------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider abstraction  | In-house `Provider` trait over a `rig-core` backend         | rig covers 20+ providers with embeddings and vector stores, and `DynClientBuilder` resolves providers from a string at runtime. Our trait absorbs rig's pre-1.0 churn and leaves room for a hand-rolled backend. |
-| Agent loop            | Hand-rolled, not rig's `Agent`                              | We need budgets, cancellation, structured handoffs, and event streaming. Use rig's low-level `CompletionModel`; own everything above it.                                                                         |
-| Unit of configuration | The **persona**                                             | A persona is a model, a system prompt, a tool allowlist, a budget, and an optional handoff schema. Chat personas and pipeline agent roles are the same type.                                                     |
-| Structure             | Ten focused crates plus adapters                            | Independently testable and reusable. No crate depends on a platform it does not need.                                                                                                                            |
-| Persistence           | MySQL through `diesel-async`                                | Matches existing munibot infrastructure. Pipelines use an append-only event log.                                                                                                                                 |
-| Sandbox               | Rootless podman through `bollard`, tools over a Unix socket | Strong isolation for untrusted generated code, and it matches how the deployment already works.                                                                                                                  |
-| Search                | Exa                                                         | Neural search with content extraction in one API, designed for model consumption.                                                                                                                                |
-| Forge integration     | A proper GitHub App                                         | Per-repository installation, scoped permissions, far better rate limits, and a real bot identity on pull requests. Worth the extra setup over a token.                                                           |
-| Routing               | Sticky auto-router with explicit override                   | The router runs once per conversation rather than once per message, so follow-ups cost nothing extra.                                                                                                            |
-| Memory                | Opt-in per user, with full user control                     | `remember` and `forget` tools, plus commands to list, delete, and wipe. Privacy is a hard requirement on a public bot.                                                                                           |
+| Decision              | Choice                                                      | Rationale                                                                                                                                                                                                                                                                                               |
+| --------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider abstraction  | In-house `Provider` trait over a `rig-core` backend         | rig covers 20+ providers with embeddings and vector stores. Its `CompletionModel` is not object-safe, so our trait is what makes runtime provider selection possible at all — see `docs/notes/ai-preflight-findings.md`. It also absorbs rig's pre-1.0 churn and leaves room for a hand-rolled backend. |
+| Agent loop            | Hand-rolled, not rig's `Agent`                              | We need budgets, cancellation, structured handoffs, and event streaming. Use rig's low-level `CompletionModel`; own everything above it.                                                                                                                                                                |
+| Unit of configuration | The **persona**                                             | A persona is a model, a system prompt, a tool allowlist, a budget, and an optional handoff schema. Chat personas and pipeline agent roles are the same type.                                                                                                                                            |
+| Structure             | Ten focused crates plus adapters                            | Independently testable and reusable. No crate depends on a platform it does not need.                                                                                                                                                                                                                   |
+| Persistence           | MySQL through `diesel-async`                                | Matches existing munibot infrastructure. Pipelines use an append-only event log.                                                                                                                                                                                                                        |
+| Sandbox               | Rootless podman through `bollard`, tools over a Unix socket | Strong isolation for untrusted generated code, and it matches how the deployment already works.                                                                                                                                                                                                         |
+| Search                | Exa                                                         | Neural search with content extraction in one API, designed for model consumption.                                                                                                                                                                                                                       |
+| Forge integration     | A proper GitHub App                                         | Per-repository installation, scoped permissions, far better rate limits, and a real bot identity on pull requests. Worth the extra setup over a token.                                                                                                                                                  |
+| Routing               | Sticky auto-router with explicit override                   | The router runs once per conversation rather than once per message, so follow-ups cost nothing extra.                                                                                                                                                                                                   |
+| Memory                | Opt-in per user, with full user control                     | `remember` and `forget` tools, plus commands to list, delete, and wipe. Privacy is a hard requirement on a public bot.                                                                                                                                                                                  |
 
 ## Crate architecture
 
@@ -237,12 +237,15 @@ recovery a replay rather than a repair.
 1. **Cost is the real operational risk.** A public bot with an agent loop can burn a budget in
    minutes. Budgets are enforced in phase 4 and hardened in phase 17; do not expose a research
    persona publicly before then.
-2. **`rig-core` is pre-1.0** and releases frequently. The `Provider` trait boundary is what makes
-   that survivable. Keep rig types out of every crate except `munibot_ai_provider`.
-3. **The toolchain is nightly**, because `munibot_discord` uses `#![feature(never_type)]`. Verify rig
-   and bollard build on the pinned nightly during phase 0, before the stack is committed to.
+2. **`rig-core` is pre-1.0** and releases frequently, and its API has already shifted enough that the
+   published documentation site describes a removed API. The `Provider` trait boundary is what makes
+   that survivable. Keep rig types out of every crate except `munibot_ai_provider`, and confine the
+   conversion code to one file.
+3. **The toolchain is nightly**, because `munibot_discord` uses `#![feature(never_type)]`. rig and
+   bollard are both verified to build on it; see `docs/notes/ai-preflight-findings.md`.
 4. **Podman in production** means the NixOS module in `nix/nixos.nix` needs podman and socket
-   configuration. This is a real deployment change, not a code change.
+   configuration. It is not currently installed in the development environment either, so container
+   behaviour is entirely unverified until milestone 3.
 5. **Prompt quality is the product.** The `municode` prompts are genuinely good and port over nearly
    verbatim, but they carry known defects: a stray shell command spliced into a sentence in
    `architecture-reviewer.md`, a `StartTask` versus `StartTaskTests` naming drift in
