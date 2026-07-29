@@ -12,6 +12,7 @@ pub mod current_time;
 pub mod registry;
 pub mod selection;
 pub mod tier;
+pub mod todo_write;
 pub mod tool;
 
 pub use context::{ConversationId, Platform, ToolCtx};
@@ -19,4 +20,5 @@ pub use current_time::CurrentTimeTool;
 pub use registry::ToolRegistry;
 pub use selection::{ToolSelection, ToolSelector};
 pub use tier::RiskTier;
+pub use todo_write::{TodoItem, TodoStatus, TodoWriteTool};
 pub use tool::{Tool, ToolOutcome};
