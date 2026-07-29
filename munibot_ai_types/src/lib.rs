@@ -8,12 +8,14 @@
 //! past `munibot_ai_provider`. If a type from `rig` or an HTTP client appears
 //! in a signature outside that crate, the abstraction has been broken.
 
+pub mod completion;
 pub mod content;
 pub mod message;
 pub mod model;
 pub mod tool;
 pub mod usage;
 
+pub use completion::{CompletionRequest, CompletionResponse, StopReason, ToolChoice};
 pub use content::{ContentBlock, Image, ImageSource, Role};
 pub use message::{History, Message, rough_token_estimate};
 pub use model::{ModelParams, ModelRef, ModelRefError};
