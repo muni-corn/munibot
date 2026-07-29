@@ -17,6 +17,7 @@
 //! ship into an untrusted container.
 
 pub mod harness;
+pub mod memory;
 pub mod provider;
 pub mod tools;
 pub mod types;
