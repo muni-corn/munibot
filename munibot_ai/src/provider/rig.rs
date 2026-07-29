@@ -4,4 +4,7 @@
 //! [`convert`] holds the pure type conversions; later commits add the adapter
 //! that drives them against a real client.
 
+pub mod adapter;
 pub mod convert;
+
+pub use adapter::RigProvider;

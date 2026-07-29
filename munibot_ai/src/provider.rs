@@ -20,6 +20,7 @@ pub mod mock;
 pub mod rig;
 
 pub use mock::MockProvider;
+pub use rig::RigProvider;
 
 /// A source of model completions.
 ///
