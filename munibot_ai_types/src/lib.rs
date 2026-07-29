@@ -9,5 +9,7 @@
 //! in a signature outside that crate, the abstraction has been broken.
 
 pub mod content;
+pub mod message;
 
 pub use content::{ContentBlock, Image, ImageSource, Role};
+pub use message::{History, Message, rough_token_estimate};
