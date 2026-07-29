@@ -8,12 +8,14 @@
 //! model.
 
 pub mod context;
+pub mod current_time;
 pub mod registry;
 pub mod selection;
 pub mod tier;
 pub mod tool;
 
 pub use context::{ConversationId, Platform, ToolCtx};
+pub use current_time::CurrentTimeTool;
 pub use registry::ToolRegistry;
 pub use selection::{ToolSelection, ToolSelector};
 pub use tier::RiskTier;
