@@ -4454,6 +4454,7 @@ dependencies = [
  "html2text",
  "http",
  "jsonschema",
+ "munibot_core",
  "reqwest 0.12.28",
  "rig-core",
  "schemars",

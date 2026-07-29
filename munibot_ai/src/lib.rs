@@ -18,6 +18,7 @@
 
 pub mod harness;
 pub mod memory;
+pub mod persona;
 pub mod provider;
 pub mod tools;
 pub mod types;

@@ -16,6 +16,7 @@ chrono-tz.workspace = true
 futures.workspace = true
 html2text.workspace = true
 jsonschema.workspace = true
+munibot_core = { path = "../munibot_core" }
 reqwest.workspace = true
 rig-core.workspace = true
 schemars.workspace = true
