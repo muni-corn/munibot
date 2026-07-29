@@ -17,9 +17,11 @@ use futures::stream::{self, BoxStream};
 use crate::types::{AiError, CompletionRequest, CompletionResponse, ContentBlock, StreamEvent};
 
 pub mod mock;
+pub mod retry;
 pub mod rig;
 
 pub use mock::MockProvider;
+pub use retry::{RetryPolicy, RetryingProvider};
 pub use rig::{ProviderResolver, RigProvider};
 
 /// A source of model completions.
