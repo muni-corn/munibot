@@ -8,12 +8,14 @@
 pub mod budget;
 pub mod event;
 pub mod turn;
+pub mod validate;
 
 use std::sync::Arc;
 
 pub use budget::{Budget, BudgetTracker};
 pub use event::HarnessEvent;
 pub use turn::{HandoffSchema, TurnOutcome, TurnRequest};
+pub use validate::validate_tool_arguments;
 
 use crate::{
     provider::{Provider, estimate_cost},
@@ -41,9 +43,9 @@ impl Harness {
     /// Runs one full turn: call the provider, dispatch every tool call it asks
     /// for, and repeat until it answers with plain text.
     ///
-    /// Budget enforcement, handoff validation, cancellation, and parallel tool
-    /// dispatch all arrive in later commits; this one covers the loop's
-    /// basic shape and sequential tool calls only.
+    /// General budget enforcement, handoff validation, and cancellation all
+    /// arrive in later commits; this one covers the loop's basic shape,
+    /// tool dispatch, and the argument validation gate in front of it.
     pub async fn run_turn(&self, request: TurnRequest) -> Result<TurnOutcome, AiError> {
         let tool_schemas = self
             .tools
@@ -53,6 +55,7 @@ impl Harness {
         let mut iterations = 0usize;
         let mut total_usage = Usage::default();
         let mut total_cost = Cost::ZERO;
+        let mut tool_retries = 0usize;
 
         loop {
             iterations += 1;
@@ -90,26 +93,77 @@ impl Harness {
 
             history.push(Message::new(Role::Assistant, response.content));
 
-            let outcomes = self.dispatch_calls(&calls, &request.ctx).await;
+            // resolve and validate every call before dispatching any of them: an unknown
+            // tool name or arguments that fail schema validation never reach
+            // invoke() at all, and the model sees exactly why, so it can
+            // correct itself on the next iteration
+            let mut pending: Vec<Option<ContentBlock>> = calls.iter().map(|_| None).collect();
+            let mut dispatchable: Vec<(
+                usize,
+                String,
+                Arc<dyn crate::tools::Tool>,
+                serde_json::Value,
+            )> = Vec::new();
 
-            let mut results = Vec::with_capacity(calls.len());
-            for ((call_id, ..), outcome) in calls.into_iter().zip(outcomes) {
-                match outcome {
-                    crate::tools::ToolOutcome::Ok(text) => {
-                        results.push(ContentBlock::tool_result(call_id, text));
+            for (index, (call_id, name, arguments)) in calls.iter().enumerate() {
+                match self.tools.get(name) {
+                    None => {
+                        let available = self.tools.names().join(", ");
+                        pending[index] = Some(ContentBlock::tool_error(
+                            call_id.clone(),
+                            format!("no such tool {name:?} :< available tools are: {available}"),
+                        ));
                     }
-                    crate::tools::ToolOutcome::Err(text) => {
-                        results.push(ContentBlock::tool_error(call_id, text));
-                    }
-                    crate::tools::ToolOutcome::Fatal(error) => return Err(error),
+                    Some(tool) => match validate_tool_arguments(&tool.input_schema(), arguments) {
+                        Ok(()) => {
+                            dispatchable.push((index, call_id.clone(), tool, arguments.clone()));
+                        }
+                        Err(validation_error) => {
+                            tool_retries += 1;
+                            if let Some(max) = request.budget.max_tool_retries
+                                && tool_retries > max
+                            {
+                                return Err(AiError::SchemaViolation(format!(
+                                    "gave up after {tool_retries} invalid tool calls in this turn \
+                                     :< {validation_error}"
+                                )));
+                            }
+                            pending[index] = Some(ContentBlock::tool_error(
+                                call_id.clone(),
+                                format!("invalid arguments for {name:?} :< {validation_error}"),
+                            ));
+                        }
+                    },
                 }
             }
+
+            let to_dispatch: Vec<(Arc<dyn crate::tools::Tool>, serde_json::Value)> = dispatchable
+                .iter()
+                .map(|(_, _, tool, arguments)| (Arc::clone(tool), arguments.clone()))
+                .collect();
+            let outcomes = self.dispatch_calls(&to_dispatch, &request.ctx).await;
+
+            for ((index, call_id, ..), outcome) in dispatchable.into_iter().zip(outcomes) {
+                pending[index] = Some(match outcome {
+                    crate::tools::ToolOutcome::Ok(text) => ContentBlock::tool_result(call_id, text),
+                    crate::tools::ToolOutcome::Err(text) => ContentBlock::tool_error(call_id, text),
+                    crate::tools::ToolOutcome::Fatal(error) => return Err(error),
+                });
+            }
+
+            let results: Vec<ContentBlock> = pending
+                .into_iter()
+                .map(|result| {
+                    result.expect("every call index is set during either validation or dispatch")
+                })
+                .collect();
             history.push(Message::tool_results(results));
         }
     }
 
-    /// Dispatches every call from one response, preserving result order to
-    /// match call order regardless of which ones ran concurrently.
+    /// Dispatches every already-resolved, already-validated call, preserving
+    /// result order to match call order regardless of which ones ran
+    /// concurrently.
     ///
     /// Calls to a tool that reports [`crate::tools::Tool::is_serial`] run one
     /// at a time, in their relative order; every other call runs
@@ -121,23 +175,18 @@ impl Harness {
     ///
     /// A `Fatal` outcome is not short-circuited: every already-dispatched call
     /// in this batch is allowed to finish before `run_turn` aborts the
-    /// turn, since cancelling siblings mid-flight is a separate concern -
-    /// see the cancellation support landing in a later commit.
+    /// turn, since cancelling siblings mid-flight is a separate concern for
+    /// a later commit.
     async fn dispatch_calls(
         &self,
-        calls: &[(String, String, serde_json::Value)],
+        calls: &[(Arc<dyn crate::tools::Tool>, serde_json::Value)],
         ctx: &ToolCtx,
     ) -> Vec<crate::tools::ToolOutcome> {
         let mut parallel_indices = Vec::new();
         let mut serial_indices = Vec::new();
 
-        for (index, (_, name, _)) in calls.iter().enumerate() {
-            let is_serial = self
-                .tools
-                .get(name)
-                .map(|tool| tool.is_serial())
-                .unwrap_or(false);
-            if is_serial {
+        for (index, (tool, _)) in calls.iter().enumerate() {
+            if tool.is_serial() {
                 serial_indices.push(index);
             } else {
                 parallel_indices.push(index);
@@ -145,15 +194,15 @@ impl Harness {
         }
 
         let parallel_futures = parallel_indices.iter().map(|&index| {
-            let (_, name, arguments) = &calls[index];
-            self.dispatch_tool(name, arguments.clone(), ctx)
+            let (tool, arguments) = &calls[index];
+            tool.invoke(arguments.clone(), ctx)
         });
         let parallel_outcomes = futures::future::join_all(parallel_futures).await;
 
         let mut serial_outcomes = Vec::with_capacity(serial_indices.len());
         for &index in &serial_indices {
-            let (_, name, arguments) = &calls[index];
-            serial_outcomes.push(self.dispatch_tool(name, arguments.clone(), ctx).await);
+            let (tool, arguments) = &calls[index];
+            serial_outcomes.push(tool.invoke(arguments.clone(), ctx).await);
         }
 
         let mut outcomes: Vec<Option<crate::tools::ToolOutcome>> =
@@ -172,28 +221,6 @@ impl Harness {
                     .expect("every call index is assigned by exactly one of the two groups above")
             })
             .collect()
-    }
-
-    /// Looks a tool up and runs it, or produces a model-visible error naming
-    /// the available tools when the model asks for one that does not exist.
-    /// A persona misconfiguration or a model hallucinating a tool name is
-    /// something the model itself can recover from, given a clear
-    /// enough error, so this is never a hard failure.
-    async fn dispatch_tool(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-        ctx: &ToolCtx,
-    ) -> crate::tools::ToolOutcome {
-        match self.tools.get(name) {
-            Some(tool) => tool.invoke(arguments, ctx).await,
-            None => {
-                let available = self.tools.names().join(", ");
-                crate::tools::ToolOutcome::err(format!(
-                    "no such tool {name:?} :< available tools are: {available}"
-                ))
-            }
-        }
     }
 }
 
@@ -297,6 +324,40 @@ mod tests {
             _ctx: &ToolCtx,
         ) -> crate::tools::ToolOutcome {
             crate::tools::ToolOutcome::ok(self.reply)
+        }
+    }
+
+    /// Requires a string `query` argument; echoes it back on success.
+    struct SchemaedTool;
+
+    #[async_trait::async_trait]
+    impl crate::tools::Tool for SchemaedTool {
+        fn name(&self) -> &str {
+            "search"
+        }
+
+        fn description(&self) -> &str {
+            "requires a query argument"
+        }
+
+        fn tier(&self) -> RiskTier {
+            RiskTier::Safe
+        }
+
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"]
+            })
+        }
+
+        async fn invoke(
+            &self,
+            input: serde_json::Value,
+            _ctx: &ToolCtx,
+        ) -> crate::tools::ToolOutcome {
+            crate::tools::ToolOutcome::ok(format!("searched for {}", input["query"]))
         }
     }
 
@@ -799,6 +860,100 @@ mod tests {
         assert_eq!(
             second, "fast-result",
             "even though it finished before the slow call did"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_invalid_arguments_never_reach_invoke_and_are_recoverable() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(SchemaedTool));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                // missing the required "query" field
+                .respond_tool_use("c1", "search", serde_json::json!({}))
+                .respond_text("okay, trying differently"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["search"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider.clone(), Arc::new(registry));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("invalid arguments should be recoverable, not fatal");
+
+        assert_eq!(outcome.text.as_deref(), Some("okay, trying differently"));
+
+        let second_request = &provider.requests()[1];
+        let last_message = second_request
+            .history
+            .iter()
+            .last()
+            .expect("history should not be empty");
+        let ContentBlock::ToolResult {
+            content, is_error, ..
+        } = &last_message.content[0]
+        else {
+            panic!("expected a tool result block");
+        };
+        assert!(
+            *is_error,
+            "invalid arguments should be reported as an error result"
+        );
+        assert!(
+            content.contains("invalid arguments"),
+            "the model should see why validation failed: {content:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_valid_arguments_reach_invoke() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(SchemaedTool));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "search", serde_json::json!({"query": "cats"}))
+                .respond_text("found some cats"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["search"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        assert_eq!(outcome.text.as_deref(), Some("found some cats"));
+    }
+
+    #[tokio::test]
+    async fn test_repeated_invalid_arguments_eventually_abort_the_turn() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(SchemaedTool));
+
+        // one more invalid call than the default budget's max_tool_retries (3) allows
+        let mut provider_builder = MockProvider::new();
+        for _ in 0..4 {
+            provider_builder =
+                provider_builder.respond_tool_use("c1", "search", serde_json::json!({}));
+        }
+        let provider: Arc<MockProvider> = Arc::new(provider_builder);
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["search"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        let result = harness.run_turn(turn_request).await;
+
+        assert!(
+            result.is_err(),
+            "a model that never produces valid arguments must not loop forever"
         );
     }
 }
