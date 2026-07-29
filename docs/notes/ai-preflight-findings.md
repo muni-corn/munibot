@@ -10,6 +10,11 @@ has no `DynClientBuilder`, and its `CompletionModel` trait is not object-safe. B
 by our own `Provider` trait, which is exactly the boundary that decision was made to protect. The plan
 documents have been corrected.
 
+**Note on crate names below:** this document was written before `munibot_ai_types` and
+`munibot_ai_provider` were later consolidated into `types` and `provider` modules of one `munibot_ai`
+crate. References to those crate names reflect the state of the workspace at the time these checks
+were run, not the current structure — see `docs/plans/ai/overview.md`.
+
 ## Summary
 
 | Check                                      | Result                                                      |

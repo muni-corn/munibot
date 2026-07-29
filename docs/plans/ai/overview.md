@@ -28,7 +28,7 @@ Around 164 commits total. Each commit is one logical change that leaves the work
 | Provider abstraction  | In-house `Provider` trait over a `rig-core` backend         | rig covers 20+ providers with embeddings and vector stores. Its `CompletionModel` is not object-safe, so our trait is what makes runtime provider selection possible at all — see `docs/notes/ai-preflight-findings.md`. It also absorbs rig's pre-1.0 churn and leaves room for a hand-rolled backend. |
 | Agent loop            | Hand-rolled, not rig's `Agent`                              | We need budgets, cancellation, structured handoffs, and event streaming. Use rig's low-level `CompletionModel`; own everything above it.                                                                                                                                                                |
 | Unit of configuration | The **persona**                                             | A persona is a model, a system prompt, a tool allowlist, a budget, and an optional handoff schema. Chat personas and pipeline agent roles are the same type.                                                                                                                                            |
-| Structure             | Ten focused crates plus adapters                            | Independently testable and reusable. No crate depends on a platform it does not need.                                                                                                                                                                                                                   |
+| Structure             | One `munibot_ai` crate with internal modules, plus adapters | A project this size does not need ten `Cargo.toml`s. Rust's module privacy enforces the same internal boundaries a crate split would, at a fraction of the ceremony. Forge integration and the tool agent binary stay separate — see below.                                                             |
 | Persistence           | MySQL through `diesel-async`                                | Matches existing munibot infrastructure. Pipelines use an append-only event log.                                                                                                                                                                                                                        |
 | Sandbox               | Rootless podman through `bollard`, tools over a Unix socket | Strong isolation for untrusted generated code, and it matches how the deployment already works.                                                                                                                                                                                                         |
 | Search                | Exa                                                         | Neural search with content extraction in one API, designed for model consumption.                                                                                                                                                                                                                       |
@@ -38,41 +38,68 @@ Around 164 commits total. Each commit is one logical change that leaves the work
 
 ## Crate architecture
 
+One crate holds everything ai-specific except forge integration and the in-container tool agent,
+which stay separate for reasons that have nothing to do with being "ai":
+
 ```
-munibot_ai_types      provider-neutral domain types; serde and schemars only
-munibot_ai_provider   Provider trait; rig-backed and mock implementations; retry classification
-munibot_ai_tools      Tool trait, ToolRegistry, ToolCtx, risk tiers, built-in tools
-munibot_ai_harness    the agent loop: model to tools to handoff, with budgets and events
-munibot_ai_memory     SessionStore and MemoryStore traits, compaction, diesel implementations
-munibot_ai_sandbox    podman lifecycle, repository checkout, RPC client, sandboxed tools
-munibot_ai_toolagent  [bin] in-container RPC server executing filesystem and shell tools
-munibot_ai_pipeline   multi-agent state machine: issue to research to plan to build to review to PR
+munibot_ai            everything below, as modules of one crate
+  ai::types              provider-neutral domain types; serde and schemars only
+  ai::provider           Provider trait; rig-backed and mock implementations; retry classification
+  ai::tools              Tool trait, ToolRegistry, ToolCtx, risk tiers, built-in tools
+  ai::harness            the agent loop: model to tools to handoff, with budgets and events
+  ai::memory             SessionStore and MemoryStore traits, compaction, diesel implementations
+  ai::sandbox            podman lifecycle, repository checkout, RPC client, sandboxed tools
+  ai::pipeline           multi-agent state machine: issue to research to plan to build to review to PR
+  ai::persona            persona type, prompt template engine, and the persona registry
+  (crate root)           the `[ai]` config section, the router, and the `Ai` service handle
+
+munibot_toolagent     [bin] in-container RPC server executing filesystem and shell tools
 munibot_vcs           VCS-agnostic traits: IssueSource, PullRequestTarget, normalized webhooks
 munibot_github        octocrab-backed VCS implementation and webhook verification
-munibot_ai            the facade munibot uses: config, persona registry, router, service handle
 ```
+
+`munibot_toolagent` and `munibot_vcs`/`munibot_github` are separate crates on purpose:
+
+- **`munibot_toolagent`** ships into an untrusted container and must stay small regardless of what
+  `munibot_ai`'s own dependency tree grows into (diesel-async, bollard, rig, ...). Bundling it as a
+  module would mean every container build either pulls in all of that or fights a feature-flag matrix
+  to avoid it. A tiny standalone crate sidesteps the problem entirely.
+- **`munibot_vcs`/`munibot_github`** are not an ai concern. They are forge integration that the
+  pipeline happens to consume, and could serve a plain (non-ai) `/issue` command just as well. Keeping
+  them separate matches the existing split by concern (`munibot_core` / `munibot_discord` /
+  `munibot_twitch`) rather than by feature.
 
 ### Dependency graph
 
 ```
-munibot_ai_types
-  ├── munibot_ai_provider ──> rig-core
-  ├── munibot_ai_tools
-  │     └── munibot_ai_harness ──> munibot_ai_provider
-  │           ├── munibot_ai_memory ──> munibot_core
-  │           ├── munibot_ai_sandbox ──> bollard
-  │           └── munibot_ai_pipeline ──> munibot_vcs
-  └── munibot_ai (facade) ──> all of the above, plus munibot_core
+munibot_ai (lib.rs exposes the Ai service handle, built on everything below)
+  ai::types
+    ├── ai::provider ──> rig-core
+    ├── ai::tools
+    │     └── ai::harness ──> ai::provider
+    │           ├── ai::memory ──> munibot_core
+    │           ├── ai::sandbox ──> bollard
+    │           └── ai::pipeline ──> munibot_vcs
+    └── ai::persona ──> all of the above, plus munibot_core
 
 munibot_vcs
   └── munibot_github ──> octocrab
 
-munibot_ai_toolagent ──> munibot_ai_types   (standalone binary, no other munibot deps)
+munibot_toolagent     (no munibot dependency at all — see below)
 ```
 
-Dependencies flow strictly downward. `munibot_ai_types` depends on nothing but `serde`, `schemars`,
-and `thiserror`. `munibot_vcs` and `munibot_github` know nothing about AI. `munibot_ai_toolagent`
-ships into a container and must stay tiny.
+Within `munibot_ai`, dependencies flow strictly downward through module visibility: `ai::types`
+depends on nothing but `serde`, `schemars`, and `thiserror`, and no other module may leak a `rig` type
+past `ai::provider`. `munibot_vcs` and `munibot_github` know nothing about AI.
+
+**`munibot_toolagent` takes no munibot dependency at all**, not even `munibot_ai::types`. Before the
+consolidation it could lean on `munibot_ai_types` for its RPC wire types (`ToolRequest`,
+`ToolResponse`) at zero cost, because that crate had no heavy dependencies of its own. Now that those
+types live inside `munibot_ai`, depending on the crate at all — for any single module — pulls
+`rig-core`, `bollard`, and everything else `munibot_ai` needs into the tool agent's build, since Cargo
+does not compile a crate's dependencies per-module. `munibot_toolagent` instead defines its own tiny
+copy of the wire protocol types. A few lines of duplication buys a hard isolation boundary for the one
+binary that runs inside a container an attacker's generated code can reach.
 
 Platform adapters live in the crates that already own those platforms:
 
@@ -82,9 +109,9 @@ Platform adapters live in the crates that already own those platforms:
 
 ### Workspace layout
 
-Crates stay flat at the workspace root, as they are today. Adding ten crates takes the workspace from
-six top-level directories to sixteen, and the `munibot_ai_*` prefix carries the grouping that a
-`crates/` directory would otherwise provide. This keeps `diesel.toml`, the `embed_migrations!` path in
+Crates stay flat at the workspace root, as they are today. This plan adds three: `munibot_ai`,
+`munibot_toolagent`, and `munibot_vcs`/`munibot_github` (two), taking the workspace from six top-level
+directories to ten. This keeps `diesel.toml`, the `embed_migrations!` path in
 `munibot_core/src/db.rs`, and `nix/build.nix` untouched.
 
 ## The persona abstraction
@@ -239,8 +266,8 @@ recovery a replay rather than a repair.
    persona publicly before then.
 2. **`rig-core` is pre-1.0** and releases frequently, and its API has already shifted enough that the
    published documentation site describes a removed API. The `Provider` trait boundary is what makes
-   that survivable. Keep rig types out of every crate except `munibot_ai_provider`, and confine the
-   conversion code to one file.
+   that survivable. Keep rig types out of every module except `ai::provider`, and confine the
+   conversion code to one file within it.
 3. **The toolchain is nightly**, because `munibot_discord` uses `#![feature(never_type)]`. rig and
    bollard are both verified to build on it; see `docs/notes/ai-preflight-findings.md`.
 4. **Podman in production** means the NixOS module in `nix/nixos.nix` needs podman and socket
