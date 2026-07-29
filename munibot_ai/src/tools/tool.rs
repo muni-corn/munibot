@@ -75,6 +75,17 @@ pub trait Tool: Send + Sync {
     fn schema(&self) -> ToolSchema {
         ToolSchema::new(self.name(), self.description(), self.input_schema())
     }
+
+    /// Whether this tool must run one at a time rather than concurrently with
+    /// another call to itself in the same response.
+    ///
+    /// Defaults to `false`. A tool with shared mutable state across calls - a
+    /// persistent shell session inside one sandbox is the motivating case -
+    /// overrides this to `true`, so two calls to it in the same batch never
+    /// run at the same time.
+    fn is_serial(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]
@@ -136,6 +147,14 @@ mod tests {
         assert_eq!(
             schema.input_schema,
             json!({"type": "object", "properties": {}})
+        );
+    }
+
+    #[test]
+    fn test_is_serial_defaults_to_false() {
+        assert!(
+            !PingTool.is_serial(),
+            "a tool with no shared state should be safe to run concurrently by default"
         );
     }
 
