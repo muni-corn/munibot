@@ -1,0 +1,17 @@
+[package]
+name = "munibot_ai_provider"
+description = "provider-agnostic model access for munibot's ai harness"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+backon.workspace = true
+futures.workspace = true
+munibot_ai_types = { path = "../munibot_ai_types" }
+rig-core.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
