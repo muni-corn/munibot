@@ -120,6 +120,28 @@ pub enum ExaError {
     NotConfigured(String),
 }
 
+/// The subset of [`ExaClient`] the built-in search and fetch tools depend on.
+///
+/// Exists so those tools can be unit-tested with a scripted fake rather than
+/// the real client - matching how [`crate::provider::MockProvider`] lets the
+/// harness be tested with no network access. `ExaClient` implements this
+/// directly.
+#[async_trait::async_trait]
+pub trait ExaBackend: Send + Sync {
+    async fn search(
+        &self,
+        query: String,
+        num_results: Option<usize>,
+        contents: Option<ContentsOptions>,
+    ) -> Result<SearchResponse, ExaError>;
+
+    async fn contents(
+        &self,
+        urls: Vec<String>,
+        text: Option<TextOptions>,
+    ) -> Result<ContentsResponse, ExaError>;
+}
+
 /// A client for the Exa search and content extraction API.
 ///
 /// Wraps a `reqwest::Client` carrying the API key and a descriptive User-Agent,
@@ -217,6 +239,84 @@ impl ExaClient {
             };
             Err(ExaError::Api { status, message })
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl ExaBackend for ExaClient {
+    async fn search(
+        &self,
+        query: String,
+        num_results: Option<usize>,
+        contents: Option<ContentsOptions>,
+    ) -> Result<SearchResponse, ExaError> {
+        ExaClient::search(self, query, num_results, contents).await
+    }
+
+    async fn contents(
+        &self,
+        urls: Vec<String>,
+        text: Option<TextOptions>,
+    ) -> Result<ContentsResponse, ExaError> {
+        ExaClient::contents(self, urls, text).await
+    }
+}
+
+/// A scripted [`ExaBackend`] for tests elsewhere in this crate - the same role
+/// [`crate::provider::MockProvider`] plays for the harness. Not gated inside
+/// `mod tests`, so `web_search`'s and `web_fetch`'s own test modules can use it
+/// too.
+#[cfg(test)]
+pub(crate) struct FakeExaBackend {
+    search_result: std::sync::Mutex<Option<Result<SearchResponse, ExaError>>>,
+    contents_result: std::sync::Mutex<Option<Result<ContentsResponse, ExaError>>>,
+}
+
+#[cfg(test)]
+impl FakeExaBackend {
+    pub(crate) fn respond_search(result: Result<SearchResponse, ExaError>) -> Self {
+        Self {
+            search_result: std::sync::Mutex::new(Some(result)),
+            contents_result: std::sync::Mutex::new(None),
+        }
+    }
+
+    // used starting with the web_fetch tool's own tests, landing in the next commit
+    #[allow(dead_code)]
+    pub(crate) fn respond_contents(result: Result<ContentsResponse, ExaError>) -> Self {
+        Self {
+            search_result: std::sync::Mutex::new(None),
+            contents_result: std::sync::Mutex::new(Some(result)),
+        }
+    }
+}
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl ExaBackend for FakeExaBackend {
+    async fn search(
+        &self,
+        _query: String,
+        _num_results: Option<usize>,
+        _contents: Option<ContentsOptions>,
+    ) -> Result<SearchResponse, ExaError> {
+        self.search_result
+            .lock()
+            .unwrap()
+            .take()
+            .expect("FakeExaBackend::search called without a scripted response")
+    }
+
+    async fn contents(
+        &self,
+        _urls: Vec<String>,
+        _text: Option<TextOptions>,
+    ) -> Result<ContentsResponse, ExaError> {
+        self.contents_result
+            .lock()
+            .unwrap()
+            .take()
+            .expect("FakeExaBackend::contents called without a scripted response")
     }
 }
 
