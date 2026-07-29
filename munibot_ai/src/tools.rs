@@ -2,7 +2,13 @@
 //!
 //! A tool's authority derives from the **invoking human**, never from the
 //! model's request. Every tool is tiered by [`RiskTier`], and every tier above
-//! [`RiskTier::Safe`] re-checks the invoker's granted tier from [`ToolCtx`] at
-//! invocation time - a persona misconfigured into a tier the invoker lacks must
-//! still be refused at the point of use, not just filtered out of the schema
-//! list handed to the model.
+//! [`RiskTier::Safe`] re-checks the invoker's granted tier at invocation time -
+//! a persona misconfigured into a tier the invoker lacks must still be refused
+//! at the point of use, not just filtered out of the schema list handed to the
+//! model.
+
+pub mod selection;
+pub mod tier;
+
+pub use selection::{ToolSelection, ToolSelector};
+pub use tier::RiskTier;
