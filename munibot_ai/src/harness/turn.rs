@@ -8,25 +8,26 @@ use crate::{
 
 /// The structured payload a turn must produce to end via handoff, rather than
 /// plain text.
-///
-/// Defined fully here rather than as a placeholder: the handoff validation
-/// coming in a later commit needs exactly this - a name for the tool injected
-/// into the request, and the schema its arguments must satisfy - so there is
-/// nothing to rework once that lands.
 #[derive(Clone, Debug)]
 pub struct HandoffSchema {
     /// The name of the tool injected into the request so the model can hand
     /// off. Conventionally `"handoff"`.
     pub tool_name: String,
+    /// When and how to use the injected tool, shown to the model verbatim. This
+    /// is not documentation - it is the only thing telling the model what a
+    /// valid handoff looks like for this particular role, so a generic
+    /// description hurts every persona that uses one.
+    pub description: String,
     /// The JSON Schema the handoff payload must satisfy.
     pub schema: Value,
 }
 
 impl HandoffSchema {
     /// Builds a handoff schema with the conventional tool name.
-    pub fn new(schema: Value) -> Self {
+    pub fn new(description: impl Into<String>, schema: Value) -> Self {
         Self {
             tool_name: "handoff".to_string(),
+            description: description.into(),
             schema,
         }
     }
@@ -172,7 +173,10 @@ mod tests {
         let request = TurnRequest::new(model(), History::new(), ctx())
             .with_system("be nice")
             .with_tools(ToolSelection::all())
-            .with_handoff(HandoffSchema::new(json!({"type": "object"})));
+            .with_handoff(HandoffSchema::new(
+                "finish the turn with this shape",
+                json!({"type": "object"}),
+            ));
 
         assert_eq!(request.system.as_deref(), Some("be nice"));
         assert!(
@@ -185,8 +189,18 @@ mod tests {
 
     #[test]
     fn test_handoff_schema_uses_the_conventional_tool_name() {
-        let handoff = HandoffSchema::new(json!({"type": "object"}));
+        let handoff =
+            HandoffSchema::new("finish the turn with this shape", json!({"type": "object"}));
         assert_eq!(handoff.tool_name, "handoff");
+    }
+
+    #[test]
+    fn test_handoff_schema_keeps_its_own_description() {
+        let handoff = HandoffSchema::new("approve or reject the plan", json!({"type": "object"}));
+        assert_eq!(
+            handoff.description, "approve or reject the plan",
+            "each role's handoff needs its own description, not a generic one"
+        );
     }
 
     #[test]
