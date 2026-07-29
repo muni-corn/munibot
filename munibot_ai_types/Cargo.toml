@@ -1,0 +1,14 @@
+[package]
+name = "munibot_ai_types"
+description = "provider-neutral domain types for munibot's ai harness"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
