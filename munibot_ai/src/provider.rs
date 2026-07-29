@@ -17,10 +17,12 @@ use futures::stream::{self, BoxStream};
 use crate::types::{AiError, CompletionRequest, CompletionResponse, ContentBlock, StreamEvent};
 
 pub mod mock;
+pub mod pricing;
 pub mod retry;
 pub mod rig;
 
 pub use mock::MockProvider;
+pub use pricing::{Pricing, estimate_cost};
 pub use retry::{RetryPolicy, RetryingProvider};
 pub use rig::{ProviderResolver, RigProvider};
 

@@ -1,0 +1,31 @@
+# Per-million-token prices in whole dollars, one table per "provider:model" string.
+#
+# These are illustrative placeholders in the same ballpark as real frontier model pricing, not
+# verified current prices - munibot_ai::provider::estimate_cost degrades to Cost(0) plus a warning
+# for any model missing here, so an out-of-date price undercounts rather than crashing, but it
+# should still be kept current. Update this file whenever a persona's model changes or a provider
+# revises its price list; no code change is needed to do so.
+
+["anthropic:claude-opus-5"]
+input_per_mtok = 15.0
+output_per_mtok = 75.0
+cache_read_per_mtok = 1.5
+cache_write_per_mtok = 18.75
+
+["anthropic:claude-haiku-4"]
+input_per_mtok = 0.8
+output_per_mtok = 4.0
+cache_read_per_mtok = 0.08
+cache_write_per_mtok = 1.0
+
+["openai:gpt-5.2"]
+input_per_mtok = 5.0
+output_per_mtok = 15.0
+cache_read_per_mtok = 0.5
+cache_write_per_mtok = 5.0
+
+["openai:gpt-5.2-mini"]
+input_per_mtok = 0.5
+output_per_mtok = 2.0
+cache_read_per_mtok = 0.05
+cache_write_per_mtok = 0.5
