@@ -9,6 +9,7 @@
 
 pub mod context;
 pub mod current_time;
+pub mod exa;
 pub mod registry;
 pub mod selection;
 pub mod tier;
@@ -18,6 +19,7 @@ pub mod untrusted;
 
 pub use context::{ConversationId, Platform, ToolCtx};
 pub use current_time::CurrentTimeTool;
+pub use exa::{ContentsOptions, ExaClient, ExaError, ExaResult, TextOptions};
 pub use registry::ToolRegistry;
 pub use selection::{ToolSelection, ToolSelector};
 pub use tier::RiskTier;
