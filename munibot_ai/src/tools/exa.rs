@@ -281,8 +281,6 @@ impl FakeExaBackend {
         }
     }
 
-    // used starting with the web_fetch tool's own tests, landing in the next commit
-    #[allow(dead_code)]
     pub(crate) fn respond_contents(result: Result<ContentsResponse, ExaError>) -> Self {
         Self {
             search_result: std::sync::Mutex::new(None),
