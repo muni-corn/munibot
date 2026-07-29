@@ -20,7 +20,7 @@ pub use validate::validate_tool_arguments;
 use crate::{
     provider::{Provider, estimate_cost},
     tools::{ToolCtx, ToolRegistry},
-    types::{AiError, CompletionRequest, ContentBlock, Cost, Message, Role, Usage},
+    types::{AiError, CompletionRequest, ContentBlock, Message, Role},
 };
 
 /// Drives a [`Provider`] and a [`ToolRegistry`] together into one full agent
@@ -43,22 +43,25 @@ impl Harness {
     /// Runs one full turn: call the provider, dispatch every tool call it asks
     /// for, and repeat until it answers with plain text.
     ///
-    /// General budget enforcement, handoff validation, and cancellation all
-    /// arrive in later commits; this one covers the loop's basic shape,
-    /// tool dispatch, and the argument validation gate in front of it.
+    /// Handoff validation and cancellation arrive in later commits; this one
+    /// covers the loop's basic shape, tool dispatch and argument
+    /// validation, and general budget enforcement.
     pub async fn run_turn(&self, request: TurnRequest) -> Result<TurnOutcome, AiError> {
         let tool_schemas = self
             .tools
             .schemas_for(&request.tools, request.ctx.granted_tier);
 
         let mut history = request.history.clone();
-        let mut iterations = 0usize;
-        let mut total_usage = Usage::default();
-        let mut total_cost = Cost::ZERO;
+        let mut tracker = BudgetTracker::new(request.budget.clone());
         let mut tool_retries = 0usize;
+        let mut last_text = String::new();
 
         loop {
-            iterations += 1;
+            // don't start another round trip once a prior iteration already spent the
+            // budget
+            if let Err(reason) = tracker.check() {
+                return Ok(Self::truncated_outcome(last_text, &tracker, &reason));
+            }
 
             let mut completion_request =
                 CompletionRequest::new(request.model.clone(), history.clone())
@@ -69,15 +72,23 @@ impl Harness {
             }
 
             let response = self.provider.complete(completion_request).await?;
-            total_usage += response.usage;
-            total_cost += estimate_cost(&request.model, &response.usage);
+            tracker.record(
+                response.usage,
+                estimate_cost(&request.model, &response.usage),
+            );
+            last_text = response.text();
+
+            // this iteration alone may have just spent what was left
+            if let Err(reason) = tracker.check() {
+                return Ok(Self::truncated_outcome(last_text, &tracker, &reason));
+            }
 
             if !response.stop_reason.wants_another_iteration() {
                 return Ok(TurnOutcome::text(
                     response.text(),
-                    total_usage,
-                    total_cost,
-                    iterations,
+                    tracker.usage(),
+                    tracker.cost(),
+                    tracker.iterations(),
                 ));
             }
 
@@ -161,6 +172,27 @@ impl Harness {
         }
     }
 
+    /// Builds the outcome for a turn that stopped early because its budget ran
+    /// out, rather than because the model finished answering.
+    ///
+    /// A partial answer beats no answer: whatever text the last response
+    /// carried is kept and marked as truncated, naming which limit was hit,
+    /// rather than the turn failing outright. When no text has been
+    /// produced yet at all - a degenerately tight budget tripping before the
+    /// first response even arrives - the marker stands alone.
+    fn truncated_outcome(
+        last_text: String,
+        tracker: &BudgetTracker,
+        reason: &AiError,
+    ) -> TurnOutcome {
+        let text = if last_text.is_empty() {
+            format!("(no response yet :< {reason})")
+        } else {
+            format!("{last_text}\n\n(response truncated :< {reason})")
+        };
+        TurnOutcome::text(text, tracker.usage(), tracker.cost(), tracker.iterations())
+    }
+
     /// Dispatches every already-resolved, already-validated call, preserving
     /// result order to match call order regardless of which ones ran
     /// concurrently.
@@ -230,7 +262,7 @@ mod tests {
     use crate::{
         provider::MockProvider,
         tools::{ConversationId, Platform, RiskTier, ToolCtx, ToolSelection},
-        types::{History, Message, ModelRef},
+        types::{History, Message, ModelRef, Usage},
     };
 
     fn ctx(granted_tier: RiskTier) -> ToolCtx {
@@ -954,6 +986,130 @@ mod tests {
         assert!(
             result.is_err(),
             "a model that never produces valid arguments must not loop forever"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_truncates_gracefully_when_iteration_budget_is_reached() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "loop_tool",
+            reply: "again",
+        }));
+
+        // every response asks for another tool call, forever - only the budget stops
+        // this
+        let mut builder = MockProvider::new();
+        for _ in 0..5 {
+            builder = builder.respond_tool_use("c1", "loop_tool", serde_json::json!({}));
+        }
+        let provider: Arc<MockProvider> = Arc::new(builder);
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["loop_tool"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+        turn_request.budget = Budget {
+            max_iterations: Some(2),
+            ..Budget::default()
+        };
+
+        let harness = Harness::new(provider.clone(), Arc::new(registry));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("an exhausted budget should truncate gracefully, not error");
+
+        assert_eq!(
+            outcome.iterations, 2,
+            "should stop exactly at the configured limit"
+        );
+        assert_eq!(
+            provider.request_count(),
+            2,
+            "must not make a third round trip once the iteration budget is spent"
+        );
+        let text = outcome.text.unwrap();
+        assert!(
+            text.contains("budget"),
+            "the truncation reason should be visible in the returned text, got {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_truncates_gracefully_when_cost_budget_is_exceeded() {
+        // claude-opus-5 is priced at $15/mtok input and $75/mtok output in
+        // pricing.toml, so one million of each costs $90 - comfortably over a
+        // one dollar budget in a single iteration
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond(Ok(
+            crate::types::CompletionResponse::new(
+                vec![
+                    ContentBlock::text("partial answer"),
+                    ContentBlock::tool_use("c1", "current_time", serde_json::json!({})),
+                ],
+                crate::types::StopReason::ToolUse,
+                Usage::new(1_000_000, 1_000_000),
+            ),
+        )));
+
+        let mut turn_request = request();
+        turn_request.budget = Budget {
+            max_cost: Some(crate::types::Cost::from_dollars(1.0)),
+            ..Budget::default()
+        };
+
+        let harness = Harness::new(provider.clone(), Arc::new(ToolRegistry::new()));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("an exhausted cost budget should truncate gracefully, not error");
+
+        assert_eq!(
+            provider.request_count(),
+            1,
+            "must not make a second round trip once the cost budget is already spent"
+        );
+        let text = outcome.text.expect("partial text should be preserved");
+        assert!(
+            text.contains("partial answer"),
+            "the assistant's own text should survive: {text:?}"
+        );
+        assert!(
+            text.contains("truncated"),
+            "the truncation should be visible: {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_truncation_marker_names_the_limit() {
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_tool_use("c2", "current_time", serde_json::json!({})),
+        );
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "current_time",
+            reply: "12:00",
+        }));
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["current_time"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+        turn_request.budget = Budget {
+            max_iterations: Some(1),
+            ..Budget::default()
+        };
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("should truncate gracefully");
+
+        let text = outcome.text.expect("should have a truncation marker");
+        assert!(
+            text.contains("iterations"),
+            "the marker should name which limit was hit, got {text:?}"
         );
     }
 }
