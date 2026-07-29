@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use crate::types::{
     content::ContentBlock,
     message::History,
     model::{ModelParams, ModelRef},
@@ -157,7 +157,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::{message::Message, model::ModelRef};
+    use crate::types::{message::Message, model::ModelRef};
 
     fn model() -> ModelRef {
         ModelRef::new("anthropic", "claude-opus-5")

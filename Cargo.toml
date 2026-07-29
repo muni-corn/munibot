@@ -2,8 +2,7 @@
 resolver = "3"
 members = [
   "munibot",
-  "munibot_ai_provider",
-  "munibot_ai_types",
+  "munibot_ai",
   "munibot_api",
   "munibot_core",
   "munibot_discord",

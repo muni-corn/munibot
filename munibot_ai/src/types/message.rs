@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::content::{ContentBlock, Role};
+use crate::types::content::{ContentBlock, Role};
 
 /// One turn in a conversation.
 ///
@@ -120,7 +120,7 @@ impl History {
     ///
     /// # Example
     /// ```
-    /// use munibot_ai_types::{History, Message, rough_token_estimate};
+    /// use munibot_ai::{History, Message, rough_token_estimate};
     ///
     /// let mut history = History::new();
     /// history.push(Message::user("hello"));
@@ -287,9 +287,9 @@ mod tests {
     #[test]
     fn test_token_estimate_ignores_images() {
         let history = History::from(vec![Message::new(Role::User, vec![ContentBlock::Image {
-            image: crate::content::Image {
+            image: crate::types::content::Image {
                 media_type: "image/png".to_string(),
-                source: crate::content::ImageSource::Base64 {
+                source: crate::types::content::ImageSource::Base64 {
                     // a long base64 payload must not be mistaken for text tokens
                     data: "A".repeat(10_000),
                 },

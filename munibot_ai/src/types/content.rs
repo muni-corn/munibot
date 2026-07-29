@@ -42,7 +42,7 @@ pub struct Image {
 /// reasoning, then text, then one or more tool calls.
 ///
 /// The representation is internally tagged to match how providers wire these on
-/// the network, which keeps the conversion layer in `munibot_ai_provider` close
+/// the network, which keeps the conversion layer in the `provider` module close
 /// to a field rename.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]

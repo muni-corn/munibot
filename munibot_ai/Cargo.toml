@@ -1,17 +1,21 @@
 [package]
-name = "munibot_ai_provider"
-description = "provider-agnostic model access for munibot's ai harness"
+name = "munibot_ai"
+description = "munibot's ai agent harness: chat, tools, and multi-persona orchestration"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 async-trait.workspace = true
 backon.workspace = true
+chrono.workspace = true
 futures.workspace = true
-munibot_ai_types = { path = "../munibot_ai_types" }
 rig-core.workspace = true
+schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

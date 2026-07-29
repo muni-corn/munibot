@@ -4272,29 +4272,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "munibot_ai_provider"
-version = "0.3.2"
-dependencies = [
- "async-trait",
- "backon",
- "futures",
- "munibot_ai_types",
- "rig-core",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "munibot_ai_types"
+name = "munibot_ai"
 version = "0.3.2"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "backon",
  "chrono",
+ "futures",
+ "rig-core",
  "schemars",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -42,7 +42,7 @@ impl ToolSchema {
     ///
     /// # Example
     /// ```
-    /// use munibot_ai_types::ToolSchema;
+    /// use munibot_ai::ToolSchema;
     /// use schemars::JsonSchema;
     ///
     /// #[derive(JsonSchema)]
