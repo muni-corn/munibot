@@ -16,6 +16,10 @@ use futures::stream::{self, BoxStream};
 
 use crate::types::{AiError, CompletionRequest, CompletionResponse, ContentBlock, StreamEvent};
 
+pub mod mock;
+
+pub use mock::MockProvider;
+
 /// A source of model completions.
 ///
 /// Every concrete provider (rig-backed or otherwise) and the test double both
