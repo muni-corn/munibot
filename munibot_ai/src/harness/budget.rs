@@ -16,6 +16,12 @@ pub struct Budget {
     pub max_output_tokens: Option<u64>,
     pub max_wall_clock: Option<Duration>,
     pub max_cost: Option<Cost>,
+    /// Total tool calls across the whole turn that may fail schema validation
+    /// before the turn gives up entirely. Separate from `max_iterations`,
+    /// since a model stuck retrying malformed arguments should not have to
+    /// burn a full provider round trip's worth of budget per attempt
+    /// to find that out.
+    pub max_tool_retries: Option<usize>,
 }
 
 impl Default for Budget {
@@ -26,6 +32,7 @@ impl Default for Budget {
             max_output_tokens: None,
             max_wall_clock: Some(Duration::from_secs(60)),
             max_cost: Some(Cost::from_dollars(0.25)),
+            max_tool_retries: Some(3),
         }
     }
 }
@@ -125,6 +132,7 @@ mod tests {
             max_output_tokens: None,
             max_wall_clock: None,
             max_cost: None,
+            max_tool_retries: None,
         }
     }
 
@@ -138,6 +146,7 @@ mod tests {
             budget.max_input_tokens, None,
             "token limits are left to the cost ceiling by default"
         );
+        assert_eq!(budget.max_tool_retries, Some(3));
     }
 
     #[test]
