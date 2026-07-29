@@ -12,8 +12,10 @@ pub mod content;
 pub mod message;
 pub mod model;
 pub mod tool;
+pub mod usage;
 
 pub use content::{ContentBlock, Image, ImageSource, Role};
 pub use message::{History, Message, rough_token_estimate};
 pub use model::{ModelParams, ModelRef, ModelRefError};
 pub use tool::ToolSchema;
+pub use usage::{Cost, Usage};
