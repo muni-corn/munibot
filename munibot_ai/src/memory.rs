@@ -6,5 +6,7 @@
 //! migrations and no database dependency.
 
 pub mod conversation;
+pub mod store;
 
 pub use conversation::{Conversation, ConversationScope};
+pub use store::SessionStore;
