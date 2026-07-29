@@ -4281,6 +4281,7 @@ dependencies = [
  "backon",
  "chrono",
  "futures",
+ "http",
  "rig-core",
  "schemars",
  "serde",
