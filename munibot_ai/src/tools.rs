@@ -7,8 +7,10 @@
 //! at the point of use, not just filtered out of the schema list handed to the
 //! model.
 
+pub mod context;
 pub mod selection;
 pub mod tier;
 
+pub use context::{ConversationId, Platform, ToolCtx};
 pub use selection::{ToolSelection, ToolSelector};
 pub use tier::RiskTier;
