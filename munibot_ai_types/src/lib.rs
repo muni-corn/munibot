@@ -7,3 +7,7 @@
 //! The one rule this crate exists to enforce: no provider's types ever leak
 //! past `munibot_ai_provider`. If a type from `rig` or an HTTP client appears
 //! in a signature outside that crate, the abstraction has been broken.
+
+pub mod content;
+
+pub use content::{ContentBlock, Image, ImageSource, Role};
