@@ -6,5 +6,7 @@
 //! a provider or a tool directly.
 
 pub mod budget;
+pub mod event;
 
 pub use budget::{Budget, BudgetTracker};
+pub use event::HarnessEvent;
