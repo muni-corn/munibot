@@ -6,7 +6,9 @@
 
 pub mod adapter;
 pub mod convert;
+pub mod errors;
 pub mod resolve;
 
 pub use adapter::RigProvider;
+pub use errors::classify_completion_error;
 pub use resolve::ProviderResolver;

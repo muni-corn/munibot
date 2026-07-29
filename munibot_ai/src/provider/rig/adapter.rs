@@ -10,7 +10,10 @@ use rig_core::{
 };
 
 use crate::{
-    provider::{Provider, rig::convert},
+    provider::{
+        Provider,
+        rig::{convert, errors},
+    },
     types::{
         AiError, CompletionRequest, CompletionResponse, ContentBlock, StopReason, StreamEvent,
         ToolChoice,
@@ -130,7 +133,7 @@ where
             .model
             .completion(rig_request)
             .await
-            .map_err(|error| AiError::Provider(error.to_string()))?;
+            .map_err(errors::classify_completion_error)?;
 
         let content: Vec<ContentBlock> = response
             .choice
@@ -152,7 +155,7 @@ where
             .model
             .stream(rig_request)
             .await
-            .map_err(|error| AiError::Provider(error.to_string()))?;
+            .map_err(errors::classify_completion_error)?;
 
         let events = stream! {
             while let Some(chunk) = inner.next().await {
@@ -163,7 +166,7 @@ where
                         }
                     }
                     Err(error) => {
-                        yield Err(AiError::Provider(error.to_string()));
+                        yield Err(errors::classify_completion_error(error));
                         return;
                     }
                 }
