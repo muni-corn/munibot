@@ -16,13 +16,15 @@ pub mod tier;
 pub mod todo_write;
 pub mod tool;
 pub mod untrusted;
+pub mod web_search;
 
 pub use context::{ConversationId, Platform, ToolCtx};
 pub use current_time::CurrentTimeTool;
-pub use exa::{ContentsOptions, ExaClient, ExaError, ExaResult, TextOptions};
+pub use exa::{ContentsOptions, ExaBackend, ExaClient, ExaError, ExaResult, TextOptions};
 pub use registry::ToolRegistry;
 pub use selection::{ToolSelection, ToolSelector};
 pub use tier::RiskTier;
 pub use todo_write::{TodoItem, TodoStatus, TodoWriteTool};
 pub use tool::{Tool, ToolOutcome};
 pub use untrusted::wrap_untrusted;
+pub use web_search::WebSearchTool;
