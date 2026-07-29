@@ -10,7 +10,7 @@ pub mod event;
 pub mod turn;
 pub mod validate;
 
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 pub use budget::{Budget, BudgetTracker};
 pub use event::HarnessEvent;
@@ -62,6 +62,9 @@ impl Harness {
             if let Err(reason) = tracker.check() {
                 return Ok(Self::truncated_outcome(last_text, &tracker, &reason));
             }
+            if request.ctx.is_cancelled() {
+                return Err(AiError::Cancelled);
+            }
 
             let mut completion_request =
                 CompletionRequest::new(request.model.clone(), history.clone())
@@ -71,7 +74,12 @@ impl Harness {
                 completion_request = completion_request.with_system(system.clone());
             }
 
-            let response = self.provider.complete(completion_request).await?;
+            let response = race_cancellation(
+                &request.ctx.cancellation,
+                Err(AiError::Cancelled),
+                self.provider.complete(completion_request),
+            )
+            .await?;
             tracker.record(
                 response.usage,
                 estimate_cost(&request.model, &response.usage),
@@ -227,14 +235,24 @@ impl Harness {
 
         let parallel_futures = parallel_indices.iter().map(|&index| {
             let (tool, arguments) = &calls[index];
-            tool.invoke(arguments.clone(), ctx)
+            race_cancellation(
+                &ctx.cancellation,
+                crate::tools::ToolOutcome::Fatal(AiError::Cancelled),
+                tool.invoke(arguments.clone(), ctx),
+            )
         });
         let parallel_outcomes = futures::future::join_all(parallel_futures).await;
 
         let mut serial_outcomes = Vec::with_capacity(serial_indices.len());
         for &index in &serial_indices {
             let (tool, arguments) = &calls[index];
-            serial_outcomes.push(tool.invoke(arguments.clone(), ctx).await);
+            let outcome = race_cancellation(
+                &ctx.cancellation,
+                crate::tools::ToolOutcome::Fatal(AiError::Cancelled),
+                tool.invoke(arguments.clone(), ctx),
+            )
+            .await;
+            serial_outcomes.push(outcome);
         }
 
         let mut outcomes: Vec<Option<crate::tools::ToolOutcome>> =
@@ -253,6 +271,29 @@ impl Harness {
                     .expect("every call index is assigned by exactly one of the two groups above")
             })
             .collect()
+    }
+}
+
+/// Races `future` against `cancellation`, resolving to `on_cancel` if the token
+/// fires first.
+///
+/// `biased` so an already-cancelled token is detected immediately rather than
+/// by chance: without it, `select!` polls its branches in random order, and a
+/// future that happens to be ready on the same poll as an already-fired
+/// cancellation could still complete instead of being interrupted.
+/// Dropping `future` when cancellation wins is what stops it from running any
+/// further - the standard Rust async cancellation story, and why this never
+/// leaks a tool that keeps running in the background after `run_turn` has
+/// already returned.
+async fn race_cancellation<T>(
+    cancellation: &tokio_util::sync::CancellationToken,
+    on_cancel: T,
+    future: impl Future<Output = T>,
+) -> T {
+    tokio::select! {
+        biased;
+        () = cancellation.cancelled() => on_cancel,
+        value = future => value,
     }
 }
 
@@ -1110,6 +1151,158 @@ mod tests {
         assert!(
             text.contains("iterations"),
             "the marker should name which limit was hit, got {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_fails_fast_when_already_cancelled() {
+        let provider = Arc::new(MockProvider::new());
+        let harness = Harness::new(provider.clone(), Arc::new(ToolRegistry::new()));
+
+        let turn_request = request();
+        turn_request.ctx.cancellation.cancel();
+
+        let result = harness.run_turn(turn_request).await;
+
+        assert!(
+            matches!(result, Err(AiError::Cancelled)),
+            "an already-cancelled context must fail immediately"
+        );
+        assert_eq!(
+            provider.request_count(),
+            0,
+            "a pre-cancelled turn should never even reach the provider"
+        );
+    }
+
+    /// A provider that sleeps for a fixed delay before responding, so a test
+    /// can cancel it mid-flight and confirm the wait is actually
+    /// interrupted rather than merely ignored.
+    struct SlowProvider {
+        delay: std::time::Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::provider::Provider for SlowProvider {
+        fn name(&self) -> &str {
+            "slow"
+        }
+
+        async fn complete(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<crate::types::CompletionResponse, AiError> {
+            tokio::time::sleep(self.delay).await;
+            Ok(crate::types::CompletionResponse::new(
+                vec![ContentBlock::text("too slow")],
+                crate::types::StopReason::EndTurn,
+                Usage::default(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_cancels_promptly_mid_provider_call() {
+        let provider = Arc::new(SlowProvider {
+            delay: std::time::Duration::from_secs(3600),
+        });
+        let harness = Harness::new(provider, Arc::new(ToolRegistry::new()));
+
+        let turn_request = request();
+        let cancellation = turn_request.ctx.cancellation.clone();
+
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            cancellation.cancel();
+        });
+
+        let started = tokio::time::Instant::now();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            harness.run_turn(turn_request),
+        )
+        .await
+        .expect("the turn must return well before the provider's own hour-long delay");
+
+        assert!(matches!(result, Err(AiError::Cancelled)));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "cancellation should interrupt the wait almost immediately, not after the full delay"
+        );
+    }
+
+    /// A tool that sleeps for a fixed delay, for the same mid-flight
+    /// cancellation proof as `SlowProvider`, but on the tool-dispatch path
+    /// instead of the provider call.
+    struct SlowTool {
+        delay: std::time::Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::tools::Tool for SlowTool {
+        fn name(&self) -> &str {
+            "slow_tool"
+        }
+
+        fn description(&self) -> &str {
+            "sleeps for a long time"
+        }
+
+        fn tier(&self) -> RiskTier {
+            RiskTier::Safe
+        }
+
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        async fn invoke(
+            &self,
+            _input: serde_json::Value,
+            _ctx: &ToolCtx,
+        ) -> crate::tools::ToolOutcome {
+            tokio::time::sleep(self.delay).await;
+            crate::tools::ToolOutcome::ok("too slow")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_cancels_a_running_tool_promptly() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(SlowTool {
+            delay: std::time::Duration::from_secs(3600),
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_tool_use(
+            "c1",
+            "slow_tool",
+            serde_json::json!({}),
+        ));
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["slow_tool"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+        let cancellation = turn_request.ctx.cancellation.clone();
+
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            cancellation.cancel();
+        });
+
+        let harness = Harness::new(provider, Arc::new(registry));
+
+        let started = tokio::time::Instant::now();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            harness.run_turn(turn_request),
+        )
+        .await
+        .expect("the turn must return well before the tool's own hour-long delay");
+
+        assert!(matches!(result, Err(AiError::Cancelled)));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "cancelling mid-tool-call should interrupt it almost immediately"
         );
     }
 }
