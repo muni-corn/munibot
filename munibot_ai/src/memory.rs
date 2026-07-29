@@ -5,10 +5,12 @@
 //! 2. Nothing here depends on `munibot_core` yet, so this module carries no
 //! migrations and no database dependency.
 
+pub mod context;
 pub mod conversation;
 pub mod in_memory;
 pub mod store;
 
+pub use context::assemble_context;
 pub use conversation::{Conversation, ConversationScope};
 pub use in_memory::InMemorySessionStore;
 pub use store::SessionStore;
