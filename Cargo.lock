@@ -4434,6 +4434,7 @@ dependencies = [
  "futures",
  "http",
  "jsonschema",
+ "reqwest 0.12.28",
  "rig-core",
  "schemars",
  "serde",
