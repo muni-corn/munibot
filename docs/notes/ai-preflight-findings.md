@@ -209,9 +209,14 @@ Two plan improvements follow:
 2. `costDollars` should feed the `ai_usage` cost column alongside model cost, so the usage dashboard
    reflects true spend rather than model spend only.
 
-**Not verified live:** no `EXA_API_KEY` was available, and Exa is not yet declared in
-`secretspec.toml`. The request and response shapes above come from the published OpenAPI spec, not
-from a live call. Re-verify when the key lands in commit 3.
+**Update — verified live in commit 43.** Once `EXA_API_KEY` was available, `/search` and
+`/contents` were both called for real (`munibot_ai/src/tools/exa.rs`). The OpenAPI spec matched
+exactly: `costDollars.total` is a real per-call dollar figure (`$0.007` for a two-result neural
+search, `$0.001` for a one-URL content fetch), `author` is present but `null` rather than absent
+when unknown, and a bad key returns HTTP 401 with a small JSON envelope —
+`{"error": "Invalid API key", "tag": "INVALID_API_KEY"}` — now the fixture behind
+`test_error_body_deserializes_from_the_real_api_shape`. Every deserialization test in that file
+uses response bodies captured from these live calls rather than hand-written guesses.
 
 ## 9. Incidental finding: rig has OpenTelemetry support
 
