@@ -90,9 +90,11 @@ impl Harness {
 
             history.push(Message::new(Role::Assistant, response.content));
 
+            let outcomes = self.dispatch_calls(&calls, &request.ctx).await;
+
             let mut results = Vec::with_capacity(calls.len());
-            for (call_id, name, arguments) in calls {
-                match self.dispatch_tool(&name, arguments, &request.ctx).await {
+            for ((call_id, ..), outcome) in calls.into_iter().zip(outcomes) {
+                match outcome {
                     crate::tools::ToolOutcome::Ok(text) => {
                         results.push(ContentBlock::tool_result(call_id, text));
                     }
@@ -104,6 +106,72 @@ impl Harness {
             }
             history.push(Message::tool_results(results));
         }
+    }
+
+    /// Dispatches every call from one response, preserving result order to
+    /// match call order regardless of which ones ran concurrently.
+    ///
+    /// Calls to a tool that reports [`crate::tools::Tool::is_serial`] run one
+    /// at a time, in their relative order; every other call runs
+    /// concurrently via [`futures::future::join_all`]. A tool with shared
+    /// mutable state across calls - a persistent shell session inside one
+    /// sandbox is the motivating case - is the only thing that needs the serial
+    /// path; independent calls (a search alongside a file read) gain
+    /// nothing from being serialized.
+    ///
+    /// A `Fatal` outcome is not short-circuited: every already-dispatched call
+    /// in this batch is allowed to finish before `run_turn` aborts the
+    /// turn, since cancelling siblings mid-flight is a separate concern -
+    /// see the cancellation support landing in a later commit.
+    async fn dispatch_calls(
+        &self,
+        calls: &[(String, String, serde_json::Value)],
+        ctx: &ToolCtx,
+    ) -> Vec<crate::tools::ToolOutcome> {
+        let mut parallel_indices = Vec::new();
+        let mut serial_indices = Vec::new();
+
+        for (index, (_, name, _)) in calls.iter().enumerate() {
+            let is_serial = self
+                .tools
+                .get(name)
+                .map(|tool| tool.is_serial())
+                .unwrap_or(false);
+            if is_serial {
+                serial_indices.push(index);
+            } else {
+                parallel_indices.push(index);
+            }
+        }
+
+        let parallel_futures = parallel_indices.iter().map(|&index| {
+            let (_, name, arguments) = &calls[index];
+            self.dispatch_tool(name, arguments.clone(), ctx)
+        });
+        let parallel_outcomes = futures::future::join_all(parallel_futures).await;
+
+        let mut serial_outcomes = Vec::with_capacity(serial_indices.len());
+        for &index in &serial_indices {
+            let (_, name, arguments) = &calls[index];
+            serial_outcomes.push(self.dispatch_tool(name, arguments.clone(), ctx).await);
+        }
+
+        let mut outcomes: Vec<Option<crate::tools::ToolOutcome>> =
+            (0..calls.len()).map(|_| None).collect();
+        for (index, outcome) in parallel_indices.into_iter().zip(parallel_outcomes) {
+            outcomes[index] = Some(outcome);
+        }
+        for (index, outcome) in serial_indices.into_iter().zip(serial_outcomes) {
+            outcomes[index] = Some(outcome);
+        }
+
+        outcomes
+            .into_iter()
+            .map(|outcome| {
+                outcome
+                    .expect("every call index is assigned by exactly one of the two groups above")
+            })
+            .collect()
     }
 
     /// Looks a tool up and runs it, or produces a model-visible error naming
@@ -509,6 +577,228 @@ mod tests {
         assert!(
             sent.tools.is_empty(),
             "web_search should not be offered when the invoker is only authorized for Safe"
+        );
+    }
+
+    /// Sleeps for `delay`, tracking how many instances are in flight at once
+    /// via shared counters, then replies with `reply`.
+    struct ConcurrencyTrackingTool {
+        name: &'static str,
+        serial: bool,
+        delay: std::time::Duration,
+        reply: &'static str,
+        in_flight: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        max_observed: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::tools::Tool for ConcurrencyTrackingTool {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn description(&self) -> &str {
+            "tracks how many instances run concurrently"
+        }
+
+        fn tier(&self) -> RiskTier {
+            RiskTier::Safe
+        }
+
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        fn is_serial(&self) -> bool {
+            self.serial
+        }
+
+        async fn invoke(
+            &self,
+            _input: serde_json::Value,
+            _ctx: &ToolCtx,
+        ) -> crate::tools::ToolOutcome {
+            use std::sync::atomic::Ordering;
+
+            let current = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_observed.fetch_max(current, Ordering::SeqCst);
+            tokio::time::sleep(self.delay).await;
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+
+            crate::tools::ToolOutcome::ok(self.reply)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_two_calls_to_a_serial_tool_never_overlap() {
+        use std::sync::{Arc as StdArc, atomic::AtomicUsize};
+
+        let in_flight = StdArc::new(AtomicUsize::new(0));
+        let max_observed = StdArc::new(AtomicUsize::new(0));
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(ConcurrencyTrackingTool {
+            name: "shell",
+            serial: true,
+            delay: std::time::Duration::from_millis(20),
+            reply: "ran",
+            in_flight: in_flight.clone(),
+            max_observed: max_observed.clone(),
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![
+                        ContentBlock::tool_use("c1", "shell", serde_json::json!({})),
+                        ContentBlock::tool_use("c2", "shell", serde_json::json!({})),
+                    ],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("done"),
+        );
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["shell"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        assert_eq!(
+            max_observed.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "two calls to the same serial tool in one batch must never run at the same time"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_independent_tools_run_concurrently() {
+        use std::sync::{Arc as StdArc, atomic::AtomicUsize};
+
+        let in_flight = StdArc::new(AtomicUsize::new(0));
+        let max_observed = StdArc::new(AtomicUsize::new(0));
+
+        let mut registry = ToolRegistry::new();
+        for name in ["first", "second"] {
+            registry.register(Arc::new(ConcurrencyTrackingTool {
+                name,
+                serial: false,
+                delay: std::time::Duration::from_millis(20),
+                reply: "ran",
+                in_flight: in_flight.clone(),
+                max_observed: max_observed.clone(),
+            }));
+        }
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![
+                        ContentBlock::tool_use("c1", "first", serde_json::json!({})),
+                        ContentBlock::tool_use("c2", "second", serde_json::json!({})),
+                    ],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("done"),
+        );
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["first", "second"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        assert_eq!(
+            max_observed.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "two independent, non-serial tools should overlap rather than run one after the other"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_result_order_matches_call_order_despite_differing_completion_times() {
+        use std::sync::{Arc as StdArc, atomic::AtomicUsize};
+
+        let in_flight = StdArc::new(AtomicUsize::new(0));
+        let max_observed = StdArc::new(AtomicUsize::new(0));
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(ConcurrencyTrackingTool {
+            name: "slow",
+            serial: false,
+            delay: std::time::Duration::from_millis(30),
+            reply: "slow-result",
+            in_flight: in_flight.clone(),
+            max_observed: max_observed.clone(),
+        }));
+        registry.register(Arc::new(ConcurrencyTrackingTool {
+            name: "fast",
+            serial: false,
+            delay: std::time::Duration::from_millis(1),
+            reply: "fast-result",
+            in_flight: in_flight.clone(),
+            max_observed: max_observed.clone(),
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    // slow is called first but finishes last; fast is called second but
+                    // finishes first - the result order must still follow the call order
+                    vec![
+                        ContentBlock::tool_use("c1", "slow", serde_json::json!({})),
+                        ContentBlock::tool_use("c2", "fast", serde_json::json!({})),
+                    ],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("done"),
+        );
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["slow", "fast"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider.clone(), Arc::new(registry));
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        let second_request = &provider.requests()[1];
+        let last_message = second_request
+            .history
+            .iter()
+            .last()
+            .expect("history should not be empty");
+
+        let ContentBlock::ToolResult { content: first, .. } = &last_message.content[0] else {
+            panic!("expected the first result to be a tool result block");
+        };
+        let ContentBlock::ToolResult {
+            content: second, ..
+        } = &last_message.content[1]
+        else {
+            panic!("expected the second result to be a tool result block");
+        };
+
+        assert_eq!(
+            first, "slow-result",
+            "the first call's result must appear first in output order"
+        );
+        assert_eq!(
+            second, "fast-result",
+            "even though it finished before the slow call did"
         );
     }
 }
