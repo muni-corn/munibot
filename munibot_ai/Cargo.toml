@@ -12,6 +12,7 @@ async-stream.workspace = true
 async-trait.workspace = true
 backon.workspace = true
 chrono.workspace = true
+chrono-tz.workspace = true
 futures.workspace = true
 jsonschema.workspace = true
 rig-core.workspace = true
