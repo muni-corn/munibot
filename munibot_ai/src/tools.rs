@@ -16,6 +16,7 @@ pub mod tier;
 pub mod todo_write;
 pub mod tool;
 pub mod untrusted;
+pub mod web_fetch;
 pub mod web_search;
 
 pub use context::{ConversationId, Platform, ToolCtx};
@@ -27,4 +28,5 @@ pub use tier::RiskTier;
 pub use todo_write::{TodoItem, TodoStatus, TodoWriteTool};
 pub use tool::{Tool, ToolOutcome};
 pub use untrusted::wrap_untrusted;
+pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;
