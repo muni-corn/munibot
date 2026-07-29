@@ -130,116 +130,146 @@ impl Harness {
                 ));
             }
 
-            // capture what each call needs before response.content moves into history below
-            let calls: Vec<(String, String, serde_json::Value)> = response
-                .tool_uses()
-                .iter()
-                .filter_map(|block| block.as_tool_use())
-                .map(|(call_id, name, arguments)| {
-                    (call_id.to_string(), name.to_string(), arguments.clone())
-                })
-                .collect();
+            if let Some(outcome) = self
+                .handle_tool_calls(
+                    response.content,
+                    &request,
+                    &tracker,
+                    &mut tool_retries,
+                    &mut history,
+                )
+                .await?
+            {
+                return Ok(outcome);
+            }
+        }
+    }
 
-            history.push(Message::new(Role::Assistant, response.content));
+    /// Resolves and validates every tool call in one response, dispatches
+    /// everything that passed validation, and appends the results to
+    /// `history`.
+    ///
+    /// An unknown tool name or arguments that fail schema validation never
+    /// reach `invoke()` at all, and the model sees exactly why, so it can
+    /// correct itself on the next iteration.
+    ///
+    /// Returns `Some(outcome)` when a valid handoff call ended the turn right
+    /// here, or `None` to let the caller continue looping. Shared between
+    /// the non-streaming and streaming turn loops, so this logic exists in
+    /// exactly one place.
+    async fn handle_tool_calls(
+        &self,
+        content: Vec<ContentBlock>,
+        request: &TurnRequest,
+        tracker: &BudgetTracker,
+        tool_retries: &mut usize,
+        history: &mut crate::types::History,
+    ) -> Result<Option<TurnOutcome>, AiError> {
+        // capture what each call needs before content moves into history below
+        let calls: Vec<(String, String, serde_json::Value)> = content
+            .iter()
+            .filter_map(|block| block.as_tool_use())
+            .map(|(call_id, name, arguments)| {
+                (call_id.to_string(), name.to_string(), arguments.clone())
+            })
+            .collect();
 
-            // resolve and validate every call before dispatching any of them: an unknown
-            // tool name or arguments that fail schema validation never reach
-            // invoke() at all, and the model sees exactly why, so it can
-            // correct itself on the next iteration
-            let mut pending: Vec<Option<ContentBlock>> = calls.iter().map(|_| None).collect();
-            let mut dispatchable: Vec<(
-                usize,
-                String,
-                Arc<dyn crate::tools::Tool>,
-                serde_json::Value,
-            )> = Vec::new();
+        history.push(Message::new(Role::Assistant, content));
 
-            for (index, (call_id, name, arguments)) in calls.iter().enumerate() {
-                if let Some(handoff) = &request.handoff
-                    && name == &handoff.tool_name
-                {
-                    match validate_tool_arguments(&handoff.schema, arguments) {
-                        Ok(()) => {
-                            return Ok(TurnOutcome::handoff(
-                                arguments.clone(),
-                                tracker.usage(),
-                                tracker.cost(),
-                                tracker.iterations(),
-                            ));
-                        }
-                        Err(validation_error) => {
-                            tool_retries += 1;
-                            if let Some(max) = request.budget.max_tool_retries
-                                && tool_retries > max
-                            {
-                                return Err(AiError::SchemaViolation(format!(
-                                            "gave up after {tool_retries} invalid handoff \
-                                             attempts :<                                      \
-                                             {validation_error}"
-                                        )));
-                            }
-                            pending[index] = Some(ContentBlock::tool_error(
-                                call_id.clone(),
-                                format!("invalid handoff payload :< {validation_error}"),
-                            ));
-                        }
+        let mut pending: Vec<Option<ContentBlock>> = calls.iter().map(|_| None).collect();
+        let mut dispatchable: Vec<(
+            usize,
+            String,
+            Arc<dyn crate::tools::Tool>,
+            serde_json::Value,
+        )> = Vec::new();
+
+        for (index, (call_id, name, arguments)) in calls.iter().enumerate() {
+            if let Some(handoff) = &request.handoff
+                && name == &handoff.tool_name
+            {
+                match validate_tool_arguments(&handoff.schema, arguments) {
+                    Ok(()) => {
+                        return Ok(Some(TurnOutcome::handoff(
+                            arguments.clone(),
+                            tracker.usage(),
+                            tracker.cost(),
+                            tracker.iterations(),
+                        )));
                     }
-                    continue;
-                }
-
-                match self.tools.get(name) {
-                    None => {
-                        let available = self.tools.names().join(", ");
+                    Err(validation_error) => {
+                        *tool_retries += 1;
+                        if let Some(max) = request.budget.max_tool_retries
+                            && *tool_retries > max
+                        {
+                            return Err(AiError::SchemaViolation(format!(
+                                "gave up after {tool_retries} invalid handoff attempts :< \
+                                 {validation_error}"
+                            )));
+                        }
                         pending[index] = Some(ContentBlock::tool_error(
                             call_id.clone(),
-                            format!("no such tool {name:?} :< available tools are: {available}"),
+                            format!("invalid handoff payload :< {validation_error}"),
                         ));
                     }
-                    Some(tool) => match validate_tool_arguments(&tool.input_schema(), arguments) {
-                        Ok(()) => {
-                            dispatchable.push((index, call_id.clone(), tool, arguments.clone()));
-                        }
-                        Err(validation_error) => {
-                            tool_retries += 1;
-                            if let Some(max) = request.budget.max_tool_retries
-                                && tool_retries > max
-                            {
-                                return Err(AiError::SchemaViolation(format!(
-                                    "gave up after {tool_retries} invalid tool calls in this turn \
-                                     :< {validation_error}"
-                                )));
-                            }
-                            pending[index] = Some(ContentBlock::tool_error(
-                                call_id.clone(),
-                                format!("invalid arguments for {name:?} :< {validation_error}"),
-                            ));
-                        }
-                    },
                 }
+                continue;
             }
 
-            let to_dispatch: Vec<(Arc<dyn crate::tools::Tool>, serde_json::Value)> = dispatchable
-                .iter()
-                .map(|(_, _, tool, arguments)| (Arc::clone(tool), arguments.clone()))
-                .collect();
-            let outcomes = self.dispatch_calls(&to_dispatch, &request.ctx).await;
-
-            for ((index, call_id, ..), outcome) in dispatchable.into_iter().zip(outcomes) {
-                pending[index] = Some(match outcome {
-                    crate::tools::ToolOutcome::Ok(text) => ContentBlock::tool_result(call_id, text),
-                    crate::tools::ToolOutcome::Err(text) => ContentBlock::tool_error(call_id, text),
-                    crate::tools::ToolOutcome::Fatal(error) => return Err(error),
-                });
+            match self.tools.get(name) {
+                None => {
+                    let available = self.tools.names().join(", ");
+                    pending[index] = Some(ContentBlock::tool_error(
+                        call_id.clone(),
+                        format!("no such tool {name:?} :< available tools are: {available}"),
+                    ));
+                }
+                Some(tool) => match validate_tool_arguments(&tool.input_schema(), arguments) {
+                    Ok(()) => {
+                        dispatchable.push((index, call_id.clone(), tool, arguments.clone()));
+                    }
+                    Err(validation_error) => {
+                        *tool_retries += 1;
+                        if let Some(max) = request.budget.max_tool_retries
+                            && *tool_retries > max
+                        {
+                            return Err(AiError::SchemaViolation(format!(
+                                "gave up after {tool_retries} invalid tool calls in this turn :< \
+                                 {validation_error}"
+                            )));
+                        }
+                        pending[index] = Some(ContentBlock::tool_error(
+                            call_id.clone(),
+                            format!("invalid arguments for {name:?} :< {validation_error}"),
+                        ));
+                    }
+                },
             }
-
-            let results: Vec<ContentBlock> = pending
-                .into_iter()
-                .map(|result| {
-                    result.expect("every call index is set during either validation or dispatch")
-                })
-                .collect();
-            history.push(Message::tool_results(results));
         }
+
+        let to_dispatch: Vec<(Arc<dyn crate::tools::Tool>, serde_json::Value)> = dispatchable
+            .iter()
+            .map(|(_, _, tool, arguments)| (Arc::clone(tool), arguments.clone()))
+            .collect();
+        let outcomes = self.dispatch_calls(&to_dispatch, &request.ctx).await;
+
+        for ((index, call_id, ..), outcome) in dispatchable.into_iter().zip(outcomes) {
+            pending[index] = Some(match outcome {
+                crate::tools::ToolOutcome::Ok(text) => ContentBlock::tool_result(call_id, text),
+                crate::tools::ToolOutcome::Err(text) => ContentBlock::tool_error(call_id, text),
+                crate::tools::ToolOutcome::Fatal(error) => return Err(error),
+            });
+        }
+
+        let results: Vec<ContentBlock> = pending
+            .into_iter()
+            .map(|result| {
+                result.expect("every call index is set during either validation or dispatch")
+            })
+            .collect();
+        history.push(Message::tool_results(results));
+
+        Ok(None)
     }
 
     /// Builds the outcome for a turn that stopped early because its budget ran
