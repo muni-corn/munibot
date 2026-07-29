@@ -4172,6 +4172,7 @@ dependencies = [
 name = "munibot_ai_types"
 version = "0.3.2"
 dependencies = [
+ "anyhow",
  "chrono",
  "schemars",
  "serde",
