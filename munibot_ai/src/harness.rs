@@ -7,6 +7,8 @@
 
 pub mod budget;
 pub mod event;
+pub mod turn;
 
 pub use budget::{Budget, BudgetTracker};
 pub use event::HarnessEvent;
+pub use turn::{HandoffSchema, TurnOutcome, TurnRequest};
