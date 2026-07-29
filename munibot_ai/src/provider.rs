@@ -18,11 +18,13 @@ use crate::types::{AiError, CompletionRequest, CompletionResponse, ContentBlock,
 
 pub mod mock;
 pub mod pricing;
+pub mod registry;
 pub mod retry;
 pub mod rig;
 
 pub use mock::MockProvider;
 pub use pricing::{Pricing, estimate_cost};
+pub use registry::ProviderRegistry;
 pub use retry::{RetryPolicy, RetryingProvider};
 pub use rig::{ProviderResolver, RigProvider};
 
