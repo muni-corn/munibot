@@ -9,10 +9,16 @@ use thiserror::Error;
 /// error hierarchy rather than a different one per crate.
 #[derive(Error, Debug)]
 pub enum AiError {
-    /// The provider itself failed: a bad request, an outage, an authentication
-    /// problem.
+    /// The provider had a transient problem: an outage, a connection reset, a
+    /// 5xx response. Worth retrying.
     #[error("the model provider had trouble :< {0}")]
     Provider(String),
+
+    /// The provider flatly rejected the request: a 4xx response other than 429,
+    /// a bad API key, a malformed request body. Never worth retrying
+    /// unchanged - the request itself needs fixing.
+    #[error("the model provider rejected the request :< {0}")]
+    Rejected(String),
 
     /// The provider asked us to slow down.
     #[error("rate limited by the model provider :< try again in {retry_after:?}")]
@@ -91,6 +97,14 @@ mod tests {
             }
             .is_transient(),
             "a rate limit is exactly what retrying is for"
+        );
+    }
+
+    #[test]
+    fn test_rejected_is_not_transient() {
+        assert!(
+            !AiError::Rejected("bad api key".to_string()).is_transient(),
+            "a flat rejection needs a fixed request, not a repeated one"
         );
     }
 
