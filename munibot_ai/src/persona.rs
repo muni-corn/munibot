@@ -5,3 +5,7 @@
 //! pipeline agent role alike. This is the first module in this crate that
 //! depends on `munibot_core`, since its configuration section
 //! hangs off `munibot_core::Config`.
+
+pub mod template;
+
+pub use template::PromptTemplate;
