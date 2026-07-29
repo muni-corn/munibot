@@ -10,7 +10,9 @@
 pub mod context;
 pub mod selection;
 pub mod tier;
+pub mod tool;
 
 pub use context::{ConversationId, Platform, ToolCtx};
 pub use selection::{ToolSelection, ToolSelector};
 pub use tier::RiskTier;
+pub use tool::{Tool, ToolOutcome};
