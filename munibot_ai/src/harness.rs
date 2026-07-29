@@ -14,13 +14,17 @@ use std::{future::Future, sync::Arc};
 
 pub use budget::{Budget, BudgetTracker};
 pub use event::HarnessEvent;
+use futures::{StreamExt, stream::BoxStream};
 pub use turn::{HandoffSchema, TurnOutcome, TurnRequest};
 pub use validate::validate_tool_arguments;
 
 use crate::{
     provider::{Provider, estimate_cost},
     tools::{ToolCtx, ToolRegistry},
-    types::{AiError, CompletionRequest, ContentBlock, Message, Role},
+    types::{
+        AiError, CompletionRequest, ContentBlock, History, Message, Role, StopReason, StreamEvent,
+        Usage,
+    },
 };
 
 /// Drives a [`Provider`] and a [`ToolRegistry`] together into one full agent
@@ -145,6 +149,209 @@ impl Harness {
         }
     }
 
+    /// Runs one full turn exactly as [`Self::run_turn`] does, emitting
+    /// [`HarnessEvent`]s as it goes rather than returning a single final
+    /// [`TurnOutcome`].
+    ///
+    /// Takes `self` behind an `Arc` rather than `&self`: the returned stream
+    /// must be `'static` so it can be handed off and polled independently
+    /// of the caller's stack frame (stored, spawned, forwarded to a
+    /// platform adapter), which means it cannot merely borrow `self`.
+    ///
+    /// Text and reasoning deltas are forwarded live as
+    /// [`HarnessEvent::TextDelta`] and [`HarnessEvent::Thinking`]. Tool
+    /// call announcements are accumulated (a provider may split one call's
+    /// JSON arguments across many deltas with no id repeated on each one) into
+    /// the same shape [`Self::handle_tool_calls`] expects, so dispatch,
+    /// validation, and handoff handling are shared with the non-streaming
+    /// path rather than duplicated.
+    ///
+    /// Deliberately out of scope for this first streaming implementation:
+    /// per-tool [`HarnessEvent::ToolStarted`]/
+    /// [`HarnessEvent::ToolFinished`] events. Emitting those requires
+    /// threading an event sink through `handle_tool_calls`, which `run_turn`
+    /// has no use for; this is left for a follow-up once a real consumer
+    /// needs that granularity. `TurnStarted` also carries the model
+    /// reference rather than a persona name, since `TurnRequest` has no persona
+    /// field - the eventual persona-aware service handle can override this when
+    /// it wraps the stream.
+    pub fn run_turn_streamed(
+        self: Arc<Self>,
+        request: TurnRequest,
+    ) -> BoxStream<'static, HarnessEvent> {
+        let events = async_stream::stream! {
+            yield HarnessEvent::TurnStarted { persona: request.model.to_string() };
+
+            let mut tool_schemas = self
+                .tools
+                .schemas_for(&request.tools, request.ctx.granted_tier);
+            if let Some(handoff) = &request.handoff {
+                tool_schemas.push(crate::types::ToolSchema::new(
+                    handoff.tool_name.clone(),
+                    handoff.description.clone(),
+                    handoff.schema.clone(),
+                ));
+            }
+
+            let mut history = request.history.clone();
+            let mut tracker = BudgetTracker::new(request.budget.clone());
+            let mut tool_retries = 0usize;
+
+            'turn: loop {
+                if let Err(reason) = tracker.check() {
+                    yield HarnessEvent::Failed(reason);
+                    return;
+                }
+                if request.ctx.is_cancelled() {
+                    yield HarnessEvent::Failed(AiError::Cancelled);
+                    return;
+                }
+
+                let mut completion_request =
+                    CompletionRequest::new(request.model.clone(), history.clone())
+                        .with_tools(tool_schemas.clone())
+                        .with_params(request.params.clone());
+                if let Some(system) = &request.system {
+                    completion_request = completion_request.with_system(system.clone());
+                }
+
+                let stream_result = race_cancellation(
+                    &request.ctx.cancellation,
+                    Err(AiError::Cancelled),
+                    self.provider.stream(completion_request),
+                )
+                .await;
+
+                let mut inner = match stream_result {
+                    Ok(inner) => inner,
+                    Err(error) => {
+                        yield HarnessEvent::Failed(error);
+                        return;
+                    }
+                };
+
+                // reconstruct an equivalent of a whole CompletionResponse from the stream, since
+                // dispatch and budget accounting both need the complete picture, not deltas
+                let mut text = String::new();
+                let mut thinking = String::new();
+                let mut tool_calls: Vec<(String, String, String)> = Vec::new();
+                let mut current: Option<usize> = None;
+                let mut usage = Usage::default();
+                let mut stop_reason = StopReason::EndTurn;
+
+                loop {
+                    let next = race_cancellation(
+                        &request.ctx.cancellation,
+                        Some(Err(AiError::Cancelled)),
+                        inner.next(),
+                    )
+                    .await;
+
+                    match next {
+                        None => break,
+                        Some(Err(error)) => {
+                            yield HarnessEvent::Failed(error);
+                            return;
+                        }
+                        Some(Ok(StreamEvent::TextDelta { text: delta })) => {
+                            text.push_str(&delta);
+                            yield HarnessEvent::TextDelta(delta);
+                        }
+                        Some(Ok(StreamEvent::ThinkingDelta { thinking: delta })) => {
+                            thinking.push_str(&delta);
+                            yield HarnessEvent::Thinking(delta);
+                        }
+                        Some(Ok(StreamEvent::ToolUseStart { call_id, name })) => {
+                            tool_calls.push((call_id, name, String::new()));
+                            current = Some(tool_calls.len() - 1);
+                        }
+                        Some(Ok(StreamEvent::ToolUseDelta { partial_json })) => {
+                            if let Some(index) = current {
+                                tool_calls[index].2.push_str(&partial_json);
+                            }
+                        }
+                        Some(Ok(StreamEvent::ToolUseEnd)) => {
+                            current = None;
+                        }
+                        Some(Ok(StreamEvent::Usage { usage: latest })) => {
+                            usage = latest;
+                        }
+                        Some(Ok(StreamEvent::Done { stop_reason: reason })) => {
+                            stop_reason = reason;
+                            break;
+                        }
+                    }
+                }
+
+                tracker.record(usage, estimate_cost(&request.model, &usage));
+                yield HarnessEvent::IterationComplete { iteration: tracker.iterations(), usage };
+
+                if let Err(reason) = tracker.check() {
+                    yield HarnessEvent::Failed(reason);
+                    return;
+                }
+
+                let mut content = Vec::new();
+                if !thinking.is_empty() {
+                    content.push(ContentBlock::thinking(thinking));
+                }
+                if !text.is_empty() {
+                    content.push(ContentBlock::text(text));
+                }
+                for (call_id, name, json_buffer) in tool_calls {
+                    // an empty or malformed buffer becomes Null rather than failing the whole
+                    // turn - validate_tool_arguments rejects it with a model-visible error next,
+                    // exactly as a genuinely invalid call would be
+                    let arguments = serde_json::from_str(&json_buffer).unwrap_or(serde_json::Value::Null);
+                    content.push(ContentBlock::tool_use(call_id, name, arguments));
+                }
+
+                if !stop_reason.wants_another_iteration() {
+                    if let Some(handoff) = &request.handoff {
+                        tool_retries += 1;
+                        if let Some(max) = request.budget.max_tool_retries
+                            && tool_retries > max
+                        {
+                            yield HarnessEvent::Failed(AiError::SchemaViolation(format!(
+                                "gave up after {tool_retries} attempts without a valid `{}` \
+                                 handoff :<",
+                                handoff.tool_name
+                            )));
+                            return;
+                        }
+                        history.push(Message::user(format!(
+                            "you must call the `{}` tool to finish this turn, rather than \
+                             answering directly :<",
+                            handoff.tool_name
+                        )));
+                        continue 'turn;
+                    }
+                    yield HarnessEvent::TurnFinished { usage: tracker.usage(), cost: tracker.cost() };
+                    return;
+                }
+
+                match self
+                    .handle_tool_calls(content, &request, &tracker, &mut tool_retries, &mut history)
+                    .await
+                {
+                    Ok(Some(outcome)) => {
+                        if let Some(payload) = outcome.handoff {
+                            yield HarnessEvent::Handoff(payload);
+                        }
+                        return;
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        yield HarnessEvent::Failed(error);
+                        return;
+                    }
+                }
+            }
+        };
+
+        Box::pin(events)
+    }
+
     /// Resolves and validates every tool call in one response, dispatches
     /// everything that passed validation, and appends the results to
     /// `history`.
@@ -163,7 +370,7 @@ impl Harness {
         request: &TurnRequest,
         tracker: &BudgetTracker,
         tool_retries: &mut usize,
-        history: &mut crate::types::History,
+        history: &mut History,
     ) -> Result<Option<TurnOutcome>, AiError> {
         // capture what each call needs before content moves into history below
         let calls: Vec<(String, String, serde_json::Value)> = content
@@ -1582,6 +1789,172 @@ mod tests {
         assert!(
             outcome.is_handoff(),
             "a valid handoff call should end the turn even alongside other tool calls"
+        );
+    }
+
+    /// Drains a streamed turn into a plain `Vec`, for tests that only care
+    /// about the final sequence of events rather than genuine incremental
+    /// arrival.
+    async fn collect_streamed(harness: Arc<Harness>, request: TurnRequest) -> Vec<HarnessEvent> {
+        harness.run_turn_streamed(request).collect().await
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_starts_with_turn_started() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_text("hi"));
+        let harness = Arc::new(Harness::new(provider, Arc::new(ToolRegistry::new())));
+
+        let events = collect_streamed(harness, request()).await;
+
+        assert!(
+            matches!(events.first(), Some(HarnessEvent::TurnStarted { .. })),
+            "the first event should always be TurnStarted, got {:?}",
+            events.first()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_yields_text_delta_then_finishes() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_text("hello there"));
+        let harness = Arc::new(Harness::new(provider, Arc::new(ToolRegistry::new())));
+
+        let events = collect_streamed(harness, request()).await;
+
+        let text_deltas: String = events
+            .iter()
+            .filter_map(|event| match event {
+                HarnessEvent::TextDelta(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text_deltas, "hello there");
+
+        assert!(
+            matches!(events.last(), Some(HarnessEvent::TurnFinished { .. })),
+            "the last event should be TurnFinished, got {:?}",
+            events.last()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_reports_iteration_completion() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_text("hi"));
+        let harness = Arc::new(Harness::new(provider, Arc::new(ToolRegistry::new())));
+
+        let events = collect_streamed(harness, request()).await;
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, HarnessEvent::IterationComplete { iteration: 1, .. })),
+            "a single round trip should report iteration 1 complete, got {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_dispatches_a_tool_and_finishes_with_text() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "current_time",
+            reply: "12:00",
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_text("it is 12:00"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::tier(RiskTier::Safe);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Arc::new(Harness::new(provider, Arc::new(registry)));
+        let events = collect_streamed(harness, turn_request).await;
+
+        let text_deltas: String = events
+            .iter()
+            .filter_map(|event| match event {
+                HarnessEvent::TextDelta(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text_deltas, "it is 12:00");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, HarnessEvent::IterationComplete { .. }))
+                .count(),
+            2,
+            "one iteration for the tool call, one for the final answer"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_yields_handoff_event() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_tool_use(
+            "c1",
+            "handoff",
+            serde_json::json!({"action": "ApprovePlan"}),
+        ));
+
+        let mut turn_request = request();
+        turn_request.handoff = Some(handoff_schema());
+
+        let harness = Arc::new(Harness::new(provider, Arc::new(ToolRegistry::new())));
+        let events = collect_streamed(harness, turn_request).await;
+
+        let handoff_payload = events.iter().find_map(|event| match event {
+            HarnessEvent::Handoff(payload) => Some(payload),
+            _ => None,
+        });
+        assert_eq!(
+            handoff_payload.expect("should have yielded a Handoff event")["action"],
+            "ApprovePlan"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, HarnessEvent::TurnFinished { .. })),
+            "a handoff ends the turn instead of a normal TurnFinished"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_yields_failed_on_provider_error() {
+        let provider: Arc<MockProvider> =
+            Arc::new(MockProvider::new().respond_error(AiError::Rejected("bad key".to_string())));
+        let harness = Arc::new(Harness::new(provider, Arc::new(ToolRegistry::new())));
+
+        let events = collect_streamed(harness, request()).await;
+
+        assert!(
+            matches!(events.last(), Some(HarnessEvent::Failed(_))),
+            "a provider error should surface as a Failed event, got {:?}",
+            events.last()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_fails_fast_when_already_cancelled() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new());
+        let harness = Arc::new(Harness::new(
+            provider.clone(),
+            Arc::new(ToolRegistry::new()),
+        ));
+
+        let turn_request = request();
+        turn_request.ctx.cancellation.cancel();
+
+        let events = collect_streamed(harness, turn_request).await;
+
+        assert!(matches!(
+            events.last(),
+            Some(HarnessEvent::Failed(AiError::Cancelled))
+        ));
+        assert_eq!(
+            provider.request_count(),
+            0,
+            "a pre-cancelled turn should never reach the provider"
         );
     }
 }
