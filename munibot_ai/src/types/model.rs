@@ -23,7 +23,7 @@ pub enum ModelRefError {
 ///
 /// # Example
 /// ```
-/// use munibot_ai_types::ModelRef;
+/// use munibot_ai::ModelRef;
 ///
 /// let model: ModelRef = "anthropic:claude-opus-5".parse().unwrap();
 /// assert_eq!(model.provider(), "anthropic");

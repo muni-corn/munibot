@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{completion::StopReason, usage::Usage};
+use crate::types::{completion::StopReason, usage::Usage};
 
 /// One increment of a streamed response.
 ///

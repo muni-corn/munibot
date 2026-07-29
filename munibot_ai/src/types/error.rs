@@ -56,7 +56,7 @@ impl AiError {
     /// Returns `true` if retrying the same request has a reasonable chance of
     /// succeeding.
     ///
-    /// The retry layer in `munibot_ai_provider` consumes this directly: a rate
+    /// The retry layer in the `provider` module consumes this directly: a rate
     /// limit or a provider-side outage is worth retrying, but a bad
     /// configuration or a cancelled turn is not, and retrying it would just
     /// repeat the failure.
