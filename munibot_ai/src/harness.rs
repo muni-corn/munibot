@@ -4,3 +4,7 @@
 //! [`crate::tools::ToolRegistry`] together. Everything above it - personas,
 //! platform adapters, the eventual pipeline - talks to the harness and never to
 //! a provider or a tool directly.
+
+pub mod budget;
+
+pub use budget::{Budget, BudgetTracker};
