@@ -6,5 +6,7 @@
 
 pub mod adapter;
 pub mod convert;
+pub mod resolve;
 
 pub use adapter::RigProvider;
+pub use resolve::ProviderResolver;
