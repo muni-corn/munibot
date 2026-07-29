@@ -47,9 +47,19 @@ impl Harness {
     /// covers the loop's basic shape, tool dispatch and argument
     /// validation, and general budget enforcement.
     pub async fn run_turn(&self, request: TurnRequest) -> Result<TurnOutcome, AiError> {
-        let tool_schemas = self
+        let mut tool_schemas = self
             .tools
             .schemas_for(&request.tools, request.ctx.granted_tier);
+        if let Some(handoff) = &request.handoff {
+            // the handoff tool is synthetic: it exists only in the schema list offered to
+            // the provider, never in the registry, since it terminates the turn
+            // rather than doing anything a Tool impl could invoke
+            tool_schemas.push(crate::types::ToolSchema::new(
+                handoff.tool_name.clone(),
+                handoff.description.clone(),
+                handoff.schema.clone(),
+            ));
+        }
 
         let mut history = request.history.clone();
         let mut tracker = BudgetTracker::new(request.budget.clone());
@@ -92,6 +102,26 @@ impl Harness {
             }
 
             if !response.stop_reason.wants_another_iteration() {
+                if let Some(handoff) = &request.handoff {
+                    // the model answered directly instead of calling the handoff tool - not a
+                    // valid way to finish when one is required, so nudge it and try again rather
+                    // than silently accepting plain text as the answer
+                    tool_retries += 1;
+                    if let Some(max) = request.budget.max_tool_retries
+                        && tool_retries > max
+                    {
+                        return Err(AiError::SchemaViolation(format!(
+                            "gave up after {tool_retries} attempts without a valid `{}` handoff :<",
+                            handoff.tool_name
+                        )));
+                    }
+                    history.push(Message::user(format!(
+                            "you must call the `{}` tool to finish this turn, rather than \
+                             answering                          directly :<",
+                            handoff.tool_name
+                        )));
+                    continue;
+                }
                 return Ok(TurnOutcome::text(
                     response.text(),
                     tracker.usage(),
@@ -125,6 +155,38 @@ impl Harness {
             )> = Vec::new();
 
             for (index, (call_id, name, arguments)) in calls.iter().enumerate() {
+                if let Some(handoff) = &request.handoff
+                    && name == &handoff.tool_name
+                {
+                    match validate_tool_arguments(&handoff.schema, arguments) {
+                        Ok(()) => {
+                            return Ok(TurnOutcome::handoff(
+                                arguments.clone(),
+                                tracker.usage(),
+                                tracker.cost(),
+                                tracker.iterations(),
+                            ));
+                        }
+                        Err(validation_error) => {
+                            tool_retries += 1;
+                            if let Some(max) = request.budget.max_tool_retries
+                                && tool_retries > max
+                            {
+                                return Err(AiError::SchemaViolation(format!(
+                                            "gave up after {tool_retries} invalid handoff \
+                                             attempts :<                                      \
+                                             {validation_error}"
+                                        )));
+                            }
+                            pending[index] = Some(ContentBlock::tool_error(
+                                call_id.clone(),
+                                format!("invalid handoff payload :< {validation_error}"),
+                            ));
+                        }
+                    }
+                    continue;
+                }
+
                 match self.tools.get(name) {
                     None => {
                         let available = self.tools.names().join(", ");
@@ -1303,6 +1365,193 @@ mod tests {
         assert!(
             started.elapsed() < std::time::Duration::from_secs(1),
             "cancelling mid-tool-call should interrupt it almost immediately"
+        );
+    }
+
+    fn handoff_schema() -> HandoffSchema {
+        HandoffSchema::new(
+            "call this to submit your decision",
+            serde_json::json!({
+                "type": "object",
+                "properties": {"action": {"type": "string"}},
+                "required": ["action"]
+            }),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_valid_handoff_ends_the_turn_with_its_payload() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_tool_use(
+            "c1",
+            "handoff",
+            serde_json::json!({"action": "ApprovePlan"}),
+        ));
+
+        let mut turn_request = request();
+        turn_request.handoff = Some(handoff_schema());
+
+        let harness = Harness::new(provider, Arc::new(ToolRegistry::new()));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        assert!(outcome.is_handoff());
+        assert_eq!(outcome.handoff.unwrap()["action"], "ApprovePlan");
+    }
+
+    #[tokio::test]
+    async fn test_handoff_tool_is_offered_to_the_provider() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_tool_use(
+            "c1",
+            "handoff",
+            serde_json::json!({"action": "ApprovePlan"}),
+        ));
+
+        let mut turn_request = request();
+        turn_request.handoff = Some(handoff_schema());
+
+        let harness = Harness::new(provider.clone(), Arc::new(ToolRegistry::new()));
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        let sent = &provider.requests()[0];
+        assert!(
+            sent.tools.iter().any(|schema| schema.name == "handoff"),
+            "the handoff tool must be offered even though no Tool impl registers it"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_invalid_handoff_payload_is_recoverable_not_fatal() {
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                // missing the required "action" field
+                .respond_tool_use("c1", "handoff", serde_json::json!({}))
+                .respond_tool_use("c2", "handoff", serde_json::json!({"action": "ApprovePlan"})),
+        );
+
+        let mut turn_request = request();
+        turn_request.handoff = Some(handoff_schema());
+
+        let harness = Harness::new(provider.clone(), Arc::new(ToolRegistry::new()));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("an invalid handoff payload should be recoverable, not fatal");
+
+        assert!(
+            outcome.is_handoff(),
+            "the retried, valid handoff should still succeed"
+        );
+
+        let second_request = &provider.requests()[1];
+        let last_message = second_request
+            .history
+            .iter()
+            .last()
+            .expect("history should not be empty");
+        let ContentBlock::ToolResult {
+            content, is_error, ..
+        } = &last_message.content[0]
+        else {
+            panic!("expected a tool result block");
+        };
+        assert!(
+            *is_error,
+            "an invalid handoff payload should be an error result"
+        );
+        assert!(content.contains("invalid handoff"), "got {content:?}");
+    }
+
+    #[tokio::test]
+    async fn test_plain_text_answer_is_rejected_when_handoff_is_required() {
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_text("here's my answer") // wrong: must call handoff instead
+                .respond_tool_use("c1", "handoff", serde_json::json!({"action": "ApprovePlan"})),
+        );
+
+        let mut turn_request = request();
+        turn_request.handoff = Some(handoff_schema());
+
+        let harness = Harness::new(provider.clone(), Arc::new(ToolRegistry::new()));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("should retry rather than accept plain text");
+
+        assert!(
+            outcome.is_handoff(),
+            "the eventual valid handoff should be what the turn returns"
+        );
+        assert_eq!(
+            provider.request_count(),
+            2,
+            "the model should have been nudged into a second attempt"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_repeated_invalid_handoffs_eventually_abort_the_turn() {
+        let mut builder = MockProvider::new();
+        // one more than the default budget's max_tool_retries (3) allows
+        for _ in 0..4 {
+            builder = builder.respond_tool_use("c1", "handoff", serde_json::json!({}));
+        }
+        let provider: Arc<MockProvider> = Arc::new(builder);
+
+        let mut turn_request = request();
+        turn_request.handoff = Some(handoff_schema());
+
+        let harness = Harness::new(provider, Arc::new(ToolRegistry::new()));
+        let result = harness.run_turn(turn_request).await;
+
+        assert!(
+            result.is_err(),
+            "a model that never produces a valid handoff must not loop forever"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handoff_ends_the_turn_even_with_other_calls_in_the_same_batch() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "current_time",
+            reply: "12:00",
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond(Ok(
+            crate::types::CompletionResponse::new(
+                vec![
+                    ContentBlock::tool_use("c1", "current_time", serde_json::json!({})),
+                    ContentBlock::tool_use(
+                        "c2",
+                        "handoff",
+                        serde_json::json!({"action": "ApprovePlan"}),
+                    ),
+                ],
+                crate::types::StopReason::ToolUse,
+                Usage::default(),
+            ),
+        )));
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["current_time"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+        turn_request.handoff = Some(handoff_schema());
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        assert!(
+            outcome.is_handoff(),
+            "a valid handoff call should end the turn even alongside other tool calls"
         );
     }
 }
