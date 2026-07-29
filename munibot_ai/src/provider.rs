@@ -17,6 +17,7 @@ use futures::stream::{self, BoxStream};
 use crate::types::{AiError, CompletionRequest, CompletionResponse, ContentBlock, StreamEvent};
 
 pub mod mock;
+pub mod rig;
 
 pub use mock::MockProvider;
 
