@@ -133,4 +133,42 @@ mod prompt_tests {
             "the researcher prompt must state the mandatory-citation rule explicitly"
         );
     }
+
+    #[test]
+    fn test_coder_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/coder.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_coder_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/coder.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_coder_prompt_states_it_cannot_run_or_modify_code_yet() {
+        // the plan's explicit requirement for this persona in this milestone
+        let source = include_str!("../prompts/coder.md");
+        assert!(
+            source.contains("cannot run it") || source.contains("no ability to execute"),
+            "the coder prompt must state plainly that it cannot execute or modify code yet"
+        );
+    }
 }
