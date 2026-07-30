@@ -67,4 +67,70 @@ mod prompt_tests {
             "the companion prompt should be a real, substantial prompt"
         );
     }
+
+    #[test]
+    fn test_writer_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/writer.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_writer_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/writer.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_researcher_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/researcher.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_researcher_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/researcher.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_researcher_prompt_states_the_citation_requirement() {
+        // the one rule the plan explicitly requires of this persona
+        let source = include_str!("../prompts/researcher.md");
+        assert!(
+            source.contains("traceable to a source"),
+            "the researcher prompt must state the mandatory-citation rule explicitly"
+        );
+    }
 }
