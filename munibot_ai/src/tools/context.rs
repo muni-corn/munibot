@@ -23,6 +23,20 @@ pub enum Platform {
     Web,
 }
 
+impl std::fmt::Display for Platform {
+    /// A human-readable form, for rendering into a persona's `{{platform}}`
+    /// system prompt variable - "you're talking with muni on Discord" reads
+    /// naturally, "you're talking with muni on Web" does not.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::Discord => "Discord",
+            Self::Twitch => "Twitch",
+            Self::Web => "the web",
+        };
+        write!(f, "{name}")
+    }
+}
+
 /// Everything a tool needs to know about who is invoking it and where.
 ///
 /// A tool's authority derives entirely from this context, never from what the
@@ -154,5 +168,12 @@ mod tests {
     fn test_platform_serializes_as_snake_case() {
         let encoded = serde_json::to_string(&Platform::Discord).expect("should serialize");
         assert_eq!(encoded, "\"discord\"");
+    }
+
+    #[test]
+    fn test_platform_displays_a_human_readable_name() {
+        assert_eq!(Platform::Discord.to_string(), "Discord");
+        assert_eq!(Platform::Twitch.to_string(), "Twitch");
+        assert_eq!(Platform::Web.to_string(), "the web");
     }
 }
