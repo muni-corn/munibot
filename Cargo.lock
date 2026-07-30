@@ -4468,6 +4468,7 @@ dependencies = [
  "futures",
  "html2text",
  "http",
+ "humantime-serde",
  "jsonschema",
  "munibot_core",
  "reqwest 0.12.28",
