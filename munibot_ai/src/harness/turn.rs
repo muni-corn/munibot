@@ -89,6 +89,19 @@ impl TurnRequest {
     }
 }
 
+/// What a turn spent, regardless of whether it succeeded.
+///
+/// [`TurnOutcome`] already carries this on the success path; this type exists
+/// for [`super::Harness::run_turn_recording_usage`], so a caller can still
+/// learn what a *failed* turn cost - a turn that errored on its ninth
+/// iteration still spent the first eight.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TurnUsage {
+    pub usage: Usage,
+    pub cost: Cost,
+    pub iterations: usize,
+}
+
 /// The result of one completed turn.
 ///
 /// A turn ends with either `text` or `handoff` populated, never both - enforced
