@@ -21,6 +21,7 @@ pub mod commands;
 pub mod error;
 pub mod handler;
 pub mod handlers;
+pub mod pinned_personas;
 pub mod pluralkit;
 pub mod simple;
 pub mod state;

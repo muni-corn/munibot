@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     autodelete::AutoDeleteHandler, error::MunibotDiscordError, handler::DiscordEventHandler,
-    handlers::logging::LoggingHandler,
+    handlers::logging::LoggingHandler, pinned_personas::PinnedPersonas,
 };
 
 /// A collection of Discord event handlers.
@@ -51,6 +51,7 @@ pub struct DiscordState {
     /// every AI-touching command checks this and replies accordingly rather
     /// than assuming it is always present.
     pub ai: Option<Arc<Ai>>,
+    pub pinned_personas: PinnedPersonas,
     handlers: DiscordMessageHandlerCollection,
     access: GlobalAccess,
 
@@ -85,6 +86,7 @@ impl DiscordState {
             handlers,
             config: config.discord.clone(),
             ai,
+            pinned_personas: PinnedPersonas::new(),
             access: global_access,
             logging,
             autodeletion,
