@@ -15,6 +15,34 @@ pub enum Role {
     Tool,
 }
 
+impl Role {
+    /// The stable string this role is stored as in the database.
+    ///
+    /// Deliberately a method rather than leaning on the serde representation:
+    /// a rename in the serde attribute would silently change what is already
+    /// persisted, whereas changing this is an obvious, greppable edit that
+    /// needs a migration. Mirrors `RiskTier::shorthand`.
+    pub fn as_key(&self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::Tool => "tool",
+        }
+    }
+
+    /// Parses a role back from its stored string.
+    pub fn from_key(text: &str) -> Option<Self> {
+        match text {
+            "system" => Some(Self::System),
+            "user" => Some(Self::User),
+            "assistant" => Some(Self::Assistant),
+            "tool" => Some(Self::Tool),
+            _ => None,
+        }
+    }
+}
+
 /// Where an image's bytes come from.
 ///
 /// Providers disagree on which forms they accept, so both are represented and
@@ -262,5 +290,17 @@ mod tests {
             encoded, "\"assistant\"",
             "roles should be snake case on the wire"
         );
+    }
+
+    #[test]
+    fn test_role_key_round_trips_for_every_variant() {
+        for role in [Role::System, Role::User, Role::Assistant, Role::Tool] {
+            assert_eq!(Role::from_key(role.as_key()), Some(role));
+        }
+    }
+
+    #[test]
+    fn test_role_from_key_rejects_an_unknown_string() {
+        assert_eq!(Role::from_key("moderator"), None);
     }
 }
