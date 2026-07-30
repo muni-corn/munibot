@@ -6,6 +6,13 @@ use crate::db::schema::{
     linked_accounts, quotes, users,
 };
 
+pub mod ai;
+
+pub use ai::{
+    AiConversation, AiMessage, AiToolCall, AiUsage, NewAiConversation, NewAiMessage, NewAiToolCall,
+    NewAiUsage,
+};
+
 // guild_configs
 
 /// A row in the `guild_configs` table.
