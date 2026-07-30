@@ -37,10 +37,10 @@ prompts into an orchestration problem over known-good parts.
 | [2 — the companion on the web](milestone-2-web-companion.md) | A web chat page with persistence, memory, and real usefulness      | 9–14   | 67–108  |
 | [3 — specialists and senses](milestone-3-specialists.md)     | He delegates to an engineering team, and can see what you show him | 15–17  | 109–129 |
 | [4 — sandbox](milestone-4-sandbox.md)                        | munibot reads, writes, and runs code in a container                | 18–19  | 130–151 |
-| [5 — autonomous development](milestone-5-autonomous.md)      | munibot answers a GitHub issue with a working pull request         | 20–22  | 152–187 |
-| [6 — hardening](milestone-6-hardening.md)                    | Safe, affordable, and observable in public                         | 23     | 188–204 |
+| [5 — autonomous development](milestone-5-autonomous.md)      | munibot answers a GitHub issue with a working pull request         | 20–22  | 152–182 |
+| [6 — hardening](milestone-6-hardening.md)                    | Safe, affordable, and observable in public                         | 23     | 183–199 |
 
-Around 204 commits total. Each commit is one logical change that leaves the workspace compiling.
+Around 199 commits total. Each commit is one logical change that leaves the workspace compiling.
 
 Commit numbers are sequence labels, not promises. Milestone 1 already landed three commits its own
 table never planned for, and each milestone's internal numbering is rebased against reality when work
@@ -78,7 +78,7 @@ munibot_ai            everything below, as modules of one crate
   ai::sandbox            podman lifecycle, repository checkout, RPC client, sandboxed tools
   ai::pipeline           multi-agent state machine: issue to research to plan to build to review to PR
   ai::persona            persona type, prompt template engine, and the persona registry
-  (crate root)           the `[ai]` config section, the router, and the `Ai` service handle
+  (crate root)           the `[ai]` config section and the `Ai` service handle
 
 munibot_toolagent     [bin] in-container RPC server executing filesystem and shell tools
 munibot_vcs           VCS-agnostic traits: IssueSource, PullRequestTarget, normalized webhooks
@@ -315,7 +315,7 @@ recovery a replay rather than a repair.
 ## Testing strategy
 
 - **`MockProvider` is the single most important test enabler in this plan.** It replays scripted
-  responses, including tool calls, so the entire harness, router, and pipeline are testable with no
+  responses, including tool calls, so the entire harness, delegation, and pipeline are testable with no
   network access. It ships in phase 2, before the loop that consumes it.
 - Unit tests are colocated in `#[cfg(test)] mod tests` at the bottom of the implementation file, per
   `AGENTS.md`.
@@ -331,7 +331,8 @@ recovery a replay rather than a repair.
 ## Risks
 
 1. **Cost is the real operational risk.** A public bot with an agent loop can burn a budget in
-   minutes. Budgets are enforced in phase 4 and hardened in phase 17; do not expose a research
+   minutes. Budgets are enforced in phase 4, capped per user in phase 14, and hardened in phase 23; do not
+   expose a research
    persona publicly before then.
 2. **`rig-core` is pre-1.0** and releases frequently, and its API has already shifted enough that the
    published documentation site describes a removed API. The `Provider` trait boundary is what makes
@@ -341,14 +342,14 @@ recovery a replay rather than a repair.
    bollard are both verified to build on it; see `docs/notes/ai-preflight-findings.md`.
 4. **Podman in production** means the NixOS module in `nix/nixos.nix` needs podman and socket
    configuration. It is not currently installed in the development environment either, so container
-   behaviour is entirely unverified until milestone 3.
+   behaviour is entirely unverified until milestone 4.
 5. **Prompt quality is the product.** The `municode` prompts are genuinely good and port over nearly
    verbatim, but they carry known defects: a stray shell command spliced into a sentence in
    `architecture-reviewer.md`, a `StartTask` versus `StartTaskTests` naming drift in
    `project-manager.md`, a phantom `implementation_issues` field referenced in `code-reviewer.md`,
    and an `ApprovePlan` schema that requires a `strengths` field its own example omits. Fix these
-   during the port in phase 15 rather than inheriting them.
-6. **Autonomous pull requests need a human gate.** Nothing in milestone 4 merges anything. munibot
+   during the port in phases 16 and 19 rather than inheriting them.
+6. **Autonomous pull requests need a human gate.** Nothing in milestone 5 merges anything. munibot
    opens a pull request and stops.
 
 ## Decisions still open
