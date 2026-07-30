@@ -19,12 +19,17 @@ use crate::{
 
 pub mod render;
 
+/// Discord's own hard cap on a single message's content length. Shared with
+/// [`render`] and with `commands::ai`, which both need to cap or split
+/// against the same limit.
+pub(crate) const DISCORD_MESSAGE_LIMIT: usize = 2000;
+
 /// No per-guild or per-role permission tiering exists yet for AI chat - a
 /// later milestone's concern. Every Discord invocation is granted the same
 /// tier; a persona's own configured budget, not this tier, is the actual
 /// safety net against runaway cost (see `docs/plans/ai/overview.md`'s "Abuse
-/// and cost" section).
-const DISCORD_GRANTED_TIER: RiskTier = RiskTier::NetworkRead;
+/// and cost" section). Shared with `commands::ai`, for the same reason.
+pub(crate) const DISCORD_GRANTED_TIER: RiskTier = RiskTier::NetworkRead;
 
 /// Reacts to a direct mention, a reply to munibot, or a direct message, by
 /// running one turn against the configured default persona.

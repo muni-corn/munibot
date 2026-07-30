@@ -5,6 +5,7 @@ use std::{
 
 use crate::DiscordCommand;
 
+pub mod ai;
 pub mod fox;
 
 pub trait DiscordCommandProvider: Send {

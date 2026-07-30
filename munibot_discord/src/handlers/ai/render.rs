@@ -9,8 +9,7 @@ use munibot_ai::{
 use poise::serenity_prelude::{ChannelId, EditMessage, Error as SerenityError, Http, Message};
 use tracing::warn;
 
-/// Discord's own hard cap on a single message's content length.
-const DISCORD_MESSAGE_LIMIT: usize = 2000;
+use super::DISCORD_MESSAGE_LIMIT;
 
 /// The minimum time between edits to the in-progress placeholder, to respect
 /// Discord's five-edits-per-five-seconds-per-channel rate limit with
