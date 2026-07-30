@@ -361,3 +361,29 @@ async fn test_listing_is_most_recently_active_first() {
         "a sidebar orders by real recency, not creation order"
     );
 }
+
+#[tokio::test]
+async fn test_diesel_store_compact_replaces_old_messages_with_a_summary() {
+    let store = store!();
+    let scope = unique_scope();
+    let conversation = store.load_or_create(&scope, "companion").await.unwrap();
+
+    for text in ["one", "two", "three", "four"] {
+        store
+            .append(conversation.id, Message::user(text))
+            .await
+            .unwrap();
+    }
+
+    store
+        .compact(conversation.id, 2, "one and two happened".to_string())
+        .await
+        .expect("compact failed");
+
+    let history = store.history(conversation.id, None).await.unwrap();
+    let texts: Vec<String> = history.iter().map(Message::text).collect();
+    assert_eq!(texts, vec!["three".to_string(), "four".to_string()]);
+
+    let reloaded = store.load_or_create(&scope, "companion").await.unwrap();
+    assert_eq!(reloaded.summary.as_deref(), Some("one and two happened"));
+}

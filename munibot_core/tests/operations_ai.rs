@@ -464,3 +464,98 @@ async fn test_deleting_a_user_cascades_to_their_conversations_and_messages() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn test_compact_conversation_deletes_old_messages_and_sets_summary() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+    for content in ["one", "two", "three", "four"] {
+        ai::append_message(&db.pool, conversation.id, "user", &text_content(content), 0)
+            .await
+            .unwrap();
+    }
+
+    ai::compact_conversation(&db.pool, conversation.id, 2, "one and two happened", 5)
+        .await
+        .expect("compact failed");
+
+    let messages = ai::get_messages(&db.pool, conversation.id, None)
+        .await
+        .unwrap();
+    let contents: Vec<String> = messages.iter().map(|m| m.content.clone()).collect();
+    assert_eq!(
+        contents,
+        vec![text_content("three"), text_content("four")],
+        "only the most recent keep_recent messages should survive"
+    );
+
+    let reloaded = ai::get_conversation(&db.pool, conversation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reloaded.summary.as_deref(), Some("one and two happened"));
+    assert_eq!(reloaded.summary_tokens, 5);
+}
+
+#[tokio::test]
+async fn test_compact_conversation_on_a_short_conversation_is_a_noop() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+    ai::append_message(
+        &db.pool,
+        conversation.id,
+        "user",
+        &text_content("only message"),
+        0,
+    )
+    .await
+    .unwrap();
+
+    ai::compact_conversation(&db.pool, conversation.id, 5, "should never be written", 99)
+        .await
+        .expect("compact failed");
+
+    let messages = ai::get_messages(&db.pool, conversation.id, None)
+        .await
+        .unwrap();
+    assert_eq!(messages.len(), 1, "a short conversation must be left alone");
+
+    let reloaded = ai::get_conversation(&db.pool, conversation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        reloaded.summary, None,
+        "a noop compaction must never overwrite the summary, even with nothing"
+    );
+}
+
+#[tokio::test]
+async fn test_compact_conversation_with_exactly_keep_recent_messages_is_a_noop() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+    for content in ["one", "two"] {
+        ai::append_message(&db.pool, conversation.id, "user", &text_content(content), 0)
+            .await
+            .unwrap();
+    }
+
+    ai::compact_conversation(&db.pool, conversation.id, 2, "unused", 0)
+        .await
+        .expect("compact failed");
+
+    let messages = ai::get_messages(&db.pool, conversation.id, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        messages.len(),
+        2,
+        "a conversation with exactly keep_recent messages has nothing to cut"
+    );
+}
