@@ -9,8 +9,10 @@ use diesel_async::RunQueryDsl;
 
 use crate::db::{
     DbPool,
-    models::{AiConversation, AiMessage, NewAiConversation, NewAiMessage, NewAiUsage},
-    schema::{ai_conversations, ai_messages, ai_usage},
+    models::{
+        AiConversation, AiMessage, NewAiConversation, NewAiMessage, NewAiToolCall, NewAiUsage,
+    },
+    schema::{ai_conversations, ai_messages, ai_tool_calls, ai_usage},
 };
 
 // mysql has no `RETURNING`, so an insert's generated id comes from a second,
@@ -324,6 +326,19 @@ pub async fn record_usage(pool: &DbPool, usage: NewAiUsage) -> QueryResult<()> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
     diesel::insert_into(ai_usage::table)
         .values(&usage)
+        .execute(&mut conn)
+        .await?;
+    Ok(())
+}
+
+/// Writes one row auditing a finished tool call.
+///
+/// The only way to debug a bad tool loop after the fact, and what a chat
+/// surface's tool activity display reads back for a past conversation.
+pub async fn record_tool_call(pool: &DbPool, tool_call: NewAiToolCall) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::insert_into(ai_tool_calls::table)
+        .values(&tool_call)
         .execute(&mut conn)
         .await?;
     Ok(())
