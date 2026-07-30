@@ -4526,6 +4526,7 @@ dependencies = [
  "dotenvy",
  "humantime",
  "humantime-serde",
+ "munibot_ai",
  "munibot_core",
  "num-format",
  "once_cell",
@@ -4539,6 +4540,7 @@ dependencies = [
  "strum",
  "thiserror 2.0.19",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

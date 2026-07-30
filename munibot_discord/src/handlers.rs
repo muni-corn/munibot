@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod bot_affection;
 pub mod dice;
 pub mod economy;

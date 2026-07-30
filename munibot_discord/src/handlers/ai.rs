@@ -1,0 +1,185 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use munibot_ai::{
+    Ai, AiTurnRequest,
+    memory::ConversationScope,
+    persona::{OutputLimits, filter_output},
+    tools::{Platform, RiskTier},
+};
+use poise::serenity_prelude::{Context, FullEvent, UserId};
+use tokio_util::sync::CancellationToken;
+use tracing::warn;
+
+use crate::{
+    DiscordFrameworkContext,
+    handler::{DiscordEventHandler, DiscordHandlerError},
+    utils::display_name_from_message,
+};
+
+/// Discord's own hard cap on a single message's content length.
+const DISCORD_MESSAGE_LIMIT: usize = 2000;
+
+/// No per-guild or per-role permission tiering exists yet for AI chat - a
+/// later milestone's concern. Every Discord invocation is granted the same
+/// tier; a persona's own configured budget, not this tier, is the actual
+/// safety net against runaway cost (see `docs/plans/ai/overview.md`'s "Abuse
+/// and cost" section).
+const DISCORD_GRANTED_TIER: RiskTier = RiskTier::NetworkRead;
+
+/// Reacts to a direct mention, a reply to munibot, or a direct message, by
+/// running one turn against the configured default persona.
+///
+/// No business logic of its own: everything about personas, tools, and the
+/// model lives in [`munibot_ai`]. This is a thin translation from a serenity
+/// event into an [`AiTurnRequest`] and back into a Discord message.
+pub struct AiChatHandler {
+    ai: Arc<Ai>,
+}
+
+impl AiChatHandler {
+    pub fn new(ai: Arc<Ai>) -> Self {
+        Self { ai }
+    }
+}
+
+#[async_trait]
+impl DiscordEventHandler for AiChatHandler {
+    fn name(&self) -> &'static str {
+        "ai_chat"
+    }
+
+    async fn handle_discord_event(
+        &mut self,
+        context: &Context,
+        _framework: DiscordFrameworkContext<'_>,
+        event: &FullEvent,
+    ) -> Result<(), DiscordHandlerError> {
+        let FullEvent::Message { new_message: msg } = event else {
+            return Ok(());
+        };
+
+        let bot_id = context.cache.current_user().id;
+        if msg.author.id == bot_id {
+            return Ok(());
+        }
+
+        // a cheap, in-memory check first - no database or provider call happens
+        // unless the message is actually meant for the bot
+        let is_dm = msg.guild_id.is_none();
+        let is_reply_to_bot = msg
+            .referenced_message
+            .as_ref()
+            .is_some_and(|referenced| referenced.author.id == bot_id);
+        let is_mentioned = msg.mentions_user_id(bot_id);
+        if !is_dm && !is_reply_to_bot && !is_mentioned {
+            return Ok(());
+        }
+
+        let Some(persona_id) = self.ai.default_persona_id().cloned() else {
+            warn!("ai chat triggered, but no default_persona is configured");
+            msg.channel_id
+                .say(
+                    &context.http,
+                    "i don't have a default persona configured to chat with, sorry :< ask whoever \
+                     runs me to set ai.default_persona",
+                )
+                .await
+                .map_err(|error| DiscordHandlerError::from_display(self.name(), error))?;
+            return Ok(());
+        };
+
+        let user_name = display_name_from_message(msg, &context.http).await;
+        let content = strip_leading_mention(&msg.content, bot_id);
+
+        let request = AiTurnRequest {
+            persona_id,
+            scope: ConversationScope::new(Platform::Discord, msg.channel_id.to_string()),
+            // the raw platform snowflake, not a resolved internal `users.id` - no
+            // per-user memory exists yet to need the real one (see milestone 2
+            // phase 10), and resolving it now would mean fabricating placeholder
+            // oauth fields into `linked_accounts` for a lookup this milestone has
+            // no other use for
+            user_id: msg.author.id.get(),
+            user_name,
+            granted_tier: DISCORD_GRANTED_TIER,
+            guild_id: msg.guild_id.map(|id| id.get()),
+            message: content.to_string(),
+            cancellation: CancellationToken::new(),
+        };
+
+        // a failed turn gets a friendly in-channel reply rather than propagating: the
+        // dispatch loop that calls this handler only logs a propagated error, and a
+        // user watching the channel deserves to know something happened at all
+        let reply = match self.ai.turn(request).await {
+            Ok(outcome) => outcome.text.unwrap_or_else(|| "...".to_string()),
+            Err(error) => {
+                warn!(%error, "ai turn failed");
+                "something went wrong on my end, sorry :<".to_string()
+            }
+        };
+        let filtered = filter_output(&reply, OutputLimits::new(DISCORD_MESSAGE_LIMIT));
+
+        msg.channel_id
+            .say(&context.http, filtered)
+            .await
+            .map_err(|error| DiscordHandlerError::from_display(self.name(), error))?;
+
+        Ok(())
+    }
+}
+
+/// Strips a literal leading mention of `bot_id` (`<@id>` or `<@!id>`) and any
+/// whitespace after it, so the model sees "what's the weather" rather than
+/// "<@123456789012345678> what's the weather" - Discord clients insert this
+/// token automatically when a message starts with typing the bot's name.
+fn strip_leading_mention(content: &str, bot_id: UserId) -> &str {
+    let with_bang = format!("<@!{bot_id}>");
+    let without_bang = format!("<@{bot_id}>");
+
+    let stripped = content
+        .strip_prefix(&with_bang)
+        .or_else(|| content.strip_prefix(&without_bang));
+
+    stripped.map_or(content, str::trim_start)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_leading_mention_removes_the_plain_form() {
+        let bot_id = UserId::new(123456789012345678);
+        let content = "<@123456789012345678> what's the weather";
+        assert_eq!(strip_leading_mention(content, bot_id), "what's the weather");
+    }
+
+    #[test]
+    fn test_strip_leading_mention_removes_the_nickname_form() {
+        let bot_id = UserId::new(123456789012345678);
+        let content = "<@!123456789012345678> hello there";
+        assert_eq!(strip_leading_mention(content, bot_id), "hello there");
+    }
+
+    #[test]
+    fn test_strip_leading_mention_leaves_unrelated_text_untouched() {
+        let bot_id = UserId::new(123456789012345678);
+        let content = "hey does anyone know the weather";
+        assert_eq!(strip_leading_mention(content, bot_id), content);
+    }
+
+    #[test]
+    fn test_strip_leading_mention_ignores_a_different_users_mention() {
+        let bot_id = UserId::new(123456789012345678);
+        let content = "<@999999999999999999> what's the weather";
+        assert_eq!(strip_leading_mention(content, bot_id), content);
+    }
+
+    #[test]
+    fn test_strip_leading_mention_only_strips_a_leading_mention_not_a_trailing_one() {
+        let bot_id = UserId::new(123456789012345678);
+        let content = "hey <@123456789012345678> what's the weather";
+        assert_eq!(strip_leading_mention(content, bot_id), content);
+    }
+}

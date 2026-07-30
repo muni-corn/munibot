@@ -7,6 +7,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+munibot_ai = { path = "../munibot_ai" }
 munibot_core = { path = "../munibot_core" }
 anyhow.workspace = true
 async-trait.workspace = true
@@ -29,6 +30,7 @@ serde_json.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 
 [dev-dependencies]
 rand_chacha = "0.10.0"
