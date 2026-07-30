@@ -60,6 +60,7 @@ pub async fn render_streamed_reply(
 
     let mut placeholder = channel_id.say(http, "_thinking..._").await?;
     let mut buffer = String::new();
+    let mut active_tools: Vec<String> = Vec::new();
     let mut last_edit = Instant::now();
     let mut final_text: Option<String> = None;
 
@@ -67,11 +68,38 @@ pub async fn render_streamed_reply(
         match event {
             HarnessEvent::TextDelta(text) => {
                 buffer.push_str(&text);
-
-                if last_edit.elapsed() >= MIN_EDIT_INTERVAL {
-                    edit_preview(http, &mut placeholder, &buffer).await;
-                    last_edit = Instant::now();
+                maybe_edit(
+                    http,
+                    &mut placeholder,
+                    &active_tools,
+                    &buffer,
+                    &mut last_edit,
+                )
+                .await;
+            }
+            HarnessEvent::ToolStarted { name } => {
+                active_tools.push(name);
+                maybe_edit(
+                    http,
+                    &mut placeholder,
+                    &active_tools,
+                    &buffer,
+                    &mut last_edit,
+                )
+                .await;
+            }
+            HarnessEvent::ToolFinished { name, .. } => {
+                if let Some(position) = active_tools.iter().position(|active| active == &name) {
+                    active_tools.remove(position);
                 }
+                maybe_edit(
+                    http,
+                    &mut placeholder,
+                    &active_tools,
+                    &buffer,
+                    &mut last_edit,
+                )
+                .await;
             }
             HarnessEvent::TurnFinished { .. } => {
                 final_text = Some(buffer.clone());
@@ -97,16 +125,54 @@ pub async fn render_streamed_reply(
     .await
 }
 
+/// Edits the placeholder if [`MIN_EDIT_INTERVAL`] has passed since the last
+/// one, resetting the timer when it does.
+///
+/// Shared by every event that can change what the preview should show - a
+/// text delta, a tool starting, or a tool finishing - so all three respect
+/// the same rate limit rather than each needing its own throttle check.
+async fn maybe_edit(
+    http: &Http,
+    message: &mut Message,
+    active_tools: &[String],
+    buffer: &str,
+    last_edit: &mut Instant,
+) {
+    if last_edit.elapsed() < MIN_EDIT_INTERVAL {
+        return;
+    }
+    edit_preview(http, message, active_tools, buffer).await;
+    *last_edit = Instant::now();
+}
+
 /// Best-effort: a failed intermediate edit is logged and skipped rather than
 /// aborting the stream, since the next edit (or the final one) will simply
 /// carry more text than the last successful edit showed.
-async fn edit_preview(http: &Http, message: &mut Message, buffer: &str) {
-    let preview = filter_output(buffer, OutputLimits::new(DISCORD_MESSAGE_LIMIT));
+async fn edit_preview(http: &Http, message: &mut Message, active_tools: &[String], buffer: &str) {
+    let content = build_preview(active_tools, buffer);
+    let preview = filter_output(&content, OutputLimits::new(DISCORD_MESSAGE_LIMIT));
     if let Err(error) = message
         .edit(http, EditMessage::new().content(preview))
         .await
     {
         warn!(%error, "couldn't edit ai response preview");
+    }
+}
+
+/// Builds the in-progress preview: an italic status line naming every
+/// currently running tool, above whatever assistant text has arrived so far.
+/// Replaced entirely by the finished text once the turn ends - a tool that
+/// already finished has nothing left to show here.
+fn build_preview(active_tools: &[String], buffer: &str) -> String {
+    if active_tools.is_empty() {
+        return buffer.to_string();
+    }
+
+    let status = format!("_using {}..._", active_tools.join(", "));
+    if buffer.is_empty() {
+        status
+    } else {
+        format!("{status}\n\n{buffer}")
     }
 }
 
@@ -189,6 +255,42 @@ fn best_break_point(text: &str, limit: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_no_active_tools_and_no_text_yields_an_empty_preview() {
+        assert_eq!(build_preview(&[], ""), "");
+    }
+
+    #[test]
+    fn test_no_active_tools_shows_only_the_buffer() {
+        assert_eq!(build_preview(&[], "hello there"), "hello there");
+    }
+
+    #[test]
+    fn test_one_active_tool_with_no_text_yet_shows_only_the_status_line() {
+        assert_eq!(
+            build_preview(&["web_search".to_string()], ""),
+            "_using web_search..._"
+        );
+    }
+
+    #[test]
+    fn test_one_active_tool_with_text_shows_both() {
+        let preview = build_preview(&["web_search".to_string()], "here's what i found so far");
+        assert_eq!(
+            preview,
+            "_using web_search..._\n\nhere's what i found so far"
+        );
+    }
+
+    #[test]
+    fn test_multiple_active_tools_are_all_named() {
+        let tools = vec!["web_search".to_string(), "web_fetch".to_string()];
+        assert_eq!(
+            build_preview(&tools, ""),
+            "_using web_search, web_fetch..._"
+        );
+    }
 
     #[test]
     fn test_short_text_is_a_single_chunk() {
