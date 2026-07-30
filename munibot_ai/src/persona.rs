@@ -6,8 +6,10 @@
 //! depends on `munibot_core`, since its configuration section
 //! hangs off `munibot_core::Config`.
 
+pub mod config;
 pub mod template;
 pub mod types;
 
+pub use config::{AiConfig, BudgetConfig, PersonaConfig};
 pub use template::PromptTemplate;
 pub use types::{MemoryPolicy, Persona, PersonaId, SandboxPolicy};
