@@ -1,6 +1,39 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    ai_conversations (id) {
+        id -> Bigint,
+        #[max_length = 32]
+        platform -> Varchar,
+        #[max_length = 255]
+        scope_key -> Varchar,
+        #[max_length = 64]
+        persona_id -> Varchar,
+        owner_user_id -> Nullable<Bigint>,
+        #[max_length = 255]
+        title -> Nullable<Varchar>,
+        summary -> Nullable<Text>,
+        summary_tokens -> Integer,
+        archived_at -> Nullable<Datetime>,
+        created_at -> Datetime,
+        last_active_at -> Datetime,
+    }
+}
+
+diesel::table! {
+    ai_messages (id) {
+        id -> Bigint,
+        conversation_id -> Bigint,
+        seq -> Integer,
+        #[max_length = 16]
+        role -> Varchar,
+        content -> Longtext,
+        token_count -> Integer,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     autodelete_timers (channel_id) {
         channel_id -> Bigint,
         guild_id -> Bigint,
@@ -92,10 +125,14 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(ai_conversations -> users (owner_user_id));
+diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
 diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    ai_conversations,
+    ai_messages,
     autodelete_timers,
     community_links,
     guild_configs,
