@@ -19,6 +19,7 @@ pub use turn::{HandoffSchema, TurnOutcome, TurnRequest, TurnUsage};
 pub use validate::validate_tool_arguments;
 
 use crate::{
+    audit::{ToolAuditor, ToolCallRecord},
     provider::{Provider, estimate_cost},
     tools::{ToolCtx, ToolRegistry},
     types::{
@@ -36,12 +37,26 @@ use crate::{
 pub struct Harness {
     provider: Arc<dyn Provider>,
     tools: Arc<ToolRegistry>,
+    /// `None` until [`Self::with_auditor`] enables it. Without it, a tool
+    /// call is dispatched and its result used exactly as before - auditing
+    /// is a side effect, never a precondition of a call actually happening.
+    auditor: Option<Arc<dyn ToolAuditor>>,
 }
 
 impl Harness {
     /// Builds a harness over a provider and the tool registry it may draw from.
     pub fn new(provider: Arc<dyn Provider>, tools: Arc<ToolRegistry>) -> Self {
-        Self { provider, tools }
+        Self {
+            provider,
+            tools,
+            auditor: None,
+        }
+    }
+
+    /// Enables auditing every tool call this harness dispatches.
+    pub fn with_auditor(mut self, auditor: Arc<dyn ToolAuditor>) -> Self {
+        self.auditor = Some(auditor);
+        self
     }
 
     /// Runs one full turn: call the provider, dispatch every tool call it asks
@@ -568,26 +583,14 @@ impl Harness {
             }
         }
 
-        let parallel_futures = parallel_indices.iter().map(|&index| {
-            let (tool, arguments) = &calls[index];
-            race_cancellation(
-                &ctx.cancellation,
-                crate::tools::ToolOutcome::Fatal(AiError::Cancelled),
-                tool.invoke(arguments.clone(), ctx),
-            )
-        });
+        let parallel_futures = parallel_indices
+            .iter()
+            .map(|&index| self.invoke_and_audit(calls, index, ctx));
         let parallel_outcomes = futures::future::join_all(parallel_futures).await;
 
         let mut serial_outcomes = Vec::with_capacity(serial_indices.len());
         for &index in &serial_indices {
-            let (tool, arguments) = &calls[index];
-            let outcome = race_cancellation(
-                &ctx.cancellation,
-                crate::tools::ToolOutcome::Fatal(AiError::Cancelled),
-                tool.invoke(arguments.clone(), ctx),
-            )
-            .await;
-            serial_outcomes.push(outcome);
+            serial_outcomes.push(self.invoke_and_audit(calls, index, ctx).await);
         }
 
         let mut outcomes: Vec<Option<crate::tools::ToolOutcome>> =
@@ -606,6 +609,49 @@ impl Harness {
                     .expect("every call index is assigned by exactly one of the two groups above")
             })
             .collect()
+    }
+
+    /// Invokes `calls[index]`, timing it and auditing the result - shared by
+    /// both the parallel and serial dispatch loops in [`Self::dispatch_calls`]
+    /// so neither can forget to record.
+    ///
+    /// Auditing happens here specifically, at the point a real
+    /// [`crate::tools::Tool::invoke`] runs, and nowhere earlier in
+    /// [`Self::handle_tool_calls`]. An unknown tool name, invalid arguments,
+    /// or an invalid handoff payload are all rejected before a call ever
+    /// reaches here - there is no real invocation to time, and the model
+    /// already sees the rejection in its own tool result. Auditing only what
+    /// actually ran keeps `ai_tool_calls` a record of real calls, not a
+    /// second copy of what the conversation transcript already shows.
+    async fn invoke_and_audit(
+        &self,
+        calls: &[(Arc<dyn crate::tools::Tool>, serde_json::Value)],
+        index: usize,
+        ctx: &ToolCtx,
+    ) -> crate::tools::ToolOutcome {
+        let (tool, arguments) = &calls[index];
+
+        let started = std::time::Instant::now();
+        let outcome = race_cancellation(
+            &ctx.cancellation,
+            crate::tools::ToolOutcome::Fatal(AiError::Cancelled),
+            tool.invoke(arguments.clone(), ctx),
+        )
+        .await;
+        let duration = started.elapsed();
+
+        if let Some(auditor) = &self.auditor {
+            let record = ToolCallRecord::from_outcome(
+                ctx.conversation_id,
+                tool.name(),
+                arguments,
+                &outcome,
+                duration,
+            );
+            auditor.record(record).await;
+        }
+
+        outcome
     }
 }
 
@@ -2067,5 +2113,196 @@ mod tests {
             0,
             "a pre-cancelled turn should never reach the provider"
         );
+    }
+
+    /// A [`ToolAuditor`] that keeps everything it was asked to record.
+    #[derive(Default)]
+    struct FakeToolAuditor {
+        records: std::sync::Mutex<Vec<ToolCallRecord>>,
+    }
+
+    impl FakeToolAuditor {
+        fn records(&self) -> Vec<ToolCallRecord> {
+            self.records.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ToolAuditor for FakeToolAuditor {
+        async fn record(&self, record: ToolCallRecord) {
+            self.records.lock().unwrap().push(record);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_successful_tool_call_is_audited() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "current_time",
+            reply: "12:00",
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_text("it is 12:00"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::tier(RiskTier::Safe);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let auditor = Arc::new(FakeToolAuditor::default());
+        let harness = Harness::new(provider, Arc::new(registry)).with_auditor(auditor.clone());
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        let records = auditor.records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].tool_name, "current_time");
+        assert_eq!(records[0].status, crate::audit::ToolCallStatus::Ok);
+        assert_eq!(records[0].output, "12:00");
+    }
+
+    #[tokio::test]
+    async fn test_an_unknown_tool_call_is_not_audited_since_it_never_dispatches() {
+        // an unknown tool name (and, identically, invalid arguments or an invalid
+        // handoff payload) is rejected before dispatch_calls ever runs - there is
+        // no real invocation to time or record, just a validation failure the
+        // model already sees in its own tool result. Auditing only what actually
+        // reached a Tool::invoke keeps ai_tool_calls a record of real calls, not
+        // a duplicate of what the transcript already shows.
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "does_not_exist", serde_json::json!({}))
+                .respond_text("okay, moving on"),
+        );
+
+        let auditor = Arc::new(FakeToolAuditor::default());
+        let harness =
+            Harness::new(provider, Arc::new(ToolRegistry::new())).with_auditor(auditor.clone());
+        harness.run_turn(request()).await.expect("should succeed");
+
+        assert!(auditor.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a_fatal_tool_outcome_is_still_audited() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(FatalTool));
+
+        let provider: Arc<MockProvider> =
+            Arc::new(MockProvider::new().respond_tool_use("c1", "explode", serde_json::json!({})));
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::tier(RiskTier::Safe);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let auditor = Arc::new(FakeToolAuditor::default());
+        let harness = Harness::new(provider, Arc::new(registry)).with_auditor(auditor.clone());
+        let result = harness.run_turn(turn_request).await;
+
+        assert!(result.is_err(), "the turn should still abort");
+        let records = auditor.records();
+        assert_eq!(
+            records.len(),
+            1,
+            "the call should still be audited despite aborting the turn"
+        );
+        assert_eq!(records[0].status, crate::audit::ToolCallStatus::Fatal);
+    }
+
+    #[tokio::test]
+    async fn test_every_call_in_a_multi_tool_response_is_audited() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "first",
+            reply: "one",
+        }));
+        registry.register(Arc::new(EchoTool {
+            name: "second",
+            reply: "two",
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![
+                        ContentBlock::tool_use("c1", "first", serde_json::json!({})),
+                        ContentBlock::tool_use("c2", "second", serde_json::json!({})),
+                    ],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("both done"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["first", "second"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let auditor = Arc::new(FakeToolAuditor::default());
+        let harness = Harness::new(provider, Arc::new(registry)).with_auditor(auditor.clone());
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        let mut names: Vec<String> = auditor.records().into_iter().map(|r| r.tool_name).collect();
+        names.sort();
+        assert_eq!(names, vec!["first".to_string(), "second".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turns_audit_tool_calls_too() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "current_time",
+            reply: "12:00",
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_text("it is 12:00"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::tier(RiskTier::Safe);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let auditor = Arc::new(FakeToolAuditor::default());
+        let harness =
+            Arc::new(Harness::new(provider, Arc::new(registry)).with_auditor(auditor.clone()));
+        collect_streamed(harness, turn_request).await;
+
+        assert_eq!(
+            auditor.records().len(),
+            1,
+            "the streamed path shares handle_tool_calls with run_turn, so auditing must work \
+             identically there"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_without_an_auditor_wired_nothing_breaks() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "current_time",
+            reply: "12:00",
+        }));
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_text("it is 12:00"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::tier(RiskTier::Safe);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed without an auditor wired");
+        assert_eq!(outcome.text.as_deref(), Some("it is 12:00"));
     }
 }

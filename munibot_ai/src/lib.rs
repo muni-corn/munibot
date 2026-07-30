@@ -16,6 +16,7 @@
 //! belongs to "ai" as a concern and the tool agent must stay small enough to
 //! ship into an untrusted container.
 
+pub mod audit;
 pub mod harness;
 pub mod memory;
 pub mod persona;

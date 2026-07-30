@@ -618,3 +618,58 @@ async fn test_deleting_a_user_does_not_delete_their_usage_history() {
     // sets ON DELETE SET NULL on ai_usage.user_id, not CASCADE)
     delete_user(&db.pool, user).await;
 }
+
+// --- tool call auditing ---
+
+use munibot_core::db::models::NewAiToolCall;
+
+fn tool_call_row(conversation_id: Option<i64>, status: &str) -> NewAiToolCall {
+    NewAiToolCall {
+        conversation_id,
+        tool_name: "current_time".to_string(),
+        input: Some("{}".to_string()),
+        output: Some("12:00".to_string()),
+        duration_ms: 5,
+        status: status.to_string(),
+        created_at: Utc::now().naive_utc(),
+    }
+}
+
+#[tokio::test]
+async fn test_record_tool_call_writes_a_row() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+
+    ai::record_tool_call(&db.pool, tool_call_row(Some(conversation.id), "ok"))
+        .await
+        .expect("record failed");
+}
+
+#[tokio::test]
+async fn test_record_tool_call_without_a_conversation() {
+    let db = TestDb::new().await;
+    // conversation_id is nullable: a call this crate might one day audit outside
+    // any stored conversation must still be writable
+    ai::record_tool_call(&db.pool, tool_call_row(None, "fatal"))
+        .await
+        .expect("record failed");
+}
+
+#[tokio::test]
+async fn test_record_tool_call_after_the_conversation_is_archived_still_succeeds() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+    ai::archive_conversation(&db.pool, conversation.id)
+        .await
+        .unwrap();
+
+    // the conversation row still exists (archiving hides, it does not delete),
+    // so the foreign key is still satisfiable and this must still succeed
+    ai::record_tool_call(&db.pool, tool_call_row(Some(conversation.id), "ok"))
+        .await
+        .expect("record failed");
+}

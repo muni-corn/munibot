@@ -14,6 +14,7 @@ use futures::{StreamExt, stream::BoxStream};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    audit::ToolAuditor,
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
     memory::{
         CompactionSettings, ConversationScope, SessionStore, Summariser, assemble_context,
@@ -106,6 +107,8 @@ pub struct Ai {
     /// turn's cost is never persisted anywhere - exactly the behaviour every
     /// turn had before this existed.
     usage_recorder: Option<Arc<dyn UsageRecorder>>,
+    /// `None` until [`Self::with_tool_auditor`] enables it.
+    tool_auditor: Option<Arc<dyn ToolAuditor>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -170,6 +173,7 @@ impl Ai {
             providers,
             compaction: None,
             usage_recorder: None,
+            tool_auditor: None,
         }
     }
 
@@ -192,6 +196,12 @@ impl Ai {
         self
     }
 
+    /// Enables auditing every tool call a turn makes.
+    pub fn with_tool_auditor(mut self, auditor: Arc<dyn ToolAuditor>) -> Self {
+        self.tool_auditor = Some(auditor);
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = self.prepare(&req).await?;
@@ -199,7 +209,10 @@ impl Ai {
         let model = prepared.request.model.clone();
         let persona_id = prepared.persona_id.clone();
 
-        let harness = Harness::new(prepared.provider, self.tools.clone());
+        let mut harness = Harness::new(prepared.provider, self.tools.clone());
+        if let Some(auditor) = &self.tool_auditor {
+            harness = harness.with_auditor(auditor.clone());
+        }
         let (result, turn_usage) = harness.run_turn_recording_usage(prepared.request).await;
 
         write_usage(&self.usage_recorder, UsageRecord {
@@ -238,7 +251,11 @@ impl Ai {
         req: AiTurnRequest,
     ) -> Result<BoxStream<'static, HarnessEvent>, AiError> {
         let prepared = self.prepare(&req).await?;
-        let harness = Arc::new(Harness::new(prepared.provider, self.tools.clone()));
+        let mut harness = Harness::new(prepared.provider, self.tools.clone());
+        if let Some(auditor) = &self.tool_auditor {
+            harness = harness.with_auditor(auditor.clone());
+        }
+        let harness = Arc::new(harness);
         let sessions = self.sessions.clone();
         let usage_recorder = self.usage_recorder.clone();
         let conversation_id = prepared.conversation_id;
@@ -464,6 +481,7 @@ impl Ai {
 mod tests {
     use super::*;
     use crate::{
+        audit::ToolCallRecord,
         memory::{CompactionPersona, InMemorySessionStore},
         persona::PersonaConfig,
         provider::MockProvider,
@@ -512,6 +530,67 @@ mod tests {
         async fn record(&self, _record: UsageRecord) -> Result<(), AiError> {
             Err(AiError::Other("recording storage is down".to_string()))
         }
+    }
+
+    /// A [`ToolAuditor`] that keeps everything it was asked to record - the
+    /// harness itself already has thorough coverage of auditing behaviour;
+    /// this only needs to prove `Ai::with_tool_auditor` actually reaches the
+    /// harness it constructs per turn.
+    #[derive(Default)]
+    struct FakeToolAuditor {
+        records: std::sync::Mutex<Vec<ToolCallRecord>>,
+    }
+
+    impl FakeToolAuditor {
+        fn records(&self) -> Vec<ToolCallRecord> {
+            self.records.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ToolAuditor for FakeToolAuditor {
+        async fn record(&self, record: ToolCallRecord) {
+            self.records.lock().unwrap().push(record);
+        }
+    }
+
+    /// Builds a persona registry with one persona allowed to use
+    /// `current_time`, and a matching tool registry - the setup
+    /// [`test_ai_wires_a_tool_auditor_through_to_the_harness`] and its
+    /// streamed twin need, which the shared `ai_with` helper does not
+    /// provide since every other test in this module needs no real tool.
+    fn ai_with_current_time(provider: Arc<dyn Provider>) -> Ai {
+        let mut config = AiConfig {
+            enabled: true,
+            default_persona: Some(PersonaId::new("companion")),
+            prompt_dir: None,
+            personas: HashMap::new(),
+        };
+        config
+            .personas
+            .insert(PersonaId::new("companion"), PersonaConfig {
+                model: ModelRef::new("anthropic", "claude-opus-5"),
+                prompt: "companion.md".to_string(),
+                display_name: Some("Companion".to_string()),
+                description: "warm, playful conversation".to_string(),
+                temperature: None,
+                tools: crate::tools::ToolSelection::named(["current_time"]),
+                budget: crate::persona::BudgetConfig::default(),
+                memory: MemoryPolicy::None,
+                sandbox: crate::persona::SandboxPolicy::default(),
+            });
+        let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
+        let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(crate::tools::CurrentTimeTool));
+
+        Ai::from_parts(
+            personas,
+            Arc::new(registry),
+            Arc::new(InMemorySessionStore::new()),
+            Arc::new(FixedProviderSource(provider)),
+        )
     }
 
     /// Builds a real, offline-resolved [`PersonaRegistry`] with one persona
@@ -1061,5 +1140,60 @@ mod tests {
         let records = recorder.records();
         assert_eq!(records.len(), 1);
         assert!(!records[0].succeeded);
+    }
+
+    #[tokio::test]
+    async fn test_ai_wires_a_tool_auditor_through_to_the_harness() {
+        let provider: Arc<dyn Provider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_text("it is some time"),
+        );
+        let auditor = Arc::new(FakeToolAuditor::default());
+        let ai = ai_with_current_time(provider).with_tool_auditor(auditor.clone());
+
+        ai.turn(request("companion", "what time is it"))
+            .await
+            .expect("should succeed");
+
+        let records = auditor.records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].tool_name, "current_time");
+    }
+
+    #[tokio::test]
+    async fn test_ai_wires_a_tool_auditor_through_turn_streamed_too() {
+        let provider: Arc<dyn Provider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_text("it is some time"),
+        );
+        let auditor = Arc::new(FakeToolAuditor::default());
+        let ai = ai_with_current_time(provider).with_tool_auditor(auditor.clone());
+
+        let _events: Vec<HarnessEvent> = ai
+            .turn_streamed(request("companion", "what time is it"))
+            .await
+            .expect("should succeed")
+            .collect()
+            .await;
+
+        assert_eq!(auditor.records().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_without_a_tool_auditor_wired_a_tool_using_turn_still_works() {
+        let provider: Arc<dyn Provider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "current_time", serde_json::json!({}))
+                .respond_text("it is some time"),
+        );
+        let ai = ai_with_current_time(provider);
+
+        let outcome = ai
+            .turn(request("companion", "what time is it"))
+            .await
+            .expect("should succeed");
+        assert_eq!(outcome.text.as_deref(), Some("it is some time"));
     }
 }
