@@ -196,6 +196,21 @@ impl Ai {
         Ok(Box::pin(stream))
     }
 
+    /// Clears a conversation's history and summary, for an adapter's
+    /// `/reset`-style command.
+    ///
+    /// `persona_id` only matters if `scope` has no conversation yet: creating
+    /// one just to immediately clear it is harmless, and cheaper than adding
+    /// a second `SessionStore` method purely to check existence first.
+    pub async fn reset_conversation(
+        &self,
+        scope: &ConversationScope,
+        persona_id: &PersonaId,
+    ) -> Result<(), AiError> {
+        let conversation = self.sessions.load_or_create(scope, &persona_id.0).await?;
+        self.sessions.clear(conversation.id).await
+    }
+
     /// Looks a persona up by id, failing with a named error rather than
     /// panicking when an adapter names one that does not exist.
     fn require_persona(&self, id: &PersonaId) -> Result<&Persona, AiError> {
@@ -574,6 +589,53 @@ mod tests {
 
         let ids: Vec<&PersonaId> = ai.personas().map(|persona| &persona.id).collect();
         assert_eq!(ids, vec![&PersonaId::new("companion")]);
+    }
+
+    #[tokio::test]
+    async fn test_reset_conversation_clears_history_a_later_turn_would_have_seen() {
+        let provider = Arc::new(
+            MockProvider::new()
+                .respond_text("first reply")
+                .respond_text("second reply"),
+        );
+        let ai = ai_with(MemoryPolicy::Conversation, provider.clone());
+
+        ai.turn(request("companion", "message one"))
+            .await
+            .expect("should succeed");
+
+        ai.reset_conversation(
+            &ConversationScope::new(Platform::Discord, "channel-1"),
+            &PersonaId::new("companion"),
+        )
+        .await
+        .expect("should succeed");
+
+        ai.turn(request("companion", "message two"))
+            .await
+            .expect("should succeed");
+
+        let second_sent = &provider.requests()[1];
+        assert_eq!(
+            second_sent.history.len(),
+            1,
+            "a reset conversation should not carry the earlier turn's history, got {:?}",
+            second_sent.history
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reset_conversation_on_a_scope_with_no_history_yet_is_not_an_error() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new());
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let result = ai
+            .reset_conversation(
+                &ConversationScope::new(Platform::Discord, "brand-new-channel"),
+                &PersonaId::new("companion"),
+            )
+            .await;
+        assert!(result.is_ok());
     }
 
     #[test]
