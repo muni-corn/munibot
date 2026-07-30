@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    tools::{RiskTier, Tool, ToolSelection},
+    tools::{
+        CurrentTimeTool, ExaBackend, ExaClient, RiskTier, TodoWriteTool, Tool, ToolSelection,
+        WebFetchTool, WebSearchTool,
+    },
     types::ToolSchema,
 };
 
@@ -15,6 +18,35 @@ impl ToolRegistry {
     /// Builds an empty registry.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Builds a registry with every tool this milestone ships, given the
+    /// current environment: `current_time` and `todo_write` unconditionally,
+    /// and `web_search`/`web_fetch` only when `EXA_API_KEY` is set.
+    ///
+    /// A missing key is not a startup failure - it just means a smaller set
+    /// of tools is available, the same tradeoff
+    /// [`crate::provider::ProviderRegistry::from_env`] makes for model
+    /// providers.
+    pub fn from_env() -> Self {
+        let mut registry = Self::new();
+        registry.register(Arc::new(CurrentTimeTool));
+        registry.register(Arc::new(TodoWriteTool::new()));
+
+        match std::env::var("EXA_API_KEY") {
+            Ok(api_key) => {
+                let backend: Arc<dyn ExaBackend> = Arc::new(ExaClient::new(api_key));
+                registry.register(Arc::new(WebSearchTool::new(backend.clone())));
+                registry.register(Arc::new(WebFetchTool::new(backend)));
+            }
+            Err(_) => {
+                tracing::debug!(
+                    "EXA_API_KEY not set; web_search and web_fetch tools are unavailable"
+                );
+            }
+        }
+
+        registry
     }
 
     /// Registers a tool. A second registration under the same name replaces the
