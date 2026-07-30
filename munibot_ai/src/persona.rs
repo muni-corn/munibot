@@ -8,11 +8,13 @@
 //! why it is a separate, independent load rather than a shared field).
 
 pub mod config;
+pub mod output_filter;
 pub mod registry;
 pub mod template;
 pub mod types;
 
 pub use config::{AiConfig, BudgetConfig, PersonaConfig};
+pub use output_filter::{OutputLimits, filter_output};
 pub use registry::PersonaRegistry;
 pub use template::PromptTemplate;
 pub use types::{MemoryPolicy, Persona, PersonaId, SandboxPolicy};
