@@ -60,6 +60,11 @@ pub struct PersonaConfig {
     /// A filename resolved against [`AiConfig::prompt_dir`], or an embedded
     /// default when unset.
     pub prompt: String,
+    /// A human-readable name, for a future settings surface. Falls back to the
+    /// persona's own id string when unset, so this is never required to
+    /// write a working config.
+    #[serde(default)]
+    pub display_name: Option<String>,
     #[serde(default)]
     pub description: String,
     #[serde(default)]
