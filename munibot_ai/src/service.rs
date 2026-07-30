@@ -20,9 +20,10 @@ use crate::{
         compact_if_needed,
     },
     persona::{AiConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
-    provider::{Provider, ProviderRegistry, ProviderResolver},
+    provider::{Provider, ProviderRegistry, ProviderResolver, estimate_cost},
     tools::{ConversationId, RiskTier, ToolCtx, ToolRegistry},
-    types::{AiError, History, Message, ModelRef, rough_token_estimate},
+    types::{AiError, Cost, History, Message, ModelRef, Usage, rough_token_estimate},
+    usage::{UsageRecord, UsageRecorder},
 };
 
 /// How many tokens of prior conversation history to include when assembling
@@ -79,6 +80,10 @@ struct PreparedTurn {
     /// The persona's display name, for [`HarnessEvent::TurnStarted`] - the
     /// harness itself only knows the model reference, not the persona.
     persona_label: String,
+    /// The persona's stable id, for a [`crate::usage::UsageRecord`] - distinct
+    /// from `persona_label`, which is the display name shown to a user rather
+    /// than the identifier a usage dashboard groups and filters by.
+    persona_id: String,
 }
 
 /// The one surface every platform adapter touches.
@@ -97,6 +102,30 @@ pub struct Ai {
     /// `SessionStore` itself enforces (the in-memory store's message cap) -
     /// exactly the behaviour every turn had before this existed.
     compaction: Option<(Summariser, CompactionSettings)>,
+    /// `None` until [`Self::with_usage_recorder`] enables it. Without it, a
+    /// turn's cost is never persisted anywhere - exactly the behaviour every
+    /// turn had before this existed.
+    usage_recorder: Option<Arc<dyn UsageRecorder>>,
+}
+
+/// Writes `record` through `recorder` if one is configured, logging and
+/// swallowing a failure rather than propagating it.
+///
+/// A free function rather than a method on `Ai`, so [`Ai::turn_streamed`] can
+/// call it from inside its `'static` stream body, which cannot hold a borrow
+/// of `&self` across an `.await` point - the same reason that body already
+/// clones `sessions` out of `self` rather than capturing `self` itself.
+///
+/// Recording is inherently best-effort: a turn that already finished (or
+/// failed) has nothing to gain from a usage-table write also failing it
+/// retroactively, and a dashboard being briefly incomplete is a far smaller
+/// problem than a working conversation turning into an error because its own
+/// bookkeeping stumbled.
+async fn write_usage(recorder: &Option<Arc<dyn UsageRecorder>>, record: UsageRecord) {
+    let Some(recorder) = recorder else { return };
+    if let Err(error) = recorder.record(record).await {
+        tracing::warn!(%error, "failed to record ai usage");
+    }
 }
 
 impl Ai {
@@ -140,6 +169,7 @@ impl Ai {
             sessions,
             providers,
             compaction: None,
+            usage_recorder: None,
         }
     }
 
@@ -155,15 +185,42 @@ impl Ai {
         self
     }
 
+    /// Enables recording a [`crate::usage::UsageRecord`] after every turn,
+    /// on failure as well as success.
+    pub fn with_usage_recorder(mut self, recorder: Arc<dyn UsageRecorder>) -> Self {
+        self.usage_recorder = Some(recorder);
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = self.prepare(&req).await?;
+        let conversation_id = prepared.conversation_id;
+        let model = prepared.request.model.clone();
+        let persona_id = prepared.persona_id.clone();
+
         let harness = Harness::new(prepared.provider, self.tools.clone());
-        let outcome = harness.run_turn(prepared.request).await?;
+        let (result, turn_usage) = harness.run_turn_recording_usage(prepared.request).await;
+
+        write_usage(&self.usage_recorder, UsageRecord {
+            conversation_id: Some(conversation_id),
+            user_id: Some(req.user_id),
+            guild_id: req.guild_id,
+            provider: model.provider().to_string(),
+            model: model.model().to_string(),
+            persona_id,
+            usage: turn_usage.usage,
+            cost: turn_usage.cost,
+            iterations: turn_usage.iterations,
+            succeeded: result.is_ok(),
+        })
+        .await;
+
+        let outcome = result?;
 
         if let Some(text) = &outcome.text {
             self.sessions
-                .append(prepared.conversation_id, Message::assistant(text.clone()))
+                .append(conversation_id, Message::assistant(text.clone()))
                 .await?;
         }
 
@@ -183,12 +240,37 @@ impl Ai {
         let prepared = self.prepare(&req).await?;
         let harness = Arc::new(Harness::new(prepared.provider, self.tools.clone()));
         let sessions = self.sessions.clone();
+        let usage_recorder = self.usage_recorder.clone();
         let conversation_id = prepared.conversation_id;
         let persona_label = prepared.persona_label;
+        let persona_id = prepared.persona_id;
+        let model = prepared.request.model.clone();
+        let user_id = req.user_id;
+        let guild_id = req.guild_id;
 
         let stream = async_stream::stream! {
             let mut assistant_text = String::new();
+            // TurnFinished's own fields already carry the true cumulative totals
+            // (straight from the harness's own budget tracker), so this accumulation
+            // exists only to have *something* to record on the Handoff and Failed
+            // paths, neither of which carries usage in the event itself
+            let mut accumulated_usage = Usage::default();
+            let mut accumulated_cost = Cost::ZERO;
+            let mut iterations = 0usize;
             let mut inner = harness.run_turn_streamed(prepared.request);
+
+            let record = |usage: Usage, cost: Cost, iterations: usize, succeeded: bool| UsageRecord {
+                conversation_id: Some(conversation_id),
+                user_id: Some(user_id),
+                guild_id,
+                provider: model.provider().to_string(),
+                model: model.model().to_string(),
+                persona_id: persona_id.clone(),
+                usage,
+                cost,
+                iterations,
+                succeeded,
+            };
 
             while let Some(event) = inner.next().await {
                 match event {
@@ -199,6 +281,12 @@ impl Ai {
                         assistant_text.push_str(&text);
                         yield HarnessEvent::TextDelta(text);
                     }
+                    HarnessEvent::IterationComplete { iteration, usage } => {
+                        accumulated_usage += usage;
+                        accumulated_cost += estimate_cost(&model, &usage);
+                        iterations = iteration;
+                        yield HarnessEvent::IterationComplete { iteration, usage };
+                    }
                     HarnessEvent::TurnFinished { usage, cost } => {
                         if !assistant_text.is_empty() {
                             // best-effort: a session store failure here should not turn an
@@ -207,7 +295,24 @@ impl Ai {
                                 .append(conversation_id, Message::assistant(assistant_text.clone()))
                                 .await;
                         }
+                        write_usage(&usage_recorder, record(usage, cost, iterations, true)).await;
                         yield HarnessEvent::TurnFinished { usage, cost };
+                    }
+                    HarnessEvent::Handoff(payload) => {
+                        write_usage(
+                            &usage_recorder,
+                            record(accumulated_usage, accumulated_cost, iterations, true),
+                        )
+                        .await;
+                        yield HarnessEvent::Handoff(payload);
+                    }
+                    HarnessEvent::Failed(error) => {
+                        write_usage(
+                            &usage_recorder,
+                            record(accumulated_usage, accumulated_cost, iterations, false),
+                        )
+                        .await;
+                        yield HarnessEvent::Failed(error);
                     }
                     other => yield other,
                 }
@@ -340,6 +445,7 @@ impl Ai {
             provider,
             conversation_id: conversation.id,
             persona_label: persona.display_name.clone(),
+            persona_id: persona.id.0.clone(),
         })
     }
 
@@ -373,6 +479,38 @@ mod tests {
     impl ProviderSource for FixedProviderSource {
         fn resolve(&self, _model: &ModelRef) -> Result<Arc<dyn Provider>, AiError> {
             Ok(self.0.clone())
+        }
+    }
+
+    /// A [`UsageRecorder`] that keeps everything it was asked to record, for
+    /// tests to inspect afterward.
+    #[derive(Default)]
+    struct FakeUsageRecorder {
+        records: std::sync::Mutex<Vec<UsageRecord>>,
+    }
+
+    impl FakeUsageRecorder {
+        fn records(&self) -> Vec<UsageRecord> {
+            self.records.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl UsageRecorder for FakeUsageRecorder {
+        async fn record(&self, record: UsageRecord) -> Result<(), AiError> {
+            self.records.lock().unwrap().push(record);
+            Ok(())
+        }
+    }
+
+    /// A [`UsageRecorder`] that always fails, for testing that a recording
+    /// failure never fails the turn it describes.
+    struct FailingUsageRecorder;
+
+    #[async_trait::async_trait]
+    impl UsageRecorder for FailingUsageRecorder {
+        async fn record(&self, _record: UsageRecord) -> Result<(), AiError> {
+            Err(AiError::Other("recording storage is down".to_string()))
         }
     }
 
@@ -791,5 +929,137 @@ mod tests {
             outcome.is_ok(),
             "a compaction failure must not surface as a failed turn"
         );
+    }
+
+    #[tokio::test]
+    async fn test_turn_records_usage_on_success() {
+        let provider = Arc::new(MockProvider::new().respond(Ok(
+            crate::types::CompletionResponse::new(
+                vec![crate::types::ContentBlock::text("hi")],
+                crate::types::StopReason::EndTurn,
+                Usage::new(100, 100),
+            ),
+        )));
+        let recorder = Arc::new(FakeUsageRecorder::default());
+        let ai = ai_with(MemoryPolicy::None, provider).with_usage_recorder(recorder.clone());
+
+        ai.turn(request("companion", "hello"))
+            .await
+            .expect("should succeed");
+
+        let records = recorder.records();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].succeeded);
+        assert_eq!(records[0].persona_id, "companion");
+        assert_eq!(records[0].provider, "anthropic");
+        assert_eq!(records[0].model, "claude-opus-5");
+        assert_eq!(records[0].user_id, Some(1));
+        assert_eq!(records[0].guild_id, None);
+        assert!(
+            records[0].cost > Cost::ZERO,
+            "a priced model with real usage should produce a nonzero cost"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_turn_records_usage_on_failure_reflecting_prior_spend() {
+        // iteration one succeeds with real usage and asks for another round
+        // (StopReason::ToolUse, no actual tool call in it); iteration two's
+        // provider call itself fails - proving the recorded row reflects what
+        // iteration one actually spent, not a zeroed-out failure
+        let provider = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![crate::types::ContentBlock::text("partial")],
+                    crate::types::StopReason::ToolUse,
+                    Usage::new(50, 50),
+                )))
+                .respond_error(AiError::Provider("outage".to_string())),
+        );
+        let recorder = Arc::new(FakeUsageRecorder::default());
+        let ai = ai_with(MemoryPolicy::None, provider).with_usage_recorder(recorder.clone());
+
+        let result = ai.turn(request("companion", "hello")).await;
+        assert!(result.is_err(), "the turn itself should still fail");
+
+        let records = recorder.records();
+        assert_eq!(records.len(), 1);
+        assert!(!records[0].succeeded);
+        assert_eq!(records[0].iterations, 1);
+        assert!(
+            records[0].usage.input_tokens > 0,
+            "the first, successful iteration's spend must not be lost just because the second \
+             iteration failed: {:?}",
+            records[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_usage_recording_failure_does_not_fail_the_turn() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::None, provider)
+            .with_usage_recorder(Arc::new(FailingUsageRecorder));
+
+        let result = ai.turn(request("companion", "hello")).await;
+
+        assert!(
+            result.is_ok(),
+            "a usage recorder failing to write must never surface as a failed turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_without_a_usage_recorder_wired_nothing_breaks() {
+        // regression guard: every other test in this module wires no recorder at
+        // all, so this only makes that default explicit
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let result = ai.turn(request("companion", "hello")).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_turn_streamed_records_usage_on_finish() {
+        let provider = Arc::new(MockProvider::new().respond(Ok(
+            crate::types::CompletionResponse::new(
+                vec![crate::types::ContentBlock::text("hi")],
+                crate::types::StopReason::EndTurn,
+                Usage::new(100, 100),
+            ),
+        )));
+        let recorder = Arc::new(FakeUsageRecorder::default());
+        let ai = ai_with(MemoryPolicy::None, provider).with_usage_recorder(recorder.clone());
+
+        let _events: Vec<HarnessEvent> = ai
+            .turn_streamed(request("companion", "hello"))
+            .await
+            .expect("should succeed")
+            .collect()
+            .await;
+
+        let records = recorder.records();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].succeeded);
+        assert!(records[0].cost > Cost::ZERO);
+    }
+
+    #[tokio::test]
+    async fn test_turn_streamed_records_usage_on_failure() {
+        let provider: Arc<dyn Provider> =
+            Arc::new(MockProvider::new().respond_error(AiError::Rejected("bad key".to_string())));
+        let recorder = Arc::new(FakeUsageRecorder::default());
+        let ai = ai_with(MemoryPolicy::None, provider).with_usage_recorder(recorder.clone());
+
+        let _events: Vec<HarnessEvent> = ai
+            .turn_streamed(request("companion", "hello"))
+            .await
+            .expect("should succeed")
+            .collect()
+            .await;
+
+        let records = recorder.records();
+        assert_eq!(records.len(), 1);
+        assert!(!records[0].succeeded);
     }
 }

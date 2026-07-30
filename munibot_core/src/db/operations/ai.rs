@@ -9,8 +9,8 @@ use diesel_async::RunQueryDsl;
 
 use crate::db::{
     DbPool,
-    models::{AiConversation, AiMessage, NewAiConversation, NewAiMessage},
-    schema::{ai_conversations, ai_messages},
+    models::{AiConversation, AiMessage, NewAiConversation, NewAiMessage, NewAiUsage},
+    schema::{ai_conversations, ai_messages, ai_usage},
 };
 
 // mysql has no `RETURNING`, so an insert's generated id comes from a second,
@@ -311,5 +311,20 @@ pub async fn compact_conversation(
         .execute(&mut conn)
         .await?;
 
+    Ok(())
+}
+
+/// Writes one row recording what a turn cost.
+///
+/// Called on failure as well as success: a turn that errored on its ninth
+/// iteration still spent the first eight, and a usage table that only
+/// records successes understates spend exactly when something is going
+/// wrong.
+pub async fn record_usage(pool: &DbPool, usage: NewAiUsage) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::insert_into(ai_usage::table)
+        .values(&usage)
+        .execute(&mut conn)
+        .await?;
     Ok(())
 }

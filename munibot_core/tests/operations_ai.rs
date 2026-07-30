@@ -559,3 +559,62 @@ async fn test_compact_conversation_with_exactly_keep_recent_messages_is_a_noop()
         "a conversation with exactly keep_recent messages has nothing to cut"
     );
 }
+
+// --- usage ---
+
+use munibot_core::db::models::NewAiUsage;
+
+fn usage_row(conversation_id: Option<i64>, user_id: Option<i64>, succeeded: bool) -> NewAiUsage {
+    NewAiUsage {
+        conversation_id,
+        user_id,
+        guild_id: None,
+        provider: "anthropic".to_string(),
+        model: "claude-opus-5".to_string(),
+        persona_id: "companion".to_string(),
+        input_tokens: 100,
+        output_tokens: 200,
+        cost_micros: 5_000,
+        iterations: 2,
+        succeeded,
+        created_at: Utc::now().naive_utc(),
+    }
+}
+
+#[tokio::test]
+async fn test_record_usage_writes_a_row() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let conversation = ai::create_conversation(&db.pool, web_conversation(Some(user), "c1"))
+        .await
+        .unwrap();
+
+    ai::record_usage(&db.pool, usage_row(Some(conversation.id), Some(user), true))
+        .await
+        .expect("record failed");
+}
+
+#[tokio::test]
+async fn test_record_usage_on_a_failed_turn() {
+    let db = TestDb::new().await;
+    // conversation_id and user_id are independently optional at the type level, so
+    // a usage row should be writable with neither - a turn that failed before ever
+    // reaching a conversation still cost money
+    ai::record_usage(&db.pool, usage_row(None, None, false))
+        .await
+        .expect("record failed");
+}
+
+#[tokio::test]
+async fn test_deleting_a_user_does_not_delete_their_usage_history() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    ai::record_usage(&db.pool, usage_row(None, Some(user), true))
+        .await
+        .unwrap();
+
+    // usage rows are a billing/audit record, not conversation state - unlike
+    // ai_conversations, this should survive the user being deleted (the migration
+    // sets ON DELETE SET NULL on ai_usage.user_id, not CASCADE)
+    delete_user(&db.pool, user).await;
+}

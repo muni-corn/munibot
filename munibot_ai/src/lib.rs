@@ -23,6 +23,7 @@ pub mod provider;
 pub mod service;
 pub mod tools;
 pub mod types;
+pub mod usage;
 
 pub use service::{Ai, AiTurnRequest};
 pub use types::{
