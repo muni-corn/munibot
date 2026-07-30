@@ -18,8 +18,27 @@ use rand::{RngExt, distr::Alphanumeric};
 
 // use 127.0.0.1 (not localhost) to force TCP -- the native MySQL C library
 // used by diesel's sync MysqlConnection interprets "localhost" as a Unix socket
-pub const ROOT_DB_URL: &str = "mysql://root:sillylittlepassword@127.0.0.1:3306/mysql";
-pub const TEST_DB_BASE_URL: &str = "mysql://munibot_test:sillylittlepassword@127.0.0.1:3306";
+const DEFAULT_ROOT_DB_URL: &str = "mysql://root:sillylittlepassword@127.0.0.1:3306/mysql";
+const DEFAULT_TEST_DB_BASE_URL: &str = "mysql://munibot_test:sillylittlepassword@127.0.0.1:3306";
+
+/// The management connection used to create and drop per-test databases.
+///
+/// Overridable via `MUNIBOT_TEST_ROOT_DB_URL`, because devenv does not always
+/// hand this project the same port or root credentials - it falls back to 3307
+/// when 3306 is taken, and its root user has no password. Hardcoding one URL
+/// meant every integration test failed with a bare connection error on any
+/// machine whose devenv had drifted from the default.
+pub fn root_db_url() -> String {
+    std::env::var("MUNIBOT_TEST_ROOT_DB_URL").unwrap_or_else(|_| DEFAULT_ROOT_DB_URL.to_string())
+}
+
+/// The base URL per-test databases are opened against, without a database name.
+///
+/// Overridable via `MUNIBOT_TEST_DB_BASE_URL`, for the same reason.
+pub fn test_db_base_url() -> String {
+    std::env::var("MUNIBOT_TEST_DB_BASE_URL")
+        .unwrap_or_else(|_| DEFAULT_TEST_DB_BASE_URL.to_string())
+}
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
 
@@ -49,7 +68,7 @@ impl TestDb {
 
         // create the database via a sync management connection
         {
-            let mut conn = MysqlConnection::establish(ROOT_DB_URL)
+            let mut conn = MysqlConnection::establish(&root_db_url())
                 .expect("couldn't connect to mysql for test db creation");
             diesel::RunQueryDsl::execute(
                 diesel::sql_query(format!("CREATE DATABASE `{db_name}`")),
@@ -60,7 +79,7 @@ impl TestDb {
 
         // run diesel migrations on the new database
         {
-            let db_url = format!("{TEST_DB_BASE_URL}/{db_name}");
+            let db_url = format!("{}/{db_name}", test_db_base_url());
             let mut conn = MysqlConnection::establish(&db_url)
                 .expect("couldn't connect to per-test database for migrations");
             conn.run_pending_migrations(MIGRATIONS)
@@ -69,7 +88,7 @@ impl TestDb {
 
         // build an async pool pointing at the new database
         let pool = {
-            let db_url = format!("{TEST_DB_BASE_URL}/{db_name}");
+            let db_url = format!("{}/{db_name}", test_db_base_url());
             let manager = AsyncDieselConnectionManager::<AsyncMysqlConnection>::new(db_url);
             Pool::builder()
                 .build(manager)
@@ -85,7 +104,7 @@ impl Drop for TestDb {
     fn drop(&mut self) {
         // drop the database using a fresh sync connection -- this runs even on
         // test panic so we don't leave stale databases behind
-        let mut conn = MysqlConnection::establish(ROOT_DB_URL)
+        let mut conn = MysqlConnection::establish(&root_db_url())
             .expect("couldn't connect to mysql for test db cleanup");
         diesel::RunQueryDsl::execute(
             diesel::sql_query(format!("DROP DATABASE IF EXISTS `{}`", self.db_name)),
