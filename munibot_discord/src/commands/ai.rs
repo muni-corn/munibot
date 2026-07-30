@@ -13,11 +13,11 @@ use crate::{
     utils::display_name_from_command_context,
 };
 
-pub struct AskCommandProvider;
+pub struct AiCommandProvider;
 
-impl DiscordCommandProvider for AskCommandProvider {
+impl DiscordCommandProvider for AiCommandProvider {
     fn commands(&self) -> Vec<DiscordCommand> {
-        vec![ask()]
+        vec![ask(), persona(), reset()]
     }
 }
 
@@ -83,5 +83,94 @@ pub async fn ask(
     let filtered = filter_output(&reply, OutputLimits::new(DISCORD_MESSAGE_LIMIT));
 
     ctx.say(filtered).await?;
+    Ok(())
+}
+
+/// Shows or pins this channel's persona.
+// pinning is in-memory this milestone - it is lost on restart, and becomes a
+// real `ai_conversations` column in milestone 2
+#[poise::command(slash_command)]
+pub async fn persona(
+    ctx: DiscordContext<'_>,
+    #[description = "pin this channel to a persona (omit to just show the current one)"]
+    #[autocomplete = "autocomplete_persona"]
+    persona: Option<String>,
+) -> Result<(), MunibotDiscordError> {
+    let Some(ai) = ctx.data().ai.clone() else {
+        ctx.say("i'm not set up to chat right now, sorry :<")
+            .await?;
+        return Ok(());
+    };
+
+    let Some(name) = persona else {
+        let pinned = ctx.data().pinned_personas.get(ctx.channel_id()).await;
+        let effective = ctx
+            .data()
+            .pinned_personas
+            .effective(ctx.channel_id(), &ai)
+            .await;
+
+        let response = match effective.and_then(|id| ai.persona(&id)) {
+            Some(resolved) if pinned.is_some() => {
+                format!("this channel is pinned to **{}**", resolved.display_name)
+            }
+            Some(resolved) => format!(
+                "using the default persona, **{}**, in this channel",
+                resolved.display_name
+            ),
+            None => "no persona is configured for this channel :<".to_string(),
+        };
+        ctx.say(response).await?;
+        return Ok(());
+    };
+
+    let persona_id = PersonaId::new(&name);
+    let Some(resolved) = ai.persona(&persona_id) else {
+        ctx.say(format!("i don't have a persona named `{name}` :<"))
+            .await?;
+        return Ok(());
+    };
+    let display_name = resolved.display_name.clone();
+
+    ctx.data()
+        .pinned_personas
+        .set(ctx.channel_id(), persona_id)
+        .await;
+    ctx.say(format!("pinned this channel to **{display_name}** :3"))
+        .await?;
+    Ok(())
+}
+
+/// Clears this channel's conversation with munibot, starting fresh.
+#[poise::command(slash_command)]
+pub async fn reset(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError> {
+    let Some(ai) = ctx.data().ai.clone() else {
+        ctx.say("i'm not set up to chat right now, sorry :<")
+            .await?;
+        return Ok(());
+    };
+
+    let Some(persona_id) = ctx
+        .data()
+        .pinned_personas
+        .effective(ctx.channel_id(), &ai)
+        .await
+    else {
+        ctx.say("i don't have a default persona configured, so there's nothing to reset :<")
+            .await?;
+        return Ok(());
+    };
+
+    let scope = ConversationScope::new(Platform::Discord, ctx.channel_id().to_string());
+    match ai.reset_conversation(&scope, &persona_id).await {
+        Ok(()) => {
+            ctx.say("okay, i've cleared this channel's conversation with me :3")
+                .await?;
+        }
+        Err(error) => {
+            ctx.say(format!("couldn't reset that, sorry :< {error}"))
+                .await?;
+        }
+    }
     Ok(())
 }

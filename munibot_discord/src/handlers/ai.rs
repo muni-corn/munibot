@@ -56,7 +56,7 @@ impl DiscordEventHandler for AiChatHandler {
     async fn handle_discord_event(
         &mut self,
         context: &Context,
-        _framework: DiscordFrameworkContext<'_>,
+        framework: DiscordFrameworkContext<'_>,
         event: &FullEvent,
     ) -> Result<(), DiscordHandlerError> {
         let FullEvent::Message { new_message: msg } = event else {
@@ -80,7 +80,8 @@ impl DiscordEventHandler for AiChatHandler {
             return Ok(());
         }
 
-        let Some(persona_id) = self.ai.default_persona_id().cloned() else {
+        let pinned_personas = &framework.user_data().await.pinned_personas;
+        let Some(persona_id) = pinned_personas.effective(msg.channel_id, &self.ai).await else {
             warn!("ai chat triggered, but no default_persona is configured");
             msg.channel_id
                 .say(
