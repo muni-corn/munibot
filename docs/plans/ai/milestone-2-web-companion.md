@@ -1,109 +1,195 @@
-# Milestone 2 — chat product
+# Milestone 2 — the companion on the web
 
-**Outcome:** munibot remembers you, picks the right persona on his own, works on Twitch as well as
-Discord, and can be configured and audited through the web interface.
+**Outcome:** anyone signed in can open munibot's own chat page and have a real, continuing
+conversation with a companion who remembers them — and who is genuinely useful for programming and
+research along the way.
 
-Milestone 1 proved the harness. This milestone turns it into something people can actually live with:
-conversations survive restarts, munibot remembers what matters to you if you let him, and you can see
-what he is costing.
+Milestone 1 proved the harness in Discord. This milestone makes the **web interface the primary
+surface** for munibot's AI, because that is where the companion can actually be shown off: a
+persistent conversation list, streamed replies, rendered code, visible tool work, and a memory panel
+you can inspect and empty. Discord keeps what phase 8 already built and stops there.
 
-**Phases 9 through 13, commits 67 through 99.**
+munibot is a companion first. Everything here is ordered so the companion works well before anything
+clever gets added on top, and phase 13 exists specifically to make him worth the title rather than
+merely functional.
+
+**Phases 9 through 14, commits 67 through 108.**
+
+---
+
+## What this milestone has to overcome
+
+Three facts about the current codebase shape every phase below, and all three were confirmed by
+reading it rather than assumed:
+
+- **`munibot_api` and `munibot_gui` do not know `munibot_ai` exists.** Neither `Cargo.toml` mentions
+  it and neither `src` tree references it. `munibot_ai` is reachable only from the `munibot` binary.
+- **The `Ai` service is built inside the bot-startup guard.** `munibot/src/main.rs:60-73` constructs
+  it inside `if std::env::var("MUNIBOT_DISABLE_BOTS").is_err()` and moves it into
+  `munibot::bot::start`. But `MUNIBOT_DISABLE_BOTS=1` is _the documented GUI development workflow_
+  (`docs/gui.md:148-150`), so until this is restructured the chat page cannot be developed locally at
+  all. `munibot_gui::server::run` also currently takes only a `DiscordConfig`.
+- **`HarnessEvent` cannot cross the wire.** `munibot_ai/src/harness/event.rs:12` derives `Debug`
+  alone, and the enum carries an `AiError` and a `serde_json::Value`. A wire DTO in `munibot_api` is
+  the consistent fix, matching how `munibot_core` models are already translated into slim DTOs rather
+  than shared directly (`docs/gui.md:33-35`).
+
+One piece of good news: `Platform::Web` already exists in `munibot_ai/src/tools/context.rs`, and
+`ConversationScope` is already platform-keyed, so no enum needs widening.
 
 ---
 
 ## Phase 9 — persistence
 
-The diesel-backed session store. Migrations live at the workspace root in `migrations/`, embedded and
-applied at startup by the existing `run_pending_migrations()`.
+The diesel-backed session store, plus the ownership and titling that a per-user conversation list
+needs. Migrations live at the workspace root in `migrations/`, embedded and applied at startup by the
+existing `run_pending_migrations()`.
 
-| #   | Commit                                             | Description                                                                                                                                                                                                                                                                                                           |
-| --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 67  | `feat(db): add ai conversation and message tables` | Migration creating `ai_conversations` and `ai_messages` as specified in the overview. `ai_messages.content` is JSON holding `Vec<ContentBlock>`. Unique index on `(platform, scope_key)` and on `(conversation_id, seq)`. Regenerate `munibot_core/src/db/schema.rs` with `diesel print-schema`.                      |
-| 68  | `feat(db): add ai usage and tool call tables`      | Migration creating `ai_usage` and `ai_tool_calls`. Index `ai_usage` on `(guild_id, created_at)` and `(user_id, created_at)`, because every budget query and every dashboard panel filters on exactly those.                                                                                                           |
-| 69  | `feat(core): add ai conversation models`           | `Queryable`/`Selectable` and `Insertable` structs in `munibot_core/src/db/models.rs` for the new tables, each with `#[diesel(check_for_backend(diesel::mysql::Mysql))]`, following the existing conventions.                                                                                                          |
-| 70  | `feat(core): add ai conversation operations`       | Free async functions in a new `munibot_core/src/db/operations/ai.rs`, taking `&DbPool` and returning `QueryResult<T>`. MySQL has no `RETURNING`, so inserts use the existing `last_insert_id()` helper at `operations.rs:21`. Split into a submodule because `operations.rs` is already 569 lines.                    |
-| 71  | `feat(memory): add diesel session store`           | `DieselSessionStore` implementing `SessionStore` over `munibot_core::DbPool`. No feature gate needed — `munibot_ai` has depended on `munibot_core` unconditionally since phase 7's `AiConfig`. Integration tests use the `TestDb` fixture at `munibot_core/tests/common/mod.rs:32`.                                   |
-| 72  | `feat(memory): add conversation summarisation`     | `Summariser` taking a provider and a compaction persona, condensing the oldest messages into prose when history exceeds a token threshold, writing it to `ai_conversations.summary`, and deleting the messages it replaced. Triggered from `assemble_context` rather than on a timer, so it only costs when it helps. |
-| 73  | `feat(ai): add usage recording after every turn`   | Write an `ai_usage` row on turn completion with resolved provider, model, token counts, and estimated cost. Record on failure too, since a turn that errored on iteration nine still cost money.                                                                                                                      |
-| 74  | `feat(ai): add tool call auditing`                 | Write an `ai_tool_calls` row per invocation with truncated input and output, duration, and status. Powers the transcript viewer in phase 13 and is the only way to debug a bad tool loop after the fact.                                                                                                              |
-
----
-
-## Phase 10 — user memory
-
-Opt-in, user-controlled, and scoped to the internal `users.id` so it survives a second linked
-account.
-
-| #   | Commit                                                 | Description                                                                                                                                                                                                                                                                                               |
-| --- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 75  | `feat(db): add ai memory and user settings tables`     | Migration creating `ai_memories` and `ai_user_settings`, both with a real foreign key to `users.id` and `ON DELETE CASCADE`, so deleting a user erases their memories automatically. Unique index on `(user_id, key)`.                                                                                    |
-| 76  | `feat(memory): add memory store trait and diesel impl` | `MemoryStore` with `list(user_id)`, `record(user_id, key, value)`, `forget(user_id, key)`, and `wipe(user_id)`. `record` upserts on the unique key using the `on_conflict(DuplicatedKeys)` pattern documented at `operations.rs:33`. A per-user memory cap prevents unbounded growth.                     |
-| 77  | `feat(memory): add memory opt in gating`               | Every read and write path checks `ai_user_settings.memory_opt_in` first and returns empty or a clear refusal when it is unset. Default is off. Enforced in the store, not the caller, so no future caller can forget.                                                                                     |
-| 78  | `feat(tools): add remember and forget tools`           | `remember` taking `key` and `value`, and `forget` taking `key`. Tier `Safe`, but both refuse when the invoker has not opted in, returning a `ToolOutcome::Err` telling the model to mention `/memory enable`. There is deliberately no recall tool — retrieval is the host's job, not the model's.        |
-| 79  | `feat(ai): add memory injection into system prompts`   | Load the invoker's memories before the turn and render them into the system prompt through a `{{memories}}` template variable. Personas with `MemoryPolicy::User` get them, others do not. Keeping retrieval out of the model's hands makes it predictable and costs one query instead of a round-trip.   |
-| 80  | `feat(discord): add memory management commands`        | `/memory enable`, `/memory disable`, `/memory list`, `/memory delete key:<key>`, and `/memory wipe` with a confirmation button. Every response is ephemeral. `disable` keeps the rows but stops all use; `wipe` deletes them. Being able to see and delete everything is the point of the opt-in promise. |
+| #   | Commit                                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 67  | `feat(db): add ai conversation and message tables` | Migration creating `ai_conversations` and `ai_messages`. `ai_messages.content` is JSON holding `Vec<ContentBlock>`. Unique index on `(platform, scope_key)` and on `(conversation_id, seq)`. **`ai_conversations` carries `owner_user_id`, `title`, and `archived_at` from the start**, rather than bolting them on later: a web conversation belongs to one person and needs a name in a sidebar, while a Discord channel's conversation has neither. `owner_user_id` is a real foreign key to `users.id` with `ON DELETE CASCADE`, and is `NULL` for channel-scoped conversations. |
+| 68  | `feat(db): add ai usage and tool call tables`      | Migration creating `ai_usage` and `ai_tool_calls`. Index `ai_usage` on `(user_id, created_at)` first and `(guild_id, created_at)` second — with the web as the primary surface, per-user is now the common query and per-guild the secondary one.                                                                                                                                                                                                                                                                                                                                    |
+| 69  | `feat(core): add ai conversation models`           | `Queryable`/`Selectable` and `Insertable` structs in `munibot_core/src/db/models.rs`, each with `#[diesel(check_for_backend(diesel::mysql::Mysql))]`, following existing conventions.                                                                                                                                                                                                                                                                                                                                                                                                |
+| 70  | `feat(core): add ai conversation operations`       | Free async functions in a new `munibot_core/src/db/operations/ai.rs`, taking `&DbPool` and returning `QueryResult<T>`. MySQL has no `RETURNING`, so inserts use the existing `last_insert_id()` helper at `operations.rs:21`. A submodule because `operations.rs` is already 569 lines.                                                                                                                                                                                                                                                                                              |
+| 71  | `feat(memory): add diesel session store`           | `DieselSessionStore` implementing the existing `SessionStore` trait over `munibot_core::DbPool`. No feature gate needed — `munibot_ai` has depended on `munibot_core` unconditionally since phase 7's `AiConfig`. Integration tests use the `TestDb` fixture at `munibot_core/tests/common/mod.rs:32`.                                                                                                                                                                                                                                                                               |
+| 72  | `feat(memory): add conversation directory`         | A `ConversationDirectory` trait and diesel implementation: `list_for_user`, `create_for_user`, `rename`, `archive`. Deliberately **separate from `SessionStore`**, which is about one scope's message history — listing a person's conversations is a different question with a different index, and folding both into one trait would force every future store to implement ownership semantics it may not have.                                                                                                                                                                    |
+| 73  | `feat(memory): add conversation summarisation`     | `Summariser` taking a provider and a compaction persona, condensing the oldest messages into prose once history exceeds a token threshold, writing it to `ai_conversations.summary`, and deleting the messages it replaced. Triggered from `assemble_context` rather than on a timer, so it only costs when it helps.                                                                                                                                                                                                                                                                |
+| 74  | `feat(ai): add usage recording after every turn`   | Write an `ai_usage` row on turn completion with resolved provider, model, token counts, and estimated cost. Record on failure too, since a turn that errored on iteration nine still cost money.                                                                                                                                                                                                                                                                                                                                                                                     |
+| 75  | `feat(ai): add tool call auditing`                 | Write an `ai_tool_calls` row per invocation with truncated input and output, duration, and status. The only way to debug a bad tool loop after the fact, and what the tool activity display in phase 12 reads back.                                                                                                                                                                                                                                                                                                                                                                  |
 
 ---
 
-## Phase 11 — automatic persona routing
+## Phase 10 — memory
 
-Sticky routing: classify once per conversation, not once per message.
+Opt-in, user-controlled, and scoped to the internal `users.id` so it survives a second linked account.
+This is the phase that turns "a chatbot" into "someone who knows you", so it lands before the
+interface rather than after.
 
-| #   | Commit                                                  | Description                                                                                                                                                                                                                                                                                              |
-| --- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 81  | `feat(ai): add router configuration and decision types` | `RouterConfig { enabled, model, sticky, confidence_threshold }` and `RouteDecision { persona, confidence, reason }`. Add a `pinned_persona` column to `ai_conversations` in the same commit as the code that reads it.                                                                                   |
-| 82  | `feat(ai): add router prompt and persona catalogue`     | `router.md` receiving the message, the current persona, and a `{{personas}}` catalogue rendered from each persona's `description`. Returns a `RouteDecision` through the harness handoff mechanism, which is exactly what handoff was built for.                                                         |
-| 83  | `feat(ai): add sticky routing resolution`               | `resolve_persona` precedence: an explicit request wins, then a pinned channel persona, then a sticky conversation persona unless the router reports a topic change above threshold, then the router, then the default. Pure function over a small state struct with table-driven tests for every branch. |
-| 84  | `feat(ai): add router failure fallback`                 | A router error, a timeout, or a below-threshold decision falls back to the current or default persona and logs at `warn`. The router is never allowed to break a conversation, and its cost is capped by a hard iteration limit of one.                                                                  |
-| 85  | `feat(discord): add routing decision transparency`      | When the router changes persona, note it quietly in the response footer. Users get very confused by an invisible personality switch, and this also makes router quality debuggable in production.                                                                                                        |
+Note the identity trap documented at `docs/notes/gui-configuration-research.md:91-108`:
+`linked_accounts.user_id` holds the internal `users.id`, while `guild_wallets.user_id` holds a raw
+Discord snowflake with no foreign key. Every table here keys on `users.id`, explicitly.
 
----
+| #   | Commit                                                 | Description                                                                                                                                                                                                                                                                                                   |
+| --- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 76  | `feat(db): add ai memory and user settings tables`     | Migration creating `ai_memories` and `ai_user_settings`, both with a real foreign key to `users.id` and `ON DELETE CASCADE`, so deleting a user erases their memories automatically. Unique index on `(user_id, key)`.                                                                                        |
+| 77  | `feat(memory): add memory store trait and diesel impl` | `MemoryStore` with `list(user_id)`, `record(user_id, key, value)`, `forget(user_id, key)`, and `wipe(user_id)`. `record` upserts on the unique key using the `on_conflict(DuplicatedKeys)` pattern documented at `operations.rs:33`. A per-user memory cap prevents unbounded growth.                         |
+| 78  | `feat(memory): add memory opt in gating`               | Every read and write path checks `ai_user_settings.memory_opt_in` first and returns empty or a clear refusal when it is unset. Default is off. Enforced **in the store, not the caller**, so no future caller can forget.                                                                                     |
+| 79  | `feat(tools): add remember and forget tools`           | `remember` taking `key` and `value`, and `forget` taking `key`. Tier `Safe`, but both refuse when the invoker has not opted in, returning a `ToolOutcome::Err` telling the model to point at the memory panel. There is deliberately no recall tool — retrieval is the host's job, not the model's.           |
+| 80  | `feat(ai): add memory injection into system prompts`   | Load the invoker's memories before the turn and render them into the system prompt through a `{{memories}}` template variable. Personas with `MemoryPolicy::User` get them, others do not. Keeping retrieval out of the model's hands makes it predictable and costs one query instead of a whole round trip. |
 
-## Phase 12 — Twitch adapter
-
-No message editing on Twitch, so the rendering strategy is completely different: buffer, then chunk.
-
-| #   | Commit                                            | Description                                                                                                                                                                                                                                                                                                  |
-| --- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 86  | `feat(twitch): add ai chat message handler`       | `munibot_twitch/src/handlers/ai.rs` implementing `TwitchMessageHandler`, returning `Ok(true)` only when it handled the message. Triggers on a `munibot,` prefix or a configured command. Conversation scope is the channel, so chat shares one context.                                                      |
-| 87  | `feat(twitch): add buffered response chunking`    | Collect the full response, then split at 480 characters on sentence and word boundaries, sending sequentially with a small delay. Cap the total at a configurable number of messages so a long answer cannot flood a channel.                                                                                |
-| 88  | `feat(twitch): add slow response acknowledgement` | If no response has arrived within roughly three seconds, send a short holding message. Without it, chat assumes the bot is broken and asks again, which doubles the cost.                                                                                                                                    |
-| 89  | `feat(twitch): add per channel ai enablement`     | Only respond in channels that have opted in. Replaces the hardcoded `muni_corn` gate at `munibot_twitch/src/bot.rs:144` for this handler specifically, using a per-channel configuration lookup with an in-memory cache that is invalidated on change, avoiding the stale-cache bug documented in the notes. |
-| 90  | `feat(twitch): register ai handler in the bot`    | Add the handler to `TwitchHandlerCollection` in `munibot_twitch/src/bot.rs:37`, ordered after existing command handlers so it never shadows a real command.                                                                                                                                                  |
+Phase 8's Discord `/memory` commands are **not** part of this plan any more. Memory management moves
+to the web panel in phase 13, where it can show everything at once instead of paginating through
+ephemeral replies.
 
 ---
 
-## Phase 13 — API and web interface
+## Phase 11 — the AI web API
 
-Follows the logging settings vertical slice, which is the newest and most complete example in the
-repository. Read `docs/notes/gui-configuration-research.md` before starting: it documents an
-authorization gap where `HasPermission::has` always returns `false`, and the reason channel listing
-needs the bot token rather than the user's OAuth token.
+The structural phase: make `Ai` reachable from the GUI server, define the wire types, and expose a
+streamed turn. Nothing here renders anything.
 
-| #   | Commit                                                   | Description                                                                                                                                                                                                                                     |
-| --- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 91  | `feat(db): add ai guild settings columns`                | Add `ai_enabled`, `ai_default_persona`, and `ai_channel_mode` to `guild_configs`, plus an `ai_channel_allowlist` table. Use the whole-row upsert pattern at `operations.rs:33`, never `REPLACE INTO`, which previously wiped unrelated columns. |
-| 92  | `feat(api): add ai settings data transfer objects`       | Wire types in `munibot_api/src/settings/ai.rs` plus an `AiSettingsError` with an `AsStatusCode` impl, mirroring `munibot_api/src/settings/error.rs:12`. Types before the functions that use them.                                               |
-| 93  | `feat(api): add ai settings server functions`            | `get_ai_settings` and `set_ai_settings` using the `#[server(name: Type)]` extractor pattern documented at `docs/gui.md:72`. Both call the guild-admin check at `munibot_api/src/auth/guild.rs:20` before touching the database.                 |
-| 94  | `feat(api): add ai usage summary server function`        | `get_ai_usage(guild_id, range)` aggregating `ai_usage` into totals by day, model, and persona. Guild-admin gated. Aggregate in SQL, not in Rust, or this gets slow within a month.                                                              |
-| 95  | `feat(gui): add ai settings page`                        | A settings page under the existing guild settings layout: an enable toggle, a default persona selector fed from the registry, and a channel allowlist editor. Registered in the route table at `munibot_gui/src/app.rs:37`.                     |
-| 96  | `feat(gui): add ai usage dashboard`                      | Spend over time, token totals, and a breakdown by persona and model. **This is the panel that keeps the project affordable**, so it lands before public exposure rather than after.                                                             |
-| 97  | `feat(api): add conversation transcript server function` | `get_ai_transcript(conversation_id)` returning messages with their tool calls, guild-admin gated, with the bot's own reasoning blocks stripped. Paginated from the start.                                                                       |
-| 98  | `feat(gui): add conversation transcript viewer`          | Render a transcript with tool calls collapsible and their inputs and outputs inspectable. The fastest way to understand why a persona behaved oddly.                                                                                            |
-| 99  | `feat(gui): add persona catalogue page`                  | A read-only listing of configured personas with descriptions, models, and tool allowlists. Makes the configuration legible without shell access, and doubles as user-facing documentation for what munibot can do.                              |
+Read `docs/gui.md:72-100` before starting. The `#[server(name: Type)]` extractor pattern hoists
+extractor arguments out of the client stub entirely, which is why the attribute may name types
+(`axum`, `crate::auth::server`) that do not exist in the wasm build — **as long as they are referenced
+by full path inside the attribute and never through a top-level `use`**.
+
+| #   | Commit                                                                     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 81  | `build(api): add ai and stream dependencies to the api crate`              | `munibot_ai` as a `server`-feature-only optional dependency, mirroring how `munibot_core` is treated at `munibot_api/Cargo.toml:19`. `futures` is added **unconditionally**, since the stream payload types have to compile for wasm too.                                                                                                                                                                                                                                                                                             |
+| 82  | `refactor(munibot): construct the ai service independently of bot startup` | Hoist `Ai` construction out of the `MUNIBOT_DISABLE_BOTS` guard in `munibot/src/main.rs:60-73`, and pass `Option<Arc<Ai>>` into `munibot_gui::server::run` so it can be layered as an `Extension` beside the pool and Discord config at `munibot_gui/src/server.rs:57-58`. **Prerequisite for developing any of phase 12 locally**, since the documented GUI workflow sets that variable and would otherwise leave the chat page with no service behind it.                                                                           |
+| 83  | `feat(api): add chat wire types`                                           | `munibot_api/src/chat/`: `ConversationSummary`, `ChatMessage`, `ChatRole`, `ChatEvent`, and `PersonaSummary`. `ChatEvent` is the serializable mirror of `HarnessEvent`, which derives only `Debug` and carries non-serializable payloads. The `HarnessEvent -> ChatEvent` mapping is a pure function and is unit-tested directly — the one genuinely testable part of this phase.                                                                                                                                                     |
+| 84  | `feat(api): add chat error type`                                           | `ChatError` with an `AsStatusCode` impl and `#[cfg(feature = "server")]`-gated `From` impls for `munibot_ai::AiError`, `anyhow::Error`, and `diesel::result::Error`, mirroring `munibot_api/src/settings/error.rs:12-87`. Variants are distinguishable so the GUI can match structurally rather than only printing a string, the way `SettingsError::BotNotInGuild` drives its own UI at `guild_settings/logging.rs:108`.                                                                                                             |
+| 85  | `feat(api): add conversation server functions`                             | `list_conversations`, `create_conversation`, `get_conversation_messages` (paginated), `rename_conversation`, `archive_conversation`. Each resolves the caller via `auth.current_user` and **refuses any conversation whose `owner_user_id` is not theirs** — ownership is checked per call, never inferred from possession of an id. Deliberately _not_ guild-gated: `require_guild_admin` costs a live Discord HTTP round trip per call (`munibot_api/src/auth/guild.rs:14-19`), which a chat surface must not pay on every message. |
+| 86  | `feat(api): add message submission server function`                        | `send_message(conversation_id, text, persona)` persisting the user's message and returning a turn identifier. Split from streaming on purpose: SSE is a `GET`, and putting a pasted code block in a query string would hit URL length limits exactly when the coding use case needs it most.                                                                                                                                                                                                                                          |
+| 87  | `feat(api): add chat streaming endpoint`                                   | `#[get("/api/ai/chat/stream", auth: ..., ai: ...)]` returning `ServerEvents<ChatEvent>` built with `ServerEvents::from_stream` over `Ai::turn_streamed`. `#[server]` hard-codes `POST`, so a `#[get]` route is required; the `name: Type` extractor syntax parses identically on it. SSE rather than a websocket: the client sends exactly one message per turn, so duplex buys nothing, while SSE reconnects trivially and is readable in devtools.                                                                                  |
+| 88  | `feat(api): add persona and memory server functions`                       | `list_personas` so the picker and the catalogue page share one source of truth, plus `get_memory_settings`, `set_memory_opt_in`, `list_memories`, `forget_memory`, and `wipe_memories` for the phase 13 panel.                                                                                                                                                                                                                                                                                                                        |
+
+---
+
+## Phase 12 — the chat page
+
+munibot's own page, not a settings screen. A new top-level route rather than something nested under
+`Dashboard`, whose sidebar is guild-scoped and irrelevant here.
+
+Follow the vertical slice at `munibot_gui/src/pages/guild_settings/logging.rs:19-134`: `use_resource`
+per read, `use_signal` for form state, `use_effect` to seed from a resolved resource, `spawn` for
+mutations, and an exhaustive `match` on `&*resource.read()` assigned to a `content` binding. Styling is
+tailwind 4 plus daisyUI 5; the five components in `munibot_gui/src/components/settings.rs` are the
+entire existing design system, so chat primitives are new ground and belong in
+`munibot_gui/src/components/chat/`.
+
+| #   | Commit                                                | Description                                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 89  | `feat(gui): add chat route and layout`                | `Route::Chat` and `Route::ChatConversation { conversation_id }` in the table at `munibot_gui/src/app.rs:37`, under `MainLayout` and `HomeLayout` but **not** under `Dashboard`. A `ChatLayout` holding the conversation sidebar and an `Outlet`. Use the `#[route("...", Component)]` third-argument form already used at `app.rs:52` if a variant name would collide with a `munibot_api` type. |
+| 90  | `feat(gui): add conversation sidebar`                 | The conversation list from `list_conversations`, newest first, with new/rename/archive. Selecting one navigates to `ChatConversation`. An empty state that invites a first conversation rather than showing a bare list.                                                                                                                                                                         |
+| 91  | `feat(gui): add message list with markdown rendering` | Render assistant messages as markdown via `pulldown-cmark` (pure Rust, compiles to wasm) into `rsx!`. **Code blocks are the centrepiece of the programming use case**: language label, copy button, and syntax highlighting applied client-side by a CDN highlighter, following the `@phosphor-icons` CDN precedent at `app.rs:17` rather than shipping a full grammar set into the wasm bundle. |
+| 92  | `feat(gui): add message composer`                     | A growing textarea with enter-to-send and shift-enter for a newline, disabled while a turn is in flight, that keeps its draft when navigating away and back. Pasting a large code block has to feel unremarkable.                                                                                                                                                                                |
+| 93  | `feat(gui): add streaming response rendering`         | Consume `ServerEvents<ChatEvent>` and append text deltas to the in-flight assistant message as they arrive. The whole point of the SSE work in phase 11: munibot should feel like he is thinking with you, not batch-processing you.                                                                                                                                                             |
+| 94  | `feat(gui): add tool activity display`                | Render `ChatEvent::ToolStarted`/`ToolFinished` as a live, collapsible strip above the reply: tool name, elapsed time, and inspectable result once finished. Richer than Discord's single italic line, because the web has room for it — and it is what makes a twenty-second research turn legible instead of suspicious.                                                                        |
+| 95  | `feat(gui): add persona picker`                       | Choose the persona per conversation from `list_personas`, defaulting to the companion. **This replaces automatic routing** for the web: a visible, user-controlled choice is better than an invisible personality switch, especially for a companion.                                                                                                                                            |
+| 96  | `feat(gui): add chat error and retry states`          | Match `ChatError` structurally: signed-out prompts a sign-in, a budget refusal explains itself kindly, a provider outage offers a retry that resends the same message without duplicating it. A failed turn must never lose what the user typed.                                                                                                                                                 |
+
+---
+
+## Phase 13 — the companion himself
+
+The phase that earns the title. Everything before this makes munibot work; this makes him _munibot_.
+
+| #   | Commit                                                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 97  | `feat(persona): give the companion research tools`       | Grant the companion persona `web_search` and `web_fetch`, and teach `companion.md` to look things up mid-conversation. **The single highest-leverage change in this milestone**: a companion who can answer "wait, is that actually true?" without being swapped for a different persona is the difference between a chat toy and a useful friend. Specialist personas become an opt-in refinement rather than a requirement. |
+| 98  | `feat(persona): refine the companion prompt for the web` | Rework `companion.md` for a long-lived, named, one-to-one conversation: no channel context, memory it can reference, and a much longer horizon than a Discord reply. States plainly what it does and does not remember. **This file is the product.** Budget real time for it.                                                                                                                                                |
+| 99  | `feat(ai): add crisis recognition`                       | **Moved forward from milestone 5.** A small-model classifier for self-harm, suicidal ideation, abuse disclosure, and acute distress, run on inbound messages for personas with `MemoryPolicy::User`. Returns a severity, not a boolean, and is tuned to over-trigger, because the asymmetry of harm is enormous. A companion people actually confide in needs this _before_ he is public, not in a hardening pass afterwards. |
+| 100 | `feat(ai): add crisis response path with resources`      | **Moved forward from milestone 5.** On a positive signal, bypass the normal turn and respond from a reviewed, non-generated template: acknowledge, do not diagnose, do not counsel, surface real region-appropriate resources from a configurable list. **Write this with care and never let a model improvise it.**                                                                                                          |
+| 101 | `feat(gui): add memory management panel`                 | See, edit, delete, and wipe everything munibot remembers, plus the opt-in toggle itself. The visible half of the opt-in promise from phase 10 — an opt-in you cannot audit is not really consent.                                                                                                                                                                                                                             |
+| 102 | `feat(ai): add conversation title generation`            | Name a conversation from its first exchange with a cheap, hard-capped single-iteration call, leaving the title user-editable. A sidebar full of "new conversation" is unusable within a day.                                                                                                                                                                                                                                  |
+| 103 | `feat(gui): add persona catalogue page`                  | A readable listing of configured personas with descriptions, models, and what each can do. Doubles as user-facing documentation for the specialist personas the picker offers.                                                                                                                                                                                                                                                |
+
+---
+
+## Phase 14 — affordability
+
+A public web chat is a far larger cost surface than a Discord bot in a handful of guilds: no invite
+gate, no channel gate, and one signed-in stranger can open unlimited conversations. Rate limiting and
+spend caps therefore **move forward from milestone 5** to land with the interface that exposes them.
+
+| #   | Commit                                                 | Description                                                                                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 104 | `feat(db): add ai rate limit and spend cap tables`     | Migration for `ai_rate_limits` (scope, window start, request count, token count) and `ai_spend_caps` (scope, period, limit micros, current micros, reset at). Scope is a discriminated key covering user, guild, and global, so one mechanism serves every level.                                    |
+| 105 | `feat(ai): add rate limiter with sliding window`       | A sliding-window limiter over the database with a small in-memory cache, checked **before** the provider call. Separate limits for requests, tokens, and concurrent turns per scope. Exceeding one returns a friendly lowercase refusal naming when the window resets, per the style in `AGENTS.md`. |
+| 106 | `feat(ai): add spend cap enforcement with kill switch` | Track spend per user and globally against configured caps. At 80 percent, warn in the log and the usage panel. At 100 percent, refuse new turns for that scope while letting in-flight ones finish. The global cap is checked first, since it is the last defence against a runaway loop.            |
+| 107 | `feat(api): add usage summary server functions`        | `get_my_usage` for the signed-in user and `get_global_usage` for an operator. Aggregate in SQL, not in Rust, or this is slow within a month.                                                                                                                                                         |
+| 108 | `feat(gui): add usage and spend panel`                 | What you have spent, against what you are allowed to spend, for the user themselves rather than only an operator. Showing people their own cost is both honest and the cheapest possible abuse deterrent.                                                                                            |
 
 ---
 
 ## Definition of done
 
-- A conversation survives a restart with full context.
+- Signing in, opening the chat page, and talking to munibot works, with replies streaming in.
+- A conversation survives a restart with full context, and is still in the sidebar under its own name.
 - Long conversations compact themselves instead of erroring on context length.
-- Opting in, recording a fact, and having munibot use it next week works end to end.
-- `/memory wipe` removes everything, verifiably, through the transcript viewer.
-- Asking a coding question and then a feelings question routes to different personas, visibly.
-- The same conversation works on Twitch, chunked sensibly.
-- The usage dashboard shows real spend per guild.
+- Opting in, telling munibot something about yourself, and having him use it next week works end to
+  end — and the memory panel shows exactly what he kept.
+- Wiping memory removes everything, verifiably, from the same panel.
+- Asking the companion a factual question makes him search the web mid-conversation, visibly, without
+  changing persona.
+- Pasting a stack trace gets a useful answer with readable, copyable code blocks.
+- A rate limit or spend cap refuses a turn with a kind, specific message instead of a stack trace.
+- A simulated crisis message produces the reviewed template response, never a generated one.
+- `MUNIBOT_DISABLE_BOTS=1` still gives a fully working chat page locally.
 
 ## Deliberately deferred
 
-No sandbox, no repository access, no GitHub integration. Milestones 3 and 4.
+- **Automatic persona routing.** Superseded for the web by the explicit picker in commit 95, and made
+  largely unnecessary by giving the companion his own tools in commit 97. Revisit only if a real
+  surface appears where a user cannot choose.
+- **Twitch AI.** Removed from the plan. Twitch has no message editing, so it needs a completely
+  different buffered-chunking renderer, and it is not where the companion gets shown off.
+- **Further Discord AI investment.** Phase 8 shipped mention, reply, DM, `/ask`, `/persona`, and
+  `/reset`. It stays, unchanged, as a secondary surface.
+- **Sign-in beyond Discord OAuth.** The chat is Discord-OAuth-gated for now; additional providers move
+  to milestone 5 so the companion is not permanently tied to one account type.
+- **Sandbox, repository access, GitHub integration.** Milestones 3 and 4. The coder persona is limited
+  to explaining, reviewing, and debugging pasted code until then, which the prompt states plainly.
+- **Transcript viewer and guild AI settings.** Administrative rather than companion work; both move to
+  milestone 5.
