@@ -11,15 +11,19 @@ source of prompt text and architectural precedent.
 
 ## Milestone map
 
-| Milestone                                               | Outcome                                                    | Phases | Commits |
-| ------------------------------------------------------- | ---------------------------------------------------------- | ------ | ------- |
-| [1 — conversation](milestone-1-conversation.md)         | munibot holds a real conversation in Discord               | 0–8    | 1–66    |
-| [2 — chat product](milestone-2-chat-product.md)         | Memory, routing, Twitch, and a settings surface            | 9–13   | 67–99   |
-| [3 — sandbox](milestone-3-sandbox.md)                   | munibot reads, writes, and runs code in a container        | 14     | 100–115 |
-| [4 — autonomous development](milestone-4-autonomous.md) | munibot answers a GitHub issue with a working pull request | 15–17  | 116–151 |
-| [5 — hardening](milestone-5-hardening.md)               | Safe, affordable, and observable in public                 | 18     | 152–164 |
+| Milestone                                                    | Outcome                                                       | Phases | Commits |
+| ------------------------------------------------------------ | ------------------------------------------------------------- | ------ | ------- |
+| [1 — conversation](milestone-1-conversation.md)              | munibot holds a real conversation in Discord                  | 0–8    | 1–66    |
+| [2 — the companion on the web](milestone-2-web-companion.md) | A web chat page with persistence, memory, and real usefulness | 9–14   | 67–108  |
+| [3 — sandbox](milestone-3-sandbox.md)                        | munibot reads, writes, and runs code in a container           | 15     | 109–124 |
+| [4 — autonomous development](milestone-4-autonomous.md)      | munibot answers a GitHub issue with a working pull request    | 16–18  | 125–160 |
+| [5 — hardening](milestone-5-hardening.md)                    | Safe, affordable, and observable in public                    | 19     | 161–177 |
 
-Around 164 commits total. Each commit is one logical change that leaves the workspace compiling.
+Around 177 commits total. Each commit is one logical change that leaves the workspace compiling.
+
+Commit numbers are sequence labels, not promises. Milestone 1 already landed three commits its own
+table never planned for, and each milestone's internal numbering is rebased against reality when work
+on it actually begins.
 
 ## Guiding decisions
 
