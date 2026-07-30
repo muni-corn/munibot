@@ -34,6 +34,42 @@ diesel::table! {
 }
 
 diesel::table! {
+    ai_tool_calls (id) {
+        id -> Bigint,
+        conversation_id -> Nullable<Bigint>,
+        #[max_length = 64]
+        tool_name -> Varchar,
+        input -> Nullable<Text>,
+        output -> Nullable<Text>,
+        duration_ms -> Bigint,
+        #[max_length = 16]
+        status -> Varchar,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
+    ai_usage (id) {
+        id -> Bigint,
+        conversation_id -> Nullable<Bigint>,
+        user_id -> Nullable<Bigint>,
+        guild_id -> Nullable<Bigint>,
+        #[max_length = 32]
+        provider -> Varchar,
+        #[max_length = 128]
+        model -> Varchar,
+        #[max_length = 64]
+        persona_id -> Varchar,
+        input_tokens -> Bigint,
+        output_tokens -> Bigint,
+        cost_micros -> Bigint,
+        iterations -> Integer,
+        succeeded -> Bool,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     autodelete_timers (channel_id) {
         channel_id -> Bigint,
         guild_id -> Bigint,
@@ -127,12 +163,17 @@ diesel::table! {
 
 diesel::joinable!(ai_conversations -> users (owner_user_id));
 diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
+diesel::joinable!(ai_tool_calls -> ai_conversations (conversation_id));
+diesel::joinable!(ai_usage -> ai_conversations (conversation_id));
+diesel::joinable!(ai_usage -> users (user_id));
 diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     ai_conversations,
     ai_messages,
+    ai_tool_calls,
+    ai_usage,
     autodelete_timers,
     community_links,
     guild_configs,
