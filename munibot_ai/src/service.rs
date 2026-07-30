@@ -198,17 +198,35 @@ impl Ai {
 
     /// Looks a persona up by id, failing with a named error rather than
     /// panicking when an adapter names one that does not exist.
-    fn persona(&self, id: &PersonaId) -> Result<&Persona, AiError> {
-        self.personas
-            .get(id)
+    fn require_persona(&self, id: &PersonaId) -> Result<&Persona, AiError> {
+        self.persona(id)
             .ok_or_else(|| AiError::Config(format!("no persona named {id} :<")))
+    }
+
+    /// Looks a resolved persona up by id, for an adapter that wants to show
+    /// its description or display name without starting a turn.
+    pub fn persona(&self, id: &PersonaId) -> Option<&Persona> {
+        self.personas.get(id)
+    }
+
+    /// Every resolved persona, for populating a persona-selection command.
+    pub fn personas(&self) -> impl Iterator<Item = &Persona> {
+        self.personas.ids().filter_map(|id| self.personas.get(id))
+    }
+
+    /// The configured default persona's id, for an adapter deciding which
+    /// persona to use when a user has not named one explicitly - an
+    /// auto-triggered mention or direct message, rather than an explicit
+    /// `/ask persona:researcher`.
+    pub fn default_persona_id(&self) -> Option<&PersonaId> {
+        self.personas.default_persona().map(|persona| &persona.id)
     }
 
     /// Everything shared between [`Self::turn`] and [`Self::turn_streamed`]:
     /// persona lookup, provider resolution, conversation loading, context
     /// assembly, and system prompt rendering.
     async fn prepare(&self, req: &AiTurnRequest) -> Result<PreparedTurn, AiError> {
-        let persona = self.persona(&req.persona_id)?;
+        let persona = self.require_persona(&req.persona_id)?;
         let provider = self.providers.resolve(&persona.model)?;
 
         let conversation = self
@@ -520,6 +538,42 @@ mod tests {
 
         let result = ai.turn(request("companion", "hello")).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_default_persona_id_reflects_the_configured_default() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new());
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        assert_eq!(ai.default_persona_id(), Some(&PersonaId::new("companion")));
+    }
+
+    #[test]
+    fn test_persona_looks_up_a_resolved_persona_by_id() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new());
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let persona = ai
+            .persona(&PersonaId::new("companion"))
+            .expect("should resolve");
+        assert_eq!(persona.display_name, "Companion");
+    }
+
+    #[test]
+    fn test_persona_returns_none_for_an_unknown_id() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new());
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        assert!(ai.persona(&PersonaId::new("does-not-exist")).is_none());
+    }
+
+    #[test]
+    fn test_personas_lists_every_resolved_persona() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new());
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let ids: Vec<&PersonaId> = ai.personas().map(|persona| &persona.id).collect();
+        assert_eq!(ids, vec![&PersonaId::new("companion")]);
     }
 
     #[test]
