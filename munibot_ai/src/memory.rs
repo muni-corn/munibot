@@ -15,6 +15,7 @@ pub mod diesel_store;
 pub mod directory;
 pub mod in_memory;
 pub mod store;
+pub mod summarise;
 
 pub use context::assemble_context;
 pub use conversation::{Conversation, ConversationScope};
@@ -22,3 +23,4 @@ pub use diesel_store::DieselSessionStore;
 pub use directory::{ConversationDirectory, ConversationEntry};
 pub use in_memory::InMemorySessionStore;
 pub use store::SessionStore;
+pub use summarise::{CompactionPersona, CompactionSettings, Summariser, compact_if_needed};

@@ -15,7 +15,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
-    memory::{ConversationScope, SessionStore, assemble_context},
+    memory::{
+        CompactionSettings, ConversationScope, SessionStore, Summariser, assemble_context,
+        compact_if_needed,
+    },
     persona::{AiConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
     provider::{Provider, ProviderRegistry, ProviderResolver},
     tools::{ConversationId, RiskTier, ToolCtx, ToolRegistry},
@@ -89,6 +92,11 @@ pub struct Ai {
     tools: Arc<ToolRegistry>,
     sessions: Arc<dyn SessionStore>,
     providers: Arc<dyn ProviderSource>,
+    /// `None` until [`Self::with_summariser`] enables it. Without it, a
+    /// conversation simply keeps growing forever, bounded only by whatever a
+    /// `SessionStore` itself enforces (the in-memory store's message cap) -
+    /// exactly the behaviour every turn had before this existed.
+    compaction: Option<(Summariser, CompactionSettings)>,
 }
 
 impl Ai {
@@ -131,7 +139,20 @@ impl Ai {
             tools,
             sessions,
             providers,
+            compaction: None,
         }
+    }
+
+    /// Enables automatic conversation compaction.
+    ///
+    /// Checked before assembling context for any turn whose persona reads
+    /// memory (`MemoryPolicy::Conversation` or `User`), and a no-op below
+    /// `settings.threshold_tokens` - see [`compact_if_needed`]. Additive: a
+    /// service built without ever calling this behaves exactly as it did
+    /// before compaction existed.
+    pub fn with_summariser(mut self, summariser: Summariser, settings: CompactionSettings) -> Self {
+        self.compaction = Some((summariser, settings));
+        self
     }
 
     /// Runs one full turn, returning only once it has finished.
@@ -244,7 +265,7 @@ impl Ai {
         let persona = self.require_persona(&req.persona_id)?;
         let provider = self.providers.resolve(&persona.model)?;
 
-        let conversation = self
+        let mut conversation = self
             .sessions
             .load_or_create(&req.scope, &persona.id.0)
             .await?;
@@ -259,6 +280,31 @@ impl Ai {
         let history = match persona.memory {
             MemoryPolicy::None => History::from(vec![Message::user(req.message.clone())]),
             MemoryPolicy::Conversation | MemoryPolicy::User => {
+                if let Some((summariser, settings)) = &self.compaction {
+                    match compact_if_needed(
+                        summariser,
+                        self.sessions.as_ref(),
+                        &conversation,
+                        *settings,
+                        rough_token_estimate,
+                    )
+                    .await
+                    {
+                        Ok(Some(new_summary)) => conversation.summary = Some(new_summary),
+                        Ok(None) => {}
+                        // best-effort: a failed compaction should not break the turn - the
+                        // conversation simply stays uncompacted and gets another chance once it
+                        // grows past the threshold again next time
+                        Err(error) => {
+                            tracing::warn!(
+                                %error,
+                                conversation_id = conversation.id.0,
+                                "conversation compaction failed; continuing uncompacted"
+                            );
+                        }
+                    }
+                }
+
                 assemble_context(
                     self.sessions.as_ref(),
                     &conversation,
@@ -312,8 +358,11 @@ impl Ai {
 mod tests {
     use super::*;
     use crate::{
-        memory::InMemorySessionStore, persona::PersonaConfig, provider::MockProvider,
-        tools::Platform, types::ModelRef,
+        memory::{CompactionPersona, InMemorySessionStore},
+        persona::PersonaConfig,
+        provider::MockProvider,
+        tools::Platform,
+        types::ModelRef,
     };
 
     /// A [`ProviderSource`] that always returns the same fixed provider,
@@ -644,5 +693,103 @@ mod tests {
         // ProviderResolver to Ai::from_parts without an adapter
         fn assert_impl<T: ProviderSource>() {}
         assert_impl::<ProviderResolver>();
+    }
+
+    #[tokio::test]
+    async fn test_a_conversation_is_left_alone_without_a_summariser() {
+        // regression guard: every other test in this module builds an Ai with no
+        // summariser wired, so this is really asserting the default is inert
+        let provider = Arc::new(
+            MockProvider::new()
+                .respond_text("first")
+                .respond_text("second"),
+        );
+        let ai = ai_with(MemoryPolicy::Conversation, provider.clone());
+
+        ai.turn(request("companion", "message one")).await.unwrap();
+        ai.turn(request("companion", "message two")).await.unwrap();
+
+        let second_sent = &provider.requests()[1];
+        assert!(
+            second_sent.history.len() >= 3,
+            "with no summariser wired, nothing should ever be removed from history"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ai_compacts_a_conversation_automatically_when_wired_with_a_summariser() {
+        let chat_provider = Arc::new(
+            MockProvider::new()
+                .respond_text("first reply")
+                .respond_text("second reply"),
+        );
+        let compaction_provider = Arc::new(MockProvider::new().respond_text("condensed"));
+        let summariser = Summariser::new(
+            compaction_provider.clone(),
+            CompactionPersona::embedded(ModelRef::new("anthropic", "claude-haiku-4")),
+        );
+
+        let ai = ai_with(MemoryPolicy::Conversation, chat_provider.clone()).with_summariser(
+            summariser,
+            CompactionSettings {
+                threshold_tokens: 1,
+                keep_recent_messages: 1,
+            },
+        );
+
+        // first turn: only one message exists once the user's text is appended, which
+        // is never more than keep_recent_messages - nothing to compact yet
+        ai.turn(request("companion", "message one"))
+            .await
+            .expect("should succeed");
+        assert_eq!(
+            compaction_provider.request_count(),
+            0,
+            "a single message must never be summarised away"
+        );
+
+        // second turn: history now has three messages (the first exchange, plus this
+        // turn's new user message), comfortably over both thresholds
+        ai.turn(request("companion", "message two"))
+            .await
+            .expect("should succeed");
+        assert_eq!(
+            compaction_provider.request_count(),
+            1,
+            "growing past the threshold should trigger exactly one compaction call"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_failed_compaction_does_not_fail_the_turn() {
+        let chat_provider = Arc::new(
+            MockProvider::new()
+                .respond_text("first reply")
+                .respond_text("second reply"),
+        );
+        let compaction_provider =
+            Arc::new(MockProvider::new().respond_error(AiError::Provider("outage".to_string())));
+        let summariser = Summariser::new(
+            compaction_provider,
+            CompactionPersona::embedded(ModelRef::new("anthropic", "claude-haiku-4")),
+        );
+
+        let ai = ai_with(MemoryPolicy::Conversation, chat_provider).with_summariser(
+            summariser,
+            CompactionSettings {
+                threshold_tokens: 1,
+                keep_recent_messages: 1,
+            },
+        );
+
+        ai.turn(request("companion", "message one"))
+            .await
+            .expect("should succeed");
+        let outcome = ai.turn(request("companion", "message two")).await;
+
+        assert!(
+            outcome.is_ok(),
+            "a compaction failure must not surface as a failed turn"
+        );
     }
 }
