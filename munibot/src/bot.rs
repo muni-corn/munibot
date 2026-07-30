@@ -9,10 +9,10 @@ use munibot_ai::Ai;
 use munibot_core::{config::Config, db::establish_pool};
 use munibot_discord::{
     DiscordMessageHandlerCollection,
-    commands::{DiscordCommandProviderCollection, fox::FoxCommandProvider},
+    commands::{DiscordCommandProviderCollection, ai::AiCommandProvider, fox::FoxCommandProvider},
     handlers::{
-        bot_affection::BotAffectionProvider, dice::DiceHandler, economy::EconomyProvider,
-        greeting::GreetingHandler as DiscordGreetingHandler,
+        ai::AiChatHandler, bot_affection::BotAffectionProvider, dice::DiceHandler,
+        economy::EconomyProvider, greeting::GreetingHandler as DiscordGreetingHandler,
         magical::MagicalHandler as DiscordMagicalHandler,
         temperature::TemperatureConversionProvider, ventriloquize::VentriloquizeProvider,
     },
@@ -25,14 +25,16 @@ use tokio::sync::Mutex;
 use tracing::{Instrument, error, info, info_span, warn};
 
 /// Starts the discord integration as a background task, returning its join
-/// handle. `ai` is `None` when `ai.enabled` is false or unset.
+/// handle. `ai` is `None` when `ai.enabled` is false or unset, in which case
+/// the ai chat handler and its commands are skipped entirely rather than
+/// registered in a permanently-disabled state.
 pub fn start_discord(config: Config, ai: Option<Arc<Ai>>) -> tokio::task::JoinHandle<()> {
-    let discord_handlers: DiscordMessageHandlerCollection = vec![
+    let mut discord_handlers: DiscordMessageHandlerCollection = vec![
         Arc::new(Mutex::new(DiscordGreetingHandler)),
         Arc::new(Mutex::new(EconomyProvider)),
         Arc::new(Mutex::new(VoiceChannelGreeter)),
     ];
-    let discord_command_providers: DiscordCommandProviderCollection = vec![
+    let mut discord_command_providers: DiscordCommandProviderCollection = vec![
         Box::new(DiceHandler),
         Box::new(BotAffectionProvider),
         Box::new(DiscordMagicalHandler),
@@ -42,6 +44,11 @@ pub fn start_discord(config: Config, ai: Option<Arc<Ai>>) -> tokio::task::JoinHa
         Box::new(SimpleCommandProvider),
         Box::new(FoxCommandProvider),
     ];
+
+    if let Some(ai) = ai.clone() {
+        discord_handlers.push(Arc::new(Mutex::new(AiChatHandler::new(ai))));
+        discord_command_providers.push(Box::new(AiCommandProvider));
+    }
 
     // attach a root span so all events from within the discord integration
     // carry the "discord" context in the subscriber output

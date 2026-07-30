@@ -1,5 +1,10 @@
 #[cfg(feature = "server")]
+use std::sync::Arc;
+
+#[cfg(feature = "server")]
 use clap::Parser;
+#[cfg(feature = "server")]
+use munibot_ai::{Ai, memory::InMemorySessionStore, persona::AiConfig, tools::ToolRegistry};
 #[cfg(feature = "server")]
 use munibot_core::{config::Config, db::run_pending_migrations};
 #[cfg(feature = "server")]
@@ -53,10 +58,18 @@ async fn main() -> anyhow::Result<()> {
     // start the bots alongside the gui server, unless explicitly disabled for
     // local gui development (so `dx serve` reloads don't reconnect discord)
     if std::env::var("MUNIBOT_DISABLE_BOTS").is_err() {
-        // TODO(ai): construct a real Ai from AiConfig::load_from_file and share it
-        // here once the persona/tool/session wiring for it lands (milestone 1 phase
-        // 8 commit 66); every AI-touching command already handles None gracefully
-        munibot::bot::start(config.clone(), None).await;
+        let ai_config = AiConfig::load_from_file(&config_file)?;
+        let ai = if ai_config.enabled {
+            let tools = Arc::new(ToolRegistry::from_env());
+            let sessions: Arc<dyn munibot_ai::memory::SessionStore> =
+                Arc::new(InMemorySessionStore::new());
+            Some(Arc::new(Ai::new(&ai_config, tools, sessions)?))
+        } else {
+            info!("ai.enabled is false; skipping ai setup");
+            None
+        };
+
+        munibot::bot::start(config.clone(), ai).await;
     } else {
         info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }
