@@ -174,6 +174,24 @@ impl SessionStore for DieselSessionStore {
             .await
             .map_err(db_error)
     }
+
+    async fn compact(
+        &self,
+        conversation_id: ConversationId,
+        keep_recent: usize,
+        summary: String,
+    ) -> Result<(), AiError> {
+        let tokens = i32::try_from(rough_token_estimate(&summary)).unwrap_or(i32::MAX);
+        ai::compact_conversation(
+            &self.pool,
+            conversation_id.0 as i64,
+            keep_recent as i64,
+            &summary,
+            tokens,
+        )
+        .await
+        .map_err(db_error)
+    }
 }
 
 #[async_trait]

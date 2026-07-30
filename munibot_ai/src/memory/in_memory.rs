@@ -176,6 +176,32 @@ impl SessionStore for InMemorySessionStore {
         }
         Ok(())
     }
+
+    async fn compact(
+        &self,
+        conversation_id: ConversationId,
+        keep_recent: usize,
+        summary: String,
+    ) -> Result<(), AiError> {
+        let mut state = self.state.write().unwrap();
+
+        let Some(messages) = state.messages.get_mut(&conversation_id) else {
+            return Ok(());
+        };
+        if messages.len() <= keep_recent {
+            // nothing to summarise; a short conversation is left completely alone
+            return Ok(());
+        }
+
+        let cut = messages.len() - keep_recent;
+        messages.drain(0..cut);
+
+        if let Some(conversation) = state.conversations.get_mut(&conversation_id) {
+            conversation.summary = Some(summary);
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -447,5 +473,78 @@ mod tests {
             history.iter().next().map(Message::text),
             Some("later".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_compact_replaces_old_messages_with_a_summary() {
+        let store = InMemorySessionStore::new();
+        let conversation = store
+            .load_or_create(&scope("channel-1"), "companion")
+            .await
+            .unwrap();
+        for text in ["one", "two", "three", "four"] {
+            store
+                .append(conversation.id, Message::user(text))
+                .await
+                .unwrap();
+        }
+
+        store
+            .compact(conversation.id, 2, "one and two happened".to_string())
+            .await
+            .unwrap();
+
+        let history = store.history(conversation.id, None).await.unwrap();
+        let texts: Vec<_> = history.iter().map(Message::text).collect();
+        assert_eq!(
+            texts,
+            vec!["three".to_string(), "four".to_string()],
+            "only the most recent keep_recent messages should survive"
+        );
+
+        let reloaded = store
+            .load_or_create(&scope("channel-1"), "companion")
+            .await
+            .unwrap();
+        assert_eq!(reloaded.summary.as_deref(), Some("one and two happened"));
+    }
+
+    #[tokio::test]
+    async fn test_compact_on_a_conversation_at_or_under_keep_recent_is_a_noop() {
+        let store = InMemorySessionStore::new();
+        let conversation = store
+            .load_or_create(&scope("channel-1"), "companion")
+            .await
+            .unwrap();
+        store
+            .append(conversation.id, Message::user("only message"))
+            .await
+            .unwrap();
+
+        store
+            .compact(conversation.id, 5, "should never be written".to_string())
+            .await
+            .unwrap();
+
+        let history = store.history(conversation.id, None).await.unwrap();
+        assert_eq!(history.len(), 1, "a short conversation must be left alone");
+
+        let reloaded = store
+            .load_or_create(&scope("channel-1"), "companion")
+            .await
+            .unwrap();
+        assert_eq!(
+            reloaded.summary, None,
+            "a noop compaction must never overwrite the summary, even with nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_compact_on_an_unknown_conversation_does_not_panic() {
+        let store = InMemorySessionStore::new();
+        store
+            .compact(ConversationId(999), 2, "unused".to_string())
+            .await
+            .expect("compacting a conversation that was never created should be a harmless noop");
     }
 }

@@ -262,3 +262,54 @@ pub async fn clear_conversation(pool: &DbPool, conversation_id: i64) -> QueryRes
         .await?;
     Ok(())
 }
+
+/// Deletes every message older than the most recent `keep_recent`, and sets
+/// the conversation's summary to describe what was removed.
+///
+/// A conversation with `keep_recent` messages or fewer is left completely
+/// untouched: there is nothing to summarise, and this must never overwrite an
+/// existing summary with one describing nothing.
+pub async fn compact_conversation(
+    pool: &DbPool,
+    conversation_id: i64,
+    keep_recent: i64,
+    summary: &str,
+    summary_tokens: i32,
+) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+
+    // the seq of the oldest message still worth keeping - everything at or below
+    // it is what gets summarised away. absent entirely when the conversation has
+    // keep_recent messages or fewer, which is exactly when nothing should happen
+    let threshold: Option<i32> = ai_messages::table
+        .filter(ai_messages::conversation_id.eq(conversation_id))
+        .order(ai_messages::seq.desc())
+        .offset(keep_recent.max(0))
+        .limit(1)
+        .select(ai_messages::seq)
+        .first(&mut conn)
+        .await
+        .optional()?;
+
+    let Some(threshold) = threshold else {
+        return Ok(());
+    };
+
+    diesel::delete(
+        ai_messages::table
+            .filter(ai_messages::conversation_id.eq(conversation_id))
+            .filter(ai_messages::seq.le(threshold)),
+    )
+    .execute(&mut conn)
+    .await?;
+
+    diesel::update(ai_conversations::table.find(conversation_id))
+        .set((
+            ai_conversations::summary.eq(summary),
+            ai_conversations::summary_tokens.eq(summary_tokens),
+        ))
+        .execute(&mut conn)
+        .await?;
+
+    Ok(())
+}

@@ -59,4 +59,21 @@ pub trait SessionStore: Send + Sync {
     /// `/reset` should still resolve to the same conversation, just an
     /// empty one.
     async fn clear(&self, conversation_id: ConversationId) -> Result<(), AiError>;
+
+    /// Deletes every message older than the most recent `keep_recent`, and
+    /// sets `summary` to describe what was removed.
+    ///
+    /// A conversation with `keep_recent` messages or fewer is left completely
+    /// untouched - there is nothing to summarise, and calling this on a short
+    /// conversation must never overwrite an existing summary with one that
+    /// describes nothing. This is the primitive
+    /// [`crate::memory::compact_if_needed`] builds on; callers should
+    /// generally reach for that instead of this directly, since it is what
+    /// decides *whether* compaction is worth doing at all.
+    async fn compact(
+        &self,
+        conversation_id: ConversationId,
+        keep_recent: usize,
+        summary: String,
+    ) -> Result<(), AiError>;
 }
