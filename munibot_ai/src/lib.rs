@@ -20,9 +20,11 @@ pub mod harness;
 pub mod memory;
 pub mod persona;
 pub mod provider;
+pub mod service;
 pub mod tools;
 pub mod types;
 
+pub use service::{Ai, AiTurnRequest};
 pub use types::{
     AiError, CompletionRequest, CompletionResponse, ContentBlock, Cost, History, Image,
     ImageSource, Message, ModelParams, ModelRef, ModelRefError, Role, StopReason, StreamEvent,
