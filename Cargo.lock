@@ -4524,6 +4524,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "dotenvy",
+ "futures",
  "humantime",
  "humantime-serde",
  "munibot_ai",

@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use munibot_ai::{
     Ai, AiTurnRequest,
     memory::ConversationScope,
-    persona::{OutputLimits, filter_output},
     tools::{Platform, RiskTier},
 };
 use poise::serenity_prelude::{Context, FullEvent, UserId};
@@ -14,11 +13,11 @@ use tracing::warn;
 use crate::{
     DiscordFrameworkContext,
     handler::{DiscordEventHandler, DiscordHandlerError},
+    handlers::ai::render::render_streamed_reply,
     utils::display_name_from_message,
 };
 
-/// Discord's own hard cap on a single message's content length.
-const DISCORD_MESSAGE_LIMIT: usize = 2000;
+pub mod render;
 
 /// No per-guild or per-role permission tiering exists yet for AI chat - a
 /// later milestone's concern. Every Discord invocation is granted the same
@@ -111,19 +110,15 @@ impl DiscordEventHandler for AiChatHandler {
         // a failed turn gets a friendly in-channel reply rather than propagating: the
         // dispatch loop that calls this handler only logs a propagated error, and a
         // user watching the channel deserves to know something happened at all
-        let reply = match self.ai.turn(request).await {
-            Ok(outcome) => outcome.text.unwrap_or_else(|| "...".to_string()),
-            Err(error) => {
-                warn!(%error, "ai turn failed");
-                "something went wrong on my end, sorry :<".to_string()
-            }
-        };
-        let filtered = filter_output(&reply, OutputLimits::new(DISCORD_MESSAGE_LIMIT));
-
-        msg.channel_id
-            .say(&context.http, filtered)
-            .await
-            .map_err(|error| DiscordHandlerError::from_display(self.name(), error))?;
+        if let Err(error) =
+            render_streamed_reply(&context.http, msg.channel_id, &self.ai, request).await
+        {
+            warn!(%error, "ai turn failed to start");
+            msg.channel_id
+                .say(&context.http, "something went wrong on my end, sorry :<")
+                .await
+                .map_err(|error| DiscordHandlerError::from_display(self.name(), error))?;
+        }
 
         Ok(())
     }

@@ -16,6 +16,7 @@ decancer.workspace = true
 diesel.workspace = true
 diesel-async.workspace = true
 dotenvy.workspace = true
+futures.workspace = true
 humantime.workspace = true
 humantime-serde.workspace = true
 tracing.workspace = true
