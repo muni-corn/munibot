@@ -23,6 +23,32 @@ pub enum Platform {
     Web,
 }
 
+impl Platform {
+    /// The stable string this platform is stored as in the database.
+    ///
+    /// Distinct from [`Display`](std::fmt::Display), which is prose for a
+    /// system prompt and renders `Web` as "the web" - fine to read, useless as
+    /// a key. Same reasoning as [`crate::types::Role::as_key`]: persisted
+    /// strings should not move when a display string is reworded.
+    pub fn as_key(&self) -> &'static str {
+        match self {
+            Self::Discord => "discord",
+            Self::Twitch => "twitch",
+            Self::Web => "web",
+        }
+    }
+
+    /// Parses a platform back from its stored string.
+    pub fn from_key(text: &str) -> Option<Self> {
+        match text {
+            "discord" => Some(Self::Discord),
+            "twitch" => Some(Self::Twitch),
+            "web" => Some(Self::Web),
+            _ => None,
+        }
+    }
+}
+
 impl std::fmt::Display for Platform {
     /// A human-readable form, for rendering into a persona's `{{platform}}`
     /// system prompt variable - "you're talking with muni on Discord" reads
@@ -174,6 +200,20 @@ mod tests {
     fn test_platform_displays_a_human_readable_name() {
         assert_eq!(Platform::Discord.to_string(), "Discord");
         assert_eq!(Platform::Twitch.to_string(), "Twitch");
+        assert_eq!(Platform::Web.to_string(), "the web");
+    }
+
+    #[test]
+    fn test_platform_key_round_trips_for_every_variant() {
+        for platform in [Platform::Discord, Platform::Twitch, Platform::Web] {
+            assert_eq!(Platform::from_key(platform.as_key()), Some(platform));
+        }
+    }
+
+    #[test]
+    fn test_platform_key_is_not_the_display_string() {
+        // "the web" reads well in a prompt and is useless as a database key
+        assert_eq!(Platform::Web.as_key(), "web");
         assert_eq!(Platform::Web.to_string(), "the web");
     }
 }
