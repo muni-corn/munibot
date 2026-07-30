@@ -4,6 +4,14 @@ munibot is gaining a full agent harness: a provider-agnostic, tool-using, multi-
 that serves casual conversation, emotional support, creative writing, deep research, and autonomous
 software development.
 
+munibot is **a companion first**, and supremely useful second. The ordering matters: he earns the
+title of the universe's most lovable bot by being someone worth talking to, and keeps it by also being
+genuinely good at programming and research. Where those two goals compete, the companion wins.
+
+His **primary surface is munibot's own web chat page**, because that is where a persistent
+conversation list, streamed replies, rendered code, visible tool work, and an auditable memory panel
+can all exist at once. Discord is a secondary surface that stops at what milestone 1 built.
+
 This plan supersedes the `municode` project. Everything `municode` planned is absorbed here: the
 provider-agnostic LLM client, the tool suite, the agent loop, the container sandbox, and the
 multi-agent pipeline that turns an issue into a pull request. `municode` remains useful only as a
@@ -23,7 +31,7 @@ Around 177 commits total. Each commit is one logical change that leaves the work
 
 Commit numbers are sequence labels, not promises. Milestone 1 already landed three commits its own
 table never planned for, and each milestone's internal numbering is rebased against reality when work
-on it actually begins.
+on it actually begins — so treat the ranges for milestones 3 through 5 as approximate until then.
 
 ## Guiding decisions
 
@@ -37,8 +45,9 @@ on it actually begins.
 | Sandbox               | Rootless podman through `bollard`, tools over a Unix socket | Strong isolation for untrusted generated code, and it matches how the deployment already works.                                                                                                                                                                                                         |
 | Search                | Exa                                                         | Neural search with content extraction in one API, designed for model consumption.                                                                                                                                                                                                                       |
 | Forge integration     | A proper GitHub App                                         | Per-repository installation, scoped permissions, far better rate limits, and a real bot identity on pull requests. Worth the extra setup over a token.                                                                                                                                                  |
-| Routing               | Sticky auto-router with explicit override                   | The router runs once per conversation rather than once per message, so follow-ups cost nothing extra.                                                                                                                                                                                                   |
-| Memory                | Opt-in per user, with full user control                     | `remember` and `forget` tools, plus commands to list, delete, and wipe. Privacy is a hard requirement on a public bot.                                                                                                                                                                                  |
+| Primary surface       | munibot's own web chat page                                 | A conversation list, streamed replies, rendered code, visible tool activity, and an auditable memory panel need room that a chat platform does not give. Discord stays as a secondary surface at milestone 1's feature set; Twitch AI is dropped.                                                       |
+| Persona selection     | A visible picker, plus a companion who has his own tools    | An invisible personality switch is actively bad for a companion, and giving the companion `web_search`/`web_fetch` removes most of the reason to switch at all. The sticky auto-router is deferred rather than built — see milestone 2's deferred list.                                                 |
+| Memory                | Opt-in per user, with full user control                     | `remember` and `forget` tools, plus a web panel to list, edit, delete, and wipe. An opt-in you cannot audit is not really consent, so the panel ships in the same milestone as the tools.                                                                                                               |
 
 ## Crate architecture
 
@@ -107,9 +116,13 @@ binary that runs inside a container an attacker's generated code can reach.
 
 Platform adapters live in the crates that already own those platforms:
 
-- `munibot_discord/src/handlers/ai.rs` and `munibot_discord/src/commands/ai.rs`
-- `munibot_twitch/src/handlers/ai.rs`
-- `munibot_api/src/server_fns/ai/` and `munibot_gui/src/pages/ai/`
+- **`munibot_api/src/chat/` and `munibot_gui/src/pages/chat/` — the primary surface.** Neither crate
+  depends on `munibot_ai` today, and `Arc<Ai>` is currently built inside `munibot`'s bot-startup guard
+  rather than being reachable from the GUI server; milestone 2 phase 11 fixes both.
+- `munibot_discord/src/handlers/ai.rs` and `munibot_discord/src/commands/ai.rs` — secondary, frozen at
+  milestone 1's feature set.
+- `munibot_twitch/` gets no AI adapter. Twitch cannot edit messages, so it needs an entirely separate
+  buffered-chunking renderer, and it is not a surface where a companion is worth showing off.
 
 ### Workspace layout
 
@@ -213,13 +226,17 @@ lose money in this design, so budget enforcement lands in phase 4, well before p
 ### Output filtering
 
 Responses pass through mention stripping, length caps, and `decancer` before they reach a platform.
+The web surface applies its own rendering rules instead: markdown is rendered rather than escaped, so
+the sanitisation boundary there is the markdown renderer, not `filter_output`.
 
 ### Duty of care
 
-The emotional-support persona needs more than a friendly prompt. Phase 17 adds an explicit crisis
-path: a classifier that recognises self-harm and acute distress, a prompt instruction that forbids
-the model from handling it alone, and a response that surfaces real resources. This is a
-requirement, not a nice-to-have.
+The companion persona needs more than a friendly prompt. **Milestone 2 phase 13** adds an explicit
+crisis path: a classifier that recognises self-harm and acute distress, a prompt instruction that
+forbids the model from handling it alone, and a reviewed, never-generated response that surfaces real
+resources. This is a requirement, not a nice-to-have, and it moved forward out of the hardening
+milestone precisely because a companion-first bot is one people will actually confide in — that has to
+be handled before he is public, not after.
 
 ## Database schema
 
@@ -227,6 +244,7 @@ All new tables key users by the internal `users.id`, with a real foreign key.
 
 ```
 ai_conversations   (id, platform, scope_key, persona_id, summary, summary_tokens,
+                    owner_user_id NULL, title NULL, archived_at NULL,
                     created_at, last_active_at)
 ai_messages        (id, conversation_id, seq, role, content JSON, token_count, created_at)
 ai_memories        (id, user_id, key, value, created_at, updated_at)
@@ -234,10 +252,17 @@ ai_usage           (id, conversation_id, guild_id, user_id, provider, model,
                     input_tokens, output_tokens, cost_micros, created_at)
 ai_tool_calls      (id, conversation_id, tool_name, input JSON, output JSON,
                     duration_ms, status, created_at)
+ai_rate_limits     (scope, window_start, request_count, token_count)
+ai_spend_caps      (scope, period, limit_micros, current_micros, reset_at)
 ai_pipelines       (id, forge, repo, issue_number, state, branch, created_at, updated_at)
 ai_pipeline_events (id, pipeline_id, seq, event JSON, created_at)
 ai_user_settings   (user_id, memory_opt_in, created_at, updated_at)
 ```
+
+`ai_conversations.owner_user_id`, `title`, and `archived_at` exist for the web surface: a web
+conversation belongs to one person and needs a name in a sidebar, while a Discord channel's
+conversation has neither. They are `NULL` for channel-scoped conversations, and `owner_user_id` is a
+real foreign key with `ON DELETE CASCADE` so deleting a user takes their conversations with it.
 
 `docs/notes/gui-configuration-research.md` documents a real trap here: `linked_accounts.user_id`
 holds the internal `users.id`, while `guild_wallets.user_id` holds a raw Discord snowflake with no
