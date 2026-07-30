@@ -15,7 +15,7 @@ use std::{future::Future, sync::Arc};
 pub use budget::{Budget, BudgetTracker};
 pub use event::HarnessEvent;
 use futures::{StreamExt, stream::BoxStream};
-pub use turn::{HandoffSchema, TurnOutcome, TurnRequest};
+pub use turn::{HandoffSchema, TurnOutcome, TurnRequest, TurnUsage};
 pub use validate::validate_tool_arguments;
 
 use crate::{
@@ -51,6 +51,43 @@ impl Harness {
     /// covers the loop's basic shape, tool dispatch and argument
     /// validation, and general budget enforcement.
     pub async fn run_turn(&self, request: TurnRequest) -> Result<TurnOutcome, AiError> {
+        self.run_turn_recording_usage(request).await.0
+    }
+
+    /// Runs one full turn exactly as [`Self::run_turn`] does, additionally
+    /// returning what was spent **regardless of whether the turn succeeded**.
+    ///
+    /// `TurnOutcome` already carries usage and cost on the success path;
+    /// [`TurnUsage`] exists for the failure path; a turn that errors on its
+    /// ninth iteration still spent the first eight, and a caller recording
+    /// cost (an `ai_usage` row, say) needs that even when the turn itself
+    /// failed. `run_turn` is a plain wrapper over this that discards the
+    /// second half of the tuple, so its own behaviour is unchanged.
+    pub async fn run_turn_recording_usage(
+        &self,
+        request: TurnRequest,
+    ) -> (Result<TurnOutcome, AiError>, TurnUsage) {
+        let mut tracker = BudgetTracker::new(request.budget.clone());
+        let result = self.run_turn_inner(&request, &mut tracker).await;
+        let usage = TurnUsage {
+            usage: tracker.usage(),
+            cost: tracker.cost(),
+            iterations: tracker.iterations(),
+        };
+        (result, usage)
+    }
+
+    /// The loop body shared by [`Self::run_turn_recording_usage`] and, through
+    /// it, [`Self::run_turn`].
+    ///
+    /// Takes `tracker` by mutable reference rather than owning it, so it
+    /// keeps accumulating right up to whatever point this returns - including
+    /// an early `Err` - and the caller can still read it afterward.
+    async fn run_turn_inner(
+        &self,
+        request: &TurnRequest,
+        tracker: &mut BudgetTracker,
+    ) -> Result<TurnOutcome, AiError> {
         let mut tool_schemas = self
             .tools
             .schemas_for(&request.tools, request.ctx.granted_tier);
@@ -66,7 +103,6 @@ impl Harness {
         }
 
         let mut history = request.history.clone();
-        let mut tracker = BudgetTracker::new(request.budget.clone());
         let mut tool_retries = 0usize;
         let mut last_text = String::new();
 
@@ -74,7 +110,7 @@ impl Harness {
             // don't start another round trip once a prior iteration already spent the
             // budget
             if let Err(reason) = tracker.check() {
-                return Ok(Self::truncated_outcome(last_text, &tracker, &reason));
+                return Ok(Self::truncated_outcome(last_text, tracker, &reason));
             }
             if request.ctx.is_cancelled() {
                 return Err(AiError::Cancelled);
@@ -102,7 +138,7 @@ impl Harness {
 
             // this iteration alone may have just spent what was left
             if let Err(reason) = tracker.check() {
-                return Ok(Self::truncated_outcome(last_text, &tracker, &reason));
+                return Ok(Self::truncated_outcome(last_text, tracker, &reason));
             }
 
             if !response.stop_reason.wants_another_iteration() {
@@ -137,8 +173,8 @@ impl Harness {
             if let Some(outcome) = self
                 .handle_tool_calls(
                     response.content,
-                    &request,
-                    &tracker,
+                    request,
+                    tracker,
                     &mut tool_retries,
                     &mut history,
                 )
@@ -653,6 +689,81 @@ mod tests {
             outcome.cost > crate::types::Cost::ZERO,
             "a priced model with real usage should produce a nonzero cost"
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_recording_usage_matches_the_outcome_on_success() {
+        let provider = Arc::new(MockProvider::new().respond(Ok(
+            crate::types::CompletionResponse::new(
+                vec![crate::types::ContentBlock::text("hi")],
+                crate::types::StopReason::EndTurn,
+                crate::types::Usage::new(100, 100),
+            ),
+        )));
+        let harness = Harness::new(provider, Arc::new(ToolRegistry::new()));
+
+        let (result, usage) = harness.run_turn_recording_usage(request()).await;
+        let outcome = result.expect("should succeed");
+
+        assert_eq!(usage.usage, outcome.usage);
+        assert_eq!(usage.cost, outcome.cost);
+        assert_eq!(usage.iterations, outcome.iterations);
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_recording_usage_reflects_spend_up_to_a_fatal_failure() {
+        // three tool-use responses in a row exhaust the default budget's
+        // max_tool_retries (3) via repeated invalid arguments, aborting the turn -
+        // but every one of those round trips still cost real usage first
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(SchemaedTool));
+
+        let mut builder = MockProvider::new();
+        for _ in 0..4 {
+            builder = builder.respond(Ok(crate::types::CompletionResponse::new(
+                vec![crate::types::ContentBlock::tool_use(
+                    "c1",
+                    "search",
+                    serde_json::json!({}),
+                )],
+                crate::types::StopReason::ToolUse,
+                Usage::new(10, 10),
+            )));
+        }
+        let provider: Arc<MockProvider> = Arc::new(builder);
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["search"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        let (result, usage) = harness.run_turn_recording_usage(turn_request).await;
+
+        assert!(result.is_err(), "the turn itself should still fail");
+        assert!(
+            usage.usage.input_tokens > 0,
+            "every round trip before the abort spent real usage, and that must not be lost just \
+             because the turn ultimately failed: {usage:?}"
+        );
+        assert_eq!(
+            usage.iterations, 4,
+            "all four attempted round trips should be counted"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_recording_usage_is_zero_when_cancelled_before_the_first_call() {
+        let provider = Arc::new(MockProvider::new());
+        let harness = Harness::new(provider.clone(), Arc::new(ToolRegistry::new()));
+
+        let turn_request = request();
+        turn_request.ctx.cancellation.cancel();
+
+        let (result, usage) = harness.run_turn_recording_usage(turn_request).await;
+
+        assert!(matches!(result, Err(AiError::Cancelled)));
+        assert_eq!(usage, TurnUsage::default());
+        assert_eq!(provider.request_count(), 0);
     }
 
     #[tokio::test]
