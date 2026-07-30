@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use munibot_ai::Ai;
 use munibot_core::{
     config::{Config, DiscordConfig},
     db::DbPool,
@@ -46,6 +47,10 @@ impl GlobalAccess {
 
 pub struct DiscordState {
     pub config: DiscordConfig,
+    /// `None` when `ai.enabled` is false (or unset) in the configuration -
+    /// every AI-touching command checks this and replies accordingly rather
+    /// than assuming it is always present.
+    pub ai: Option<Arc<Ai>>,
     handlers: DiscordMessageHandlerCollection,
     access: GlobalAccess,
 
@@ -62,6 +67,7 @@ impl DiscordState {
         db: DbPool,
         http: Arc<Http>,
         cache: Arc<Cache>,
+        ai: Option<Arc<Ai>>,
     ) -> Result<Self, MunibotDiscordError> {
         let global_access = GlobalAccess { db, http, cache };
 
@@ -78,6 +84,7 @@ impl DiscordState {
         Ok(Self {
             handlers,
             config: config.discord.clone(),
+            ai,
             access: global_access,
             logging,
             autodeletion,

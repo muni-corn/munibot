@@ -53,7 +53,10 @@ async fn main() -> anyhow::Result<()> {
     // start the bots alongside the gui server, unless explicitly disabled for
     // local gui development (so `dx serve` reloads don't reconnect discord)
     if std::env::var("MUNIBOT_DISABLE_BOTS").is_err() {
-        munibot::bot::start(config.clone()).await;
+        // TODO(ai): construct a real Ai from AiConfig::load_from_file and share it
+        // here once the persona/tool/session wiring for it lands (milestone 1 phase
+        // 8 commit 66); every AI-touching command already handles None gracefully
+        munibot::bot::start(config.clone(), None).await;
     } else {
         info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }

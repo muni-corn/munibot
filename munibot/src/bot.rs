@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use munibot_ai::Ai;
 use munibot_core::{config::Config, db::establish_pool};
 use munibot_discord::{
     DiscordMessageHandlerCollection,
@@ -24,8 +25,8 @@ use tokio::sync::Mutex;
 use tracing::{Instrument, error, info, info_span, warn};
 
 /// Starts the discord integration as a background task, returning its join
-/// handle.
-pub fn start_discord(config: Config) -> tokio::task::JoinHandle<()> {
+/// handle. `ai` is `None` when `ai.enabled` is false or unset.
+pub fn start_discord(config: Config, ai: Option<Arc<Ai>>) -> tokio::task::JoinHandle<()> {
     let discord_handlers: DiscordMessageHandlerCollection = vec![
         Arc::new(Mutex::new(DiscordGreetingHandler)),
         Arc::new(Mutex::new(EconomyProvider)),
@@ -46,7 +47,7 @@ pub fn start_discord(config: Config) -> tokio::task::JoinHandle<()> {
     // carry the "discord" context in the subscriber output
     let span = info_span!("discord");
     tokio::spawn(
-        start_discord_integration(discord_handlers, discord_command_providers, config)
+        start_discord_integration(discord_handlers, discord_command_providers, config, ai)
             .instrument(span),
     )
 }
@@ -103,8 +104,8 @@ pub async fn start_twitch(config: &Config) -> Option<tokio::task::JoinHandle<()>
 /// future itself isn't `Send`. The supervisor task spawned internally only
 /// captures the resulting `JoinHandle`s, which are always `Send`, so it's
 /// safe to run in the background once setup completes.
-pub async fn start(config: Config) {
-    let discord_handle = start_discord(config.clone());
+pub async fn start(config: Config, ai: Option<Arc<Ai>>) {
+    let discord_handle = start_discord(config.clone(), ai);
     let twitch_handle = start_twitch(&config).await;
 
     tokio::spawn(async move {

@@ -4429,6 +4429,7 @@ dependencies = [
  "dioxus",
  "dotenvy",
  "getrandom 0.3.4",
+ "munibot_ai",
  "munibot_core",
  "munibot_discord",
  "munibot_gui",

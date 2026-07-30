@@ -25,6 +25,7 @@ munibot_gui = { path = "../munibot_gui", default-features = false }
 
 # server-only deps, enabled by the `server` feature. these pull in the bots,
 # config/migrations, and everything that can't compile for wasm32
+munibot_ai = { path = "../munibot_ai", optional = true }
 munibot_core = { path = "../munibot_core", optional = true }
 munibot_discord = { path = "../munibot_discord", optional = true }
 munibot_twitch = { path = "../munibot_twitch", optional = true }
@@ -45,6 +46,7 @@ desktop = ["dioxus/desktop", "munibot_gui/desktop"]
 server = [
   "dioxus/server",
   "munibot_gui/server",
+  "dep:munibot_ai",
   "dep:munibot_core",
   "dep:munibot_discord",
   "dep:munibot_twitch",

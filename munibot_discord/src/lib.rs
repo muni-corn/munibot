@@ -1,6 +1,9 @@
 #![feature(never_type)]
 
+use std::sync::Arc;
+
 use dotenvy::dotenv;
+use munibot_ai::Ai;
 use munibot_core::{
     config::Config,
     db::{DbPool, establish_pool},
@@ -47,6 +50,7 @@ pub async fn start_discord_integration(
     handlers: DiscordMessageHandlerCollection,
     command_providers: DiscordCommandProviderCollection,
     config: Config,
+    ai: Option<Arc<Ai>>,
 ) {
     dotenv().ok();
 
@@ -84,7 +88,7 @@ pub async fn start_discord_integration(
 
     let framework = poise::Framework::<DiscordState, MunibotDiscordError>::builder()
         .setup(move |ctx, ready, framework| {
-            Box::pin(on_ready(ctx, ready, framework, handlers, config, pool))
+            Box::pin(on_ready(ctx, ready, framework, handlers, config, pool, ai))
         })
         .options(options)
         .build();
@@ -110,6 +114,7 @@ async fn on_ready(
     handlers: DiscordMessageHandlerCollection,
     config: Config,
     pool: DbPool,
+    ai: Option<Arc<Ai>>,
 ) -> serenity::Result<DiscordState, MunibotDiscordError> {
     register_globally(ctx, &framework.options().commands)
         .await
@@ -119,8 +124,15 @@ async fn on_ready(
 
     info!(bot_name = %ready.user.name, "discord: logged in");
 
-    let new_state =
-        DiscordState::new(handlers, &config, pool, ctx.http.clone(), ctx.cache.clone()).await?;
+    let new_state = DiscordState::new(
+        handlers,
+        &config,
+        pool,
+        ctx.http.clone(),
+        ctx.cache.clone(),
+        ai,
+    )
+    .await?;
 
     // start the autodeletion handler
     AutoDeleteHandler::start(new_state.autodeletion().clone());
