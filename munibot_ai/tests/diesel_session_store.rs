@@ -205,3 +205,159 @@ async fn test_history_survives_a_fresh_store_over_the_same_database() {
         "this is the whole point of the phase: a conversation outlives the process"
     );
 }
+
+// --- conversation directory ---
+//
+// These need a real user row, because ai_conversations.owner_user_id is a
+// foreign key. They go through the linked-account path, which is the only
+// user-creating operation munibot_core exposes.
+
+use munibot_ai::memory::ConversationDirectory;
+
+async fn a_user(pool: &DbPool) -> u64 {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
+    munibot_core::db::operations::get_or_create_user_from_linked_account(
+        pool,
+        "discord",
+        &format!("ai-test-{nanos}-{n}"),
+        "muni",
+        "muni",
+        None,
+        "unused-token",
+        None,
+        None,
+    )
+    .await
+    .expect("couldn't create a user")
+    .id as u64
+}
+
+#[tokio::test]
+async fn test_created_conversations_appear_in_the_owners_listing() {
+    let Some(pool) = pool().await else { return };
+    let user = a_user(&pool).await;
+    let store = DieselSessionStore::new(pool);
+
+    let created = store.create_for_user(user, "companion").await.unwrap();
+
+    let listed = store.list_for_user(user).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, created.id);
+    assert_eq!(listed[0].persona_id, "companion");
+    assert!(listed[0].title.is_none());
+}
+
+#[tokio::test]
+async fn test_a_listing_never_shows_another_persons_conversations() {
+    let Some(pool) = pool().await else { return };
+    let mine = a_user(&pool).await;
+    let theirs = a_user(&pool).await;
+    let store = DieselSessionStore::new(pool);
+
+    store.create_for_user(mine, "companion").await.unwrap();
+    store.create_for_user(theirs, "companion").await.unwrap();
+
+    let listed = store.list_for_user(mine).await.unwrap();
+    assert_eq!(
+        listed.len(),
+        1,
+        "ownership is the whole point of this listing"
+    );
+}
+
+#[tokio::test]
+async fn test_channel_scoped_conversations_never_appear_in_a_listing() {
+    let Some(pool) = pool().await else { return };
+    let user = a_user(&pool).await;
+    let store = DieselSessionStore::new(pool);
+    store.create_for_user(user, "companion").await.unwrap();
+
+    // a discord channel's conversation belongs to a place, not a person
+    store
+        .load_or_create(&unique_scope(), "companion")
+        .await
+        .unwrap();
+
+    assert_eq!(store.list_for_user(user).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_two_new_conversations_get_distinct_scope_keys() {
+    let Some(pool) = pool().await else { return };
+    let user = a_user(&pool).await;
+    let store = DieselSessionStore::new(pool);
+
+    let first = store.create_for_user(user, "companion").await.unwrap();
+    let second = store.create_for_user(user, "companion").await.unwrap();
+
+    assert_ne!(first.id, second.id);
+    assert_ne!(
+        first.scope.scope_key, second.scope.scope_key,
+        "a generated scope key must not collide, or two conversations become one"
+    );
+}
+
+#[tokio::test]
+async fn test_renaming_shows_up_in_the_listing() {
+    let Some(pool) = pool().await else { return };
+    let user = a_user(&pool).await;
+    let store = DieselSessionStore::new(pool);
+    let conversation = store.create_for_user(user, "companion").await.unwrap();
+
+    store.rename(conversation.id, "about cats").await.unwrap();
+
+    let listed = store.list_for_user(user).await.unwrap();
+    assert_eq!(listed[0].title.as_deref(), Some("about cats"));
+}
+
+#[tokio::test]
+async fn test_archiving_hides_a_conversation_without_losing_its_history() {
+    let Some(pool) = pool().await else { return };
+    let user = a_user(&pool).await;
+    let store = DieselSessionStore::new(pool);
+    let conversation = store.create_for_user(user, "companion").await.unwrap();
+    store
+        .append(conversation.id, Message::user("hello"))
+        .await
+        .unwrap();
+
+    store.archive(conversation.id).await.unwrap();
+
+    assert!(store.list_for_user(user).await.unwrap().is_empty());
+    assert_eq!(
+        store.history(conversation.id, None).await.unwrap().len(),
+        1,
+        "archiving hides a conversation; it must not destroy what was said in it"
+    );
+}
+
+#[tokio::test]
+async fn test_listing_is_most_recently_active_first() {
+    let Some(pool) = pool().await else { return };
+    let user = a_user(&pool).await;
+    let store = DieselSessionStore::new(pool);
+
+    let older = store.create_for_user(user, "companion").await.unwrap();
+    let newer = store.create_for_user(user, "companion").await.unwrap();
+
+    // appending bumps last_active_at, so the older conversation should overtake
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    store
+        .append(older.id, Message::user("still talking"))
+        .await
+        .unwrap();
+
+    let listed = store.list_for_user(user).await.unwrap();
+    let ids: Vec<_> = listed.iter().map(|e| e.id).collect();
+    assert_eq!(
+        ids,
+        vec![older.id, newer.id],
+        "a sidebar orders by real recency, not creation order"
+    );
+}

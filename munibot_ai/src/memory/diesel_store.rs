@@ -3,7 +3,9 @@ use chrono::{DateTime, Utc};
 use munibot_core::db::{DbPool, models::AiConversation, operations::ai};
 
 use crate::{
-    memory::{Conversation, ConversationScope, SessionStore},
+    memory::{
+        Conversation, ConversationDirectory, ConversationEntry, ConversationScope, SessionStore,
+    },
     tools::{ConversationId, Platform},
     types::{AiError, ContentBlock, History, Message, Role, rough_token_estimate},
 };
@@ -172,6 +174,81 @@ impl SessionStore for DieselSessionStore {
             .await
             .map_err(db_error)
     }
+}
+
+#[async_trait]
+impl ConversationDirectory for DieselSessionStore {
+    async fn list_for_user(&self, user_id: u64) -> Result<Vec<ConversationEntry>, AiError> {
+        let rows = ai::list_conversations_for_user(&self.pool, user_id as i64)
+            .await
+            .map_err(db_error)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| ConversationEntry {
+                id: ConversationId(row.id as u64),
+                title: row.title,
+                persona_id: row.persona_id,
+                last_active_at: DateTime::<Utc>::from_naive_utc_and_offset(row.last_active_at, Utc),
+            })
+            .collect())
+    }
+
+    async fn create_for_user(
+        &self,
+        user_id: u64,
+        persona_id: &str,
+    ) -> Result<Conversation, AiError> {
+        // a web conversation's scope key is opaque and generated here rather than
+        // supplied: unlike a channel, nothing outside this row identifies it, and
+        // letting a caller choose would let one person guess another's key
+        let scope_key = new_scope_key();
+        let now = Utc::now().naive_utc();
+
+        let row =
+            ai::create_conversation(&self.pool, munibot_core::db::models::NewAiConversation {
+                platform: Platform::Web.as_key().to_string(),
+                scope_key,
+                persona_id: persona_id.to_string(),
+                owner_user_id: Some(user_id as i64),
+                title: None,
+                created_at: now,
+                last_active_at: now,
+            })
+            .await
+            .map_err(db_error)?;
+
+        Ok(to_conversation(row))
+    }
+
+    async fn rename(&self, conversation_id: ConversationId, title: &str) -> Result<(), AiError> {
+        ai::rename_conversation(&self.pool, conversation_id.0 as i64, title)
+            .await
+            .map_err(db_error)
+    }
+
+    async fn archive(&self, conversation_id: ConversationId) -> Result<(), AiError> {
+        ai::archive_conversation(&self.pool, conversation_id.0 as i64)
+            .await
+            .map_err(db_error)
+    }
+}
+
+/// Generates an opaque scope key for a new web conversation.
+///
+/// Random rather than sequential so a key cannot be guessed from another one.
+/// Ownership is still checked on every access; this only removes the
+/// temptation to treat the key itself as a capability.
+fn new_scope_key() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("web-{nanos:x}-{count:x}")
 }
 
 #[cfg(test)]
