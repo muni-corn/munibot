@@ -7,5 +7,7 @@
 //! hangs off `munibot_core::Config`.
 
 pub mod template;
+pub mod types;
 
 pub use template::PromptTemplate;
+pub use types::{MemoryPolicy, Persona, PersonaId, SandboxPolicy};
