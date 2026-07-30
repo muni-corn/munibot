@@ -45,6 +45,18 @@ The diesel-backed session store, plus the ownership and titling that a per-user 
 needs. Migrations live at the workspace root in `migrations/`, embedded and applied at startup by the
 existing `run_pending_migrations()`.
 
+Two findings from implementing this phase, both worth knowing before the phases that depend on them:
+
+- **The `TestDb` fixture was broken before any of this started.** It hardcoded
+  `root:sillylittlepassword@127.0.0.1:3306`, which this project's devenv never provides — it falls back
+  to port 3307 when 3306 is taken, and its root user has no password. All 31 existing integration tests
+  failed with a bare connection error. Both URLs are now overridable via `MUNIBOT_TEST_ROOT_DB_URL` and
+  `MUNIBOT_TEST_DB_BASE_URL`, which was a prerequisite commit for this phase rather than part of it.
+- **A user cannot be deleted while a `linked_accounts` row references them.** That older foreign key has
+  no `ON DELETE CASCADE`, unlike the ones added here. Phase 10 promises that deleting a user erases
+  their memories automatically; delivering that promise needs either that foreign key fixed or an
+  explicitly ordered delete.
+
 | #   | Commit                                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | --- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 67  | `feat(db): add ai conversation and message tables` | Migration creating `ai_conversations` and `ai_messages`. `ai_messages.content` is JSON holding `Vec<ContentBlock>`. Unique index on `(platform, scope_key)` and on `(conversation_id, seq)`. **`ai_conversations` carries `owner_user_id`, `title`, and `archived_at` from the start**, rather than bolting them on later: a web conversation belongs to one person and needs a name in a sidebar, while a Discord channel's conversation has neither. `owner_user_id` is a real foreign key to `users.id` with `ON DELETE CASCADE`, and is `NULL` for channel-scoped conversations. |
