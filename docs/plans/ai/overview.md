@@ -14,20 +14,33 @@ can all exist at once. Discord is a secondary surface that stops at what milesto
 
 This plan supersedes the `municode` project. Everything `municode` planned is absorbed here: the
 provider-agnostic LLM client, the tool suite, the agent loop, the container sandbox, and the
-multi-agent pipeline that turns an issue into a pull request. `municode` remains useful only as a
-source of prompt text and architectural precedent.
+multi-agent pipeline that turns an issue into a pull request.
+
+`municode`'s **twelve agent prompts are kept in full and promoted**, not merely mined for precedent.
+They are a complete software engineering team — architect, reviewers, project manager, issue analyst,
+codebase researcher, builder, test engineer, commit crafter, PR author — and munibot delegates to them
+from ordinary conversation, starting in milestone 3, rather than only reaching them through an
+autonomous pipeline. Eleven exist at `municode/docs/agent-prompts/`; the twelfth, Issue Analyst, is a
+draft at `municode/docs/plan.md` lines 889–929.
+
+They split by whether a role needs a filesystem: the six advisory roles land in milestone 3 phase 16,
+the six hands-on roles in milestone 4 phase 19 once a sandbox exists to give them hands. By the time
+milestone 5 assembles the autonomous pipeline, every agent in it has already been exercised
+interactively — which turns the riskiest milestone in this plan from a first outing for twelve untested
+prompts into an orchestration problem over known-good parts.
 
 ## Milestone map
 
-| Milestone                                                    | Outcome                                                       | Phases | Commits |
-| ------------------------------------------------------------ | ------------------------------------------------------------- | ------ | ------- |
-| [1 — conversation](milestone-1-conversation.md)              | munibot holds a real conversation in Discord                  | 0–8    | 1–66    |
-| [2 — the companion on the web](milestone-2-web-companion.md) | A web chat page with persistence, memory, and real usefulness | 9–14   | 67–108  |
-| [3 — sandbox](milestone-3-sandbox.md)                        | munibot reads, writes, and runs code in a container           | 15     | 109–124 |
-| [4 — autonomous development](milestone-4-autonomous.md)      | munibot answers a GitHub issue with a working pull request    | 16–18  | 125–160 |
-| [5 — hardening](milestone-5-hardening.md)                    | Safe, affordable, and observable in public                    | 19     | 161–177 |
+| Milestone                                                    | Outcome                                                            | Phases | Commits |
+| ------------------------------------------------------------ | ------------------------------------------------------------------ | ------ | ------- |
+| [1 — conversation](milestone-1-conversation.md)              | munibot holds a real conversation in Discord                       | 0–8    | 1–66    |
+| [2 — the companion on the web](milestone-2-web-companion.md) | A web chat page with persistence, memory, and real usefulness      | 9–14   | 67–108  |
+| [3 — specialists and senses](milestone-3-specialists.md)     | He delegates to an engineering team, and can see what you show him | 15–17  | 109–129 |
+| [4 — sandbox](milestone-4-sandbox.md)                        | munibot reads, writes, and runs code in a container                | 18–19  | 130–151 |
+| [5 — autonomous development](milestone-5-autonomous.md)      | munibot answers a GitHub issue with a working pull request         | 20–22  | 152–187 |
+| [6 — hardening](milestone-6-hardening.md)                    | Safe, affordable, and observable in public                         | 23     | 188–204 |
 
-Around 177 commits total. Each commit is one logical change that leaves the workspace compiling.
+Around 204 commits total. Each commit is one logical change that leaves the workspace compiling.
 
 Commit numbers are sequence labels, not promises. Milestone 1 already landed three commits its own
 table never planned for, and each milestone's internal numbering is rebased against reality when work
@@ -47,6 +60,7 @@ on it actually begins — so treat the ranges for milestones 3 through 5 as appr
 | Forge integration     | A proper GitHub App                                         | Per-repository installation, scoped permissions, far better rate limits, and a real bot identity on pull requests. Worth the extra setup over a token.                                                                                                                                                  |
 | Primary surface       | munibot's own web chat page                                 | A conversation list, streamed replies, rendered code, visible tool activity, and an auditable memory panel need room that a chat platform does not give. Discord stays as a secondary surface at milestone 1's feature set; Twitch AI is dropped.                                                       |
 | Persona selection     | A visible picker, plus a companion who has his own tools    | An invisible personality switch is actively bad for a companion, and giving the companion `web_search`/`web_fetch` removes most of the reason to switch at all. The sticky auto-router is deferred rather than built — see milestone 2's deferred list.                                                 |
+| Specialist access     | Delegation through a `delegate` tool, never a persona swap  | munibot stays the conversational partner and calls a specialist the way he calls any other tool, then reports back in his own voice. Reuses tier gating, budget accounting, cancellation, auditing, and the activity indicator that already exist, and keeps the relationship continuous.               |
 | Memory                | Opt-in per user, with full user control                     | `remember` and `forget` tools, plus a web panel to list, edit, delete, and wipe. An opt-in you cannot audit is not really consent, so the panel ships in the same milestone as the tools.                                                                                                               |
 
 ## Crate architecture
@@ -141,7 +155,7 @@ pub struct Persona {
     /// Stable identifier used in config, commands, and the database.
     pub id: PersonaId,
     pub display_name: String,
-    /// Shown to the router so it can choose between personas.
+    /// Shown in the persona picker, the catalogue, and the `delegate` tool's schema.
     pub description: String,
     /// Provider and model, resolved at runtime from a string like `anthropic:claude-opus-5`.
     pub model: ModelRef,
@@ -149,10 +163,15 @@ pub struct Persona {
     pub system_prompt: PromptTemplate,
     pub tools: ToolSelection,
     pub budget: Budget,
-    /// Structured terminal output. Chat personas leave this `None`; pipeline roles set it.
+    /// Structured terminal output. Left `None` for chat and for delegation, where the
+    /// specialist simply answers; the pipeline attaches one when it needs a
+    /// machine-readable result. This is what lets one prompt file serve both.
     pub handoff: Option<HandoffSchema>,
     pub memory: MemoryPolicy,
     pub sandbox: SandboxPolicy,
+    /// Whether munibot may bring this persona in mid-conversation via `delegate`.
+    /// Defaults to `false`, so a role is reachable only when configuration says so.
+    pub delegable: bool,
 }
 ```
 
@@ -163,27 +182,43 @@ recompiling and without TOML escaping:
 [ai]
 default_persona = "companion"
 prompt_dir = "/etc/muni_bot/prompts" # optional; defaults to embedded prompts
-
-[ai.router]
-enabled = true
-model = "openai:gpt-5.2-mini"
-sticky = true
-confidence_threshold = 0.6
+max_delegation_depth = 2
 
 [ai.personas.companion]
 model = "anthropic:claude-opus-5"
 prompt = "companion.md"
 description = "warm, playful conversation and emotional support"
 temperature = 1.0
-tools = ["tier0", "web_search"]
+# the companion carries research tools himself, so most questions need no specialist
+tools = ["tier0", "web_search", "web_fetch", "delegate"]
 
 [ai.personas.researcher]
 model = "anthropic:claude-opus-5"
 prompt = "researcher.md"
 description = "multi-step research with citations"
 tools = ["tier0", "tier1"]
+delegable = true
 budget = { max_iterations = 30, max_cost_usd = 2.0 }
+
+[ai.personas.code-reviewer]
+model = "anthropic:claude-opus-5"
+prompt = "code-reviewer.md"
+description = "reviews a diff or pasted code against the project's standards"
+tools = ["tier0"]
+delegable = true
+
+[ai.personas.builder]
+model = "anthropic:claude-opus-5"
+prompt = "builder.md"
+description = "implements one subtask in a checked-out repository"
+tools = ["tier0", "tier3"]
+delegable = true
+sandbox = "required"
 ```
+
+`delegable` defaults to `false`, so a persona becomes reachable mid-conversation only when someone says
+so. A delegated turn always inherits the invoking human's granted tier, so marking `builder` delegable
+does not let a chat user reach `tier3` tools they were never authorized for.
 
 Default prompts ship embedded via `include_str!` so nix builds and container deployments work with no
 extra files, and `prompt_dir` overrides them for live iteration.
@@ -196,13 +231,18 @@ permissions from `ToolCtx` at invocation time.
 
 | Tier | Tools                                                                      | Availability                             |
 | ---- | -------------------------------------------------------------------------- | ---------------------------------------- |
-| 0    | `current_time`, `todo_write`, `remember`, `forget`                         | always                                   |
+| 0    | `current_time`, `todo_write`, `remember`, `forget`, `delegate`             | always                                   |
 | 1    | `web_search`, `web_fetch`                                                  | per-persona allowlist                    |
 | 2    | `get_user_profile`, `read_recent_messages`, `search_quotes`, `get_balance` | scoped to the invoking user              |
 | 3    | `read`, `write`, `edit`, `bash`, `grep`, `glob`                            | coding personas, inside a container only |
 | 4    | `create_pull_request`, `comment_on_issue`, `send_message`, `timeout_user`  | pipeline roles with explicit grants only |
 
 Tier 4 is never reachable from public chat.
+
+`delegate` sits at tier 0 because it grants no authority of its own: a delegated turn inherits the
+invoking human's `granted_tier` unchanged, so it can never reach a tool the invoker could not have
+reached directly. Delegating to a persona configured for tier 3 tools gets a turn that simply cannot
+call them. This is the invariant milestone 3 phase 15's safety suite exists to enforce.
 
 ## Safety model
 
