@@ -183,6 +183,10 @@ spend caps therefore **move forward from milestone 5** to land with the interfac
 - **Automatic persona routing.** Superseded for the web by the explicit picker in commit 95, and made
   largely unnecessary by giving the companion his own tools in commit 97. Revisit only if a real
   surface appears where a user cannot choose.
+- **Delegating to specialists.** The companion answers for himself in this milestone. Bringing in a
+  specialist — including the twelve-role engineering team ported from `municode` — is milestone 3, and
+  it deliberately lands after this milestone's spend caps, since one message can then fan out into
+  several nested turns.
 - **Twitch AI.** Removed from the plan. Twitch has no message editing, so it needs a completely
   different buffered-chunking renderer, and it is not where the companion gets shown off.
 - **Further Discord AI investment.** Phase 8 shipped mention, reply, DM, `/ask`, `/persona`, and
