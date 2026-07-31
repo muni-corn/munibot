@@ -11,6 +11,7 @@ license.workspace = true
 # dtos it serializes -- these must build for both wasm and native targets
 dioxus.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 thiserror.workspace = true
 # the chat stream payload types have to compile for wasm too, even though
 # nothing wasm-side actually drives a stream itself

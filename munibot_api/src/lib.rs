@@ -7,6 +7,7 @@
 // wasm32.
 
 pub mod auth;
+pub mod chat;
 pub mod guilds;
 
 #[cfg(feature = "server")]
