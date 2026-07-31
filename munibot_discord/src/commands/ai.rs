@@ -74,6 +74,7 @@ pub async fn ask(
         guild_id: ctx.guild_id().map(|id| id.get()),
         message: prompt,
         cancellation: CancellationToken::new(),
+        already_persisted: false,
     };
 
     let reply = match ai.turn(request).await {

@@ -111,6 +111,7 @@ impl DiscordEventHandler for AiChatHandler {
             guild_id: msg.guild_id.map(|id| id.get()),
             message: content.to_string(),
             cancellation: CancellationToken::new(),
+            already_persisted: false,
         };
 
         // a failed turn gets a friendly in-channel reply rather than propagating: the
