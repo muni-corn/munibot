@@ -191,6 +191,8 @@ description = "warm, playful conversation and emotional support"
 temperature = 1.0
 # the companion carries research tools himself, so most questions need no specialist
 tools = ["tier0", "web_search", "web_fetch", "delegate"]
+# companion.md renders {{memories}}; without this, he simply has none to draw on
+memory = "user"
 
 [ai.personas.researcher]
 model = "anthropic:claude-opus-5"
