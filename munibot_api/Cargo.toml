@@ -34,6 +34,7 @@ reqwest = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing.workspace = true
 uuid = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -52,5 +53,6 @@ server = [
   "dep:tokio",
   "dioxus/server",
   "dep:uuid",
+  "dep:tokio-util",
 ]
 web = ["dioxus/web"]
