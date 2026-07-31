@@ -33,6 +33,7 @@ munibot_core = { path = "../munibot_core", optional = true }
 reqwest = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing.workspace = true
+uuid = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -50,5 +51,6 @@ server = [
   "dep:reqwest",
   "dep:tokio",
   "dioxus/server",
+  "dep:uuid",
 ]
 web = ["dioxus/web"]
