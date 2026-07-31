@@ -185,6 +185,36 @@ async fn test_sequence_numbers_are_per_conversation() {
 }
 
 #[tokio::test]
+async fn test_get_message_returns_the_row_by_id() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+    let saved = ai::append_message(&db.pool, conversation.id, "user", &text_content("hi"), 0)
+        .await
+        .unwrap();
+
+    let found = ai::get_message(&db.pool, saved.id)
+        .await
+        .expect("load failed")
+        .expect("should have found the message");
+    assert_eq!(found.id, saved.id);
+    assert_eq!(found.conversation_id, conversation.id);
+    assert_eq!(found.content, text_content("hi"));
+}
+
+#[tokio::test]
+async fn test_get_message_missing_returns_none() {
+    let db = TestDb::new().await;
+    assert!(
+        ai::get_message(&db.pool, 999_999)
+            .await
+            .expect("load failed")
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn test_get_messages_returns_oldest_first() {
     let db = TestDb::new().await;
     let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)

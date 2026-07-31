@@ -162,6 +162,21 @@ pub async fn set_conversation_summary(
     Ok(())
 }
 
+/// Looks a single message up by id.
+///
+/// The chat streaming endpoint uses this to resolve the turn identifier
+/// `send_message` returned back into the conversation it belongs to and the
+/// text a turn should now answer.
+pub async fn get_message(pool: &DbPool, message_id: i64) -> QueryResult<Option<AiMessage>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_messages::table
+        .find(message_id)
+        .select(AiMessage::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+}
+
 /// Appends a message, assigning it the next sequence number in the
 /// conversation and bumping the conversation's activity timestamp.
 ///
