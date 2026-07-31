@@ -21,6 +21,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    ai_memories (id) {
+        id -> Bigint,
+        user_id -> Bigint,
+        #[max_length = 128]
+        key -> Varchar,
+        value -> Text,
+        created_at -> Datetime,
+        updated_at -> Datetime,
+    }
+}
+
+diesel::table! {
     ai_messages (id) {
         id -> Bigint,
         conversation_id -> Bigint,
@@ -66,6 +78,15 @@ diesel::table! {
         iterations -> Integer,
         succeeded -> Bool,
         created_at -> Datetime,
+    }
+}
+
+diesel::table! {
+    ai_user_settings (user_id) {
+        user_id -> Bigint,
+        memory_opt_in -> Bool,
+        created_at -> Datetime,
+        updated_at -> Datetime,
     }
 }
 
@@ -162,18 +183,22 @@ diesel::table! {
 }
 
 diesel::joinable!(ai_conversations -> users (owner_user_id));
+diesel::joinable!(ai_memories -> users (user_id));
 diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
 diesel::joinable!(ai_tool_calls -> ai_conversations (conversation_id));
 diesel::joinable!(ai_usage -> ai_conversations (conversation_id));
 diesel::joinable!(ai_usage -> users (user_id));
+diesel::joinable!(ai_user_settings -> users (user_id));
 diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     ai_conversations,
+    ai_memories,
     ai_messages,
     ai_tool_calls,
     ai_usage,
+    ai_user_settings,
     autodelete_timers,
     community_links,
     guild_configs,
