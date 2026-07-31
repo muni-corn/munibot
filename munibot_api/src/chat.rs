@@ -9,11 +9,13 @@
 //! crate.
 
 mod conversation;
+mod error;
 mod event;
 mod message;
 mod persona;
 
 pub use conversation::ConversationSummary;
+pub use error::{ChatError, ChatResult};
 pub use event::ChatEvent;
 pub use message::{ChatMessage, ChatRole};
 pub use persona::PersonaSummary;
