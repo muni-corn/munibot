@@ -28,6 +28,15 @@ use crate::{
     },
 };
 
+/// Where [`Self::dispatch_calls`] sends [`HarnessEvent::ToolStarted`]/
+/// [`HarnessEvent::ToolFinished`] as each call starts and finishes.
+///
+/// `None` for [`Harness::run_turn`], which has no stream to forward events
+/// into. [`Harness::run_turn_streamed`] supplies one and drives the receiving
+/// end concurrently with the dispatch itself, since `yield` only works
+/// directly inside its own `async_stream::stream!` body.
+type ToolEventSink<'a> = Option<&'a tokio::sync::mpsc::UnboundedSender<HarnessEvent>>;
+
 /// Drives a [`Provider`] and a [`ToolRegistry`] together into one full agent
 /// turn.
 ///
@@ -192,6 +201,7 @@ impl Harness {
                     tracker,
                     &mut tool_retries,
                     &mut history,
+                    None,
                 )
                 .await?
             {
@@ -217,15 +227,20 @@ impl Harness {
     /// validation, and handoff handling are shared with the non-streaming
     /// path rather than duplicated.
     ///
-    /// Deliberately out of scope for this first streaming implementation:
-    /// per-tool [`HarnessEvent::ToolStarted`]/
-    /// [`HarnessEvent::ToolFinished`] events. Emitting those requires
-    /// threading an event sink through `handle_tool_calls`, which `run_turn`
-    /// has no use for; this is left for a follow-up once a real consumer
-    /// needs that granularity. `TurnStarted` also carries the model
-    /// reference rather than a persona name, since `TurnRequest` has no persona
-    /// field - the eventual persona-aware service handle can override this when
-    /// it wraps the stream.
+    /// Per-tool [`HarnessEvent::ToolStarted`]/[`HarnessEvent::ToolFinished`]
+    /// events are forwarded live too, via an unbounded channel: `yield` only
+    /// works directly inside this `async_stream::stream!` body, so
+    /// [`Self::handle_tool_calls`] cannot emit them itself. Instead, its
+    /// future is driven with `tokio::select!` alongside the channel's
+    /// receiver, so an event queued by a concurrently-dispatched tool call is
+    /// yielded the moment it arrives rather than only once every call in the
+    /// batch has finished. `run_turn` passes `None` for the same parameter,
+    /// since it has no stream to forward events into.
+    ///
+    /// `TurnStarted` also carries the model reference rather than a persona
+    /// name, since `TurnRequest` has no persona field - the eventual
+    /// persona-aware service handle can override this when it wraps the
+    /// stream.
     pub fn run_turn_streamed(
         self: Arc<Self>,
         request: TurnRequest,
@@ -381,10 +396,43 @@ impl Harness {
                     return;
                 }
 
-                match self
-                    .handle_tool_calls(content, &request, &tracker, &mut tool_retries, &mut history)
-                    .await
-                {
+                let (tool_events_tx, mut tool_events_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<HarnessEvent>();
+                // scoped so `handle_fut` - and its borrow of `tool_events_tx` - is
+                // dropped before we drop our own copy of the sender below
+                let result = {
+                    let handle_fut = self.handle_tool_calls(
+                        content,
+                        &request,
+                        &tracker,
+                        &mut tool_retries,
+                        &mut history,
+                        Some(&tool_events_tx),
+                    );
+                    tokio::pin!(handle_fut);
+
+                    loop {
+                        tokio::select! {
+                            biased;
+                            event = tool_events_rx.recv() => {
+                                if let Some(event) = event {
+                                    yield event;
+                                }
+                            }
+                            outcome = &mut handle_fut => {
+                                break outcome;
+                            }
+                        }
+                    }
+                };
+                // drained after `handle_fut` is gone, catching any event queued in the
+                // same instant the future resolved but not yet read by the loop above
+                drop(tool_events_tx);
+                while let Ok(event) = tool_events_rx.try_recv() {
+                    yield event;
+                }
+
+                match result {
                     Ok(Some(outcome)) => {
                         if let Some(payload) = outcome.handoff {
                             yield HarnessEvent::Handoff(payload);
@@ -422,6 +470,7 @@ impl Harness {
         tracker: &BudgetTracker,
         tool_retries: &mut usize,
         history: &mut History,
+        events: ToolEventSink<'_>,
     ) -> Result<Option<TurnOutcome>, AiError> {
         // capture what each call needs before content moves into history below
         let calls: Vec<(String, String, serde_json::Value)> = content
@@ -509,7 +558,9 @@ impl Harness {
             .iter()
             .map(|(_, _, tool, arguments)| (Arc::clone(tool), arguments.clone()))
             .collect();
-        let outcomes = self.dispatch_calls(&to_dispatch, &request.ctx).await;
+        let outcomes = self
+            .dispatch_calls(&to_dispatch, &request.ctx, events)
+            .await;
 
         for ((index, call_id, ..), outcome) in dispatchable.into_iter().zip(outcomes) {
             pending[index] = Some(match outcome {
@@ -571,6 +622,7 @@ impl Harness {
         &self,
         calls: &[(Arc<dyn crate::tools::Tool>, serde_json::Value)],
         ctx: &ToolCtx,
+        events: ToolEventSink<'_>,
     ) -> Vec<crate::tools::ToolOutcome> {
         let mut parallel_indices = Vec::new();
         let mut serial_indices = Vec::new();
@@ -583,14 +635,17 @@ impl Harness {
             }
         }
 
+        // each parallel call announces itself as soon as `join_all` polls it - not
+        // once every call in the batch has finished - so `events` must be captured
+        // by every future in the batch, not sent once up front by this function
         let parallel_futures = parallel_indices
             .iter()
-            .map(|&index| self.invoke_and_audit(calls, index, ctx));
+            .map(|&index| self.invoke_and_audit(calls, index, ctx, events));
         let parallel_outcomes = futures::future::join_all(parallel_futures).await;
 
         let mut serial_outcomes = Vec::with_capacity(serial_indices.len());
         for &index in &serial_indices {
-            serial_outcomes.push(self.invoke_and_audit(calls, index, ctx).await);
+            serial_outcomes.push(self.invoke_and_audit(calls, index, ctx, events).await);
         }
 
         let mut outcomes: Vec<Option<crate::tools::ToolOutcome>> =
@@ -628,8 +683,18 @@ impl Harness {
         calls: &[(Arc<dyn crate::tools::Tool>, serde_json::Value)],
         index: usize,
         ctx: &ToolCtx,
+        events: ToolEventSink<'_>,
     ) -> crate::tools::ToolOutcome {
         let (tool, arguments) = &calls[index];
+
+        // sent before any `.await` on the call itself, so a batch of parallel
+        // calls all announce themselves as soon as this future is first
+        // polled, rather than one at a time as each happens to finish
+        if let Some(events) = events {
+            let _ = events.send(HarnessEvent::ToolStarted {
+                name: tool.name().to_string(),
+            });
+        }
 
         let started = std::time::Instant::now();
         let outcome = race_cancellation(
@@ -639,6 +704,14 @@ impl Harness {
         )
         .await;
         let duration = started.elapsed();
+
+        if let Some(events) = events {
+            let _ = events.send(HarnessEvent::ToolFinished {
+                name: tool.name().to_string(),
+                duration,
+                ok: matches!(outcome, crate::tools::ToolOutcome::Ok(_)),
+            });
+        }
 
         if let Some(auditor) = &self.auditor {
             let record = ToolCallRecord::from_outcome(
@@ -2043,6 +2116,149 @@ mod tests {
                 .count(),
             2,
             "one iteration for the tool call, one for the final answer"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_emits_tool_started_and_finished_around_the_call() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(EchoTool {
+            name: "current_time",
+            reply: "12:00",
+        }));
+
+        // one leading text delta and one trailing text delta, either side of the
+        // tool call, so ordering can be checked against both rather than just
+        // "somewhere in the stream"
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![
+                        ContentBlock::text("let me check..."),
+                        ContentBlock::tool_use("c1", "current_time", serde_json::json!({})),
+                    ],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("it is 12:00"),
+        );
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::tier(RiskTier::Safe);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Arc::new(Harness::new(provider, Arc::new(registry)));
+        let events = collect_streamed(harness, turn_request).await;
+
+        let text_before = events
+            .iter()
+            .position(
+                |event| matches!(event, HarnessEvent::TextDelta(text) if text == "let me check..."),
+            )
+            .expect("expected the leading text delta");
+        let started = events
+            .iter()
+            .position(|event| matches!(event, HarnessEvent::ToolStarted { name } if name == "current_time"))
+            .expect("expected a ToolStarted event");
+        let finished = events
+            .iter()
+            .position(|event| matches!(event, HarnessEvent::ToolFinished { name, .. } if name == "current_time"))
+            .expect("expected a ToolFinished event");
+        let text_after = events
+            .iter()
+            .position(
+                |event| matches!(event, HarnessEvent::TextDelta(text) if text == "it is 12:00"),
+            )
+            .expect("expected the trailing text delta");
+
+        assert!(
+            text_before < started,
+            "ToolStarted should come after the text that led up to the call"
+        );
+        assert!(
+            started < finished,
+            "ToolStarted must be yielded before ToolFinished for the same call"
+        );
+        assert!(
+            finished < text_after,
+            "ToolFinished should come before the next iteration's reply"
+        );
+
+        match &events[finished] {
+            HarnessEvent::ToolFinished { ok, .. } => assert!(ok, "the call succeeded"),
+            other => panic!("expected ToolFinished, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_streamed_turn_signals_parallel_tool_starts_promptly_not_batched() {
+        // both tools take the same, deliberately long time to finish - if starts
+        // were only ever forwarded once the whole batch was done (the bug this
+        // is guarding against), both ToolStarted events would only appear
+        // alongside the ToolFinished ones, roughly `delay` after the turn began
+        let delay = std::time::Duration::from_millis(200);
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(SlowTool { delay }));
+        registry.register(Arc::new(ConcurrencyTrackingTool {
+            name: "other_slow_tool",
+            serial: false,
+            delay,
+            reply: "done",
+            in_flight: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            max_observed: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![
+                        ContentBlock::tool_use("c1", "slow_tool", serde_json::json!({})),
+                        ContentBlock::tool_use("c2", "other_slow_tool", serde_json::json!({})),
+                    ],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("done"),
+        );
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["slow_tool", "other_slow_tool"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Arc::new(Harness::new(provider, Arc::new(registry)));
+        let mut stream = harness.run_turn_streamed(turn_request);
+        let start = std::time::Instant::now();
+
+        let mut started_count = 0usize;
+        let mut both_started_after = None;
+        let mut finished_after = None;
+        while let Some(event) = stream.next().await {
+            match event {
+                HarnessEvent::ToolStarted { .. } => {
+                    started_count += 1;
+                    if started_count == 2 {
+                        both_started_after = Some(start.elapsed());
+                    }
+                }
+                HarnessEvent::ToolFinished { .. } if finished_after.is_none() => {
+                    finished_after = Some(start.elapsed());
+                }
+                _ => {}
+            }
+        }
+
+        let both_started_after =
+            both_started_after.expect("expected two ToolStarted events, one per parallel call");
+        let finished_after = finished_after.expect("expected at least one ToolFinished event");
+
+        assert!(
+            both_started_after < delay / 2,
+            "both calls should announce themselves promptly, well under the {delay:?} it takes \
+             either to finish - saw the second ToolStarted at {both_started_after:?}"
+        );
+        assert!(
+            finished_after >= delay,
+            "sanity check that the calls really did take the scripted delay to finish, saw the \
+             first ToolFinished at {finished_after:?}"
         );
     }
 
