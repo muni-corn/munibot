@@ -6,21 +6,27 @@
 //! [`DieselSessionStore`] is the production store that makes a conversation
 //! survive a restart.
 //!
-//! Per-user opt-in memory, as distinct from conversation history, is still to
-//! come.
+//! [`MemoryStore`] is a different concept entirely, despite the name overlap
+//! with this module: it is a person's own opt-in, cross-conversation memory,
+//! not a single conversation's history. Opt-in gating is layered on top of it
+//! separately rather than baked in - see the type's own doc comment.
 
 pub mod context;
 pub mod conversation;
+pub mod diesel_memory_store;
 pub mod diesel_store;
 pub mod directory;
 pub mod in_memory;
 pub mod store;
 pub mod summarise;
+pub mod user_memory;
 
 pub use context::assemble_context;
 pub use conversation::{Conversation, ConversationScope};
+pub use diesel_memory_store::DieselMemoryStore;
 pub use diesel_store::DieselSessionStore;
 pub use directory::{ConversationDirectory, ConversationEntry};
 pub use in_memory::InMemorySessionStore;
 pub use store::SessionStore;
 pub use summarise::{CompactionPersona, CompactionSettings, Summariser, compact_if_needed};
+pub use user_memory::{Memory, MemoryStore};

@@ -10,9 +10,10 @@ use diesel_async::RunQueryDsl;
 use crate::db::{
     DbPool,
     models::{
-        AiConversation, AiMessage, NewAiConversation, NewAiMessage, NewAiToolCall, NewAiUsage,
+        AiConversation, AiMemory, AiMessage, NewAiConversation, NewAiMemory, NewAiMessage,
+        NewAiToolCall, NewAiUsage,
     },
-    schema::{ai_conversations, ai_messages, ai_tool_calls, ai_usage},
+    schema::{ai_conversations, ai_memories, ai_messages, ai_tool_calls, ai_usage},
 };
 
 // mysql has no `RETURNING`, so an insert's generated id comes from a second,
@@ -339,6 +340,106 @@ pub async fn record_tool_call(pool: &DbPool, tool_call: NewAiToolCall) -> QueryR
     let mut conn = pool.get().await.expect("couldn't get db connection");
     diesel::insert_into(ai_tool_calls::table)
         .values(&tool_call)
+        .execute(&mut conn)
+        .await?;
+    Ok(())
+}
+
+// ai_memories
+
+/// Looks up one specific memory by key.
+pub async fn get_memory(pool: &DbPool, user_id: i64, key: &str) -> QueryResult<Option<AiMemory>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_memories::table
+        .filter(ai_memories::user_id.eq(user_id))
+        .filter(ai_memories::key.eq(key))
+        .select(AiMemory::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+}
+
+/// Every memory a user has recorded, in no particular guaranteed order.
+pub async fn list_memories(pool: &DbPool, user_id: i64) -> QueryResult<Vec<AiMemory>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_memories::table
+        .filter(ai_memories::user_id.eq(user_id))
+        .select(AiMemory::as_select())
+        .load(&mut conn)
+        .await
+}
+
+/// How many memories a user currently has recorded.
+///
+/// The caller enforcing a per-user cap - not this function - decides what to
+/// do with the count; this is a plain read with no policy attached.
+pub async fn count_memories(pool: &DbPool, user_id: i64) -> QueryResult<i64> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_memories::table
+        .filter(ai_memories::user_id.eq(user_id))
+        .count()
+        .get_result(&mut conn)
+        .await
+}
+
+/// Records a fact under `key`, replacing any existing value for that key.
+///
+/// Uses MySQL's `INSERT ... ON DUPLICATE KEY UPDATE` on the `(user_id, key)`
+/// unique index, the same reasoning `upsert_guild_config` documents: a
+/// `REPLACE INTO` would delete and reinsert the row, losing `created_at` in
+/// the process. A bare CRUD primitive with no cap enforcement of its own -
+/// see `crate::memory::DieselMemoryStore` in `munibot_ai` for that.
+pub async fn upsert_memory(
+    pool: &DbPool,
+    user_id: i64,
+    key: &str,
+    value: &str,
+) -> QueryResult<AiMemory> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    let now = chrono::Utc::now().naive_utc();
+
+    diesel::insert_into(ai_memories::table)
+        .values(NewAiMemory {
+            user_id,
+            key: key.to_string(),
+            value: value.to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+        .on_conflict(diesel::dsl::DuplicatedKeys)
+        .do_update()
+        .set((
+            ai_memories::value.eq(value),
+            ai_memories::updated_at.eq(now),
+        ))
+        .execute(&mut conn)
+        .await?;
+
+    ai_memories::table
+        .filter(ai_memories::user_id.eq(user_id))
+        .filter(ai_memories::key.eq(key))
+        .select(AiMemory::as_select())
+        .first(&mut conn)
+        .await
+}
+
+/// Forgets one specific memory. Not an error if it never existed.
+pub async fn forget_memory(pool: &DbPool, user_id: i64, key: &str) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::delete(
+        ai_memories::table
+            .filter(ai_memories::user_id.eq(user_id))
+            .filter(ai_memories::key.eq(key)),
+    )
+    .execute(&mut conn)
+    .await?;
+    Ok(())
+}
+
+/// Forgets everything a user has ever recorded.
+pub async fn wipe_memories(pool: &DbPool, user_id: i64) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::delete(ai_memories::table.filter(ai_memories::user_id.eq(user_id)))
         .execute(&mut conn)
         .await?;
     Ok(())
