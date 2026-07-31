@@ -22,6 +22,7 @@ dioxus-desktop = { workspace = true, optional = true }
 # renders the gui, serves server functions, and backs login sessions. none
 # of this can compile for wasm32
 munibot_core = { path = "../munibot_core", optional = true }
+munibot_ai = { path = "../munibot_ai", optional = true }
 anyhow = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 axum_session = { workspace = true, optional = true }
@@ -40,6 +41,7 @@ server = [
   "dioxus/server",
   "munibot_api/server",
   "dep:munibot_core",
+  "dep:munibot_ai",
   "dep:anyhow",
   "dep:axum",
   "dep:axum_session",

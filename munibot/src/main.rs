@@ -4,9 +4,12 @@ use std::sync::Arc;
 #[cfg(feature = "server")]
 use clap::Parser;
 #[cfg(feature = "server")]
-use munibot_ai::{Ai, memory::InMemorySessionStore, persona::AiConfig, tools::ToolRegistry};
+use munibot_ai::{Ai, memory::DieselSessionStore, persona::AiConfig, tools::ToolRegistry};
 #[cfg(feature = "server")]
-use munibot_core::{config::Config, db::run_pending_migrations};
+use munibot_core::{
+    config::Config,
+    db::{establish_pool, run_pending_migrations},
+};
 #[cfg(feature = "server")]
 use tracing::info;
 #[cfg(feature = "server")]
@@ -55,24 +58,34 @@ async fn main() -> anyhow::Result<()> {
     // first things first, perform database migrations
     run_pending_migrations();
 
+    // built unconditionally, and independently of the bots below: the gui
+    // server needs it too, and `MUNIBOT_DISABLE_BOTS` is the documented
+    // local gui development workflow, so gating this on the same guard would
+    // leave the chat page with no service behind it
+    let ai_config = AiConfig::load_from_file(&config_file)?;
+    let ai = if ai_config.enabled {
+        let tools = Arc::new(ToolRegistry::from_env());
+        // diesel-backed, not in-memory: conversations started through the
+        // gui have to survive a server restart, which is the entire point
+        // of this milestone
+        let pool = establish_pool()
+            .await
+            .expect("couldn't establish database connection pool for ai");
+        let sessions: Arc<dyn munibot_ai::memory::SessionStore> =
+            Arc::new(DieselSessionStore::new(pool));
+        Some(Arc::new(Ai::new(&ai_config, tools, sessions)?))
+    } else {
+        info!("ai.enabled is false; skipping ai setup");
+        None
+    };
+
     // start the bots alongside the gui server, unless explicitly disabled for
     // local gui development (so `dx serve` reloads don't reconnect discord)
     if std::env::var("MUNIBOT_DISABLE_BOTS").is_err() {
-        let ai_config = AiConfig::load_from_file(&config_file)?;
-        let ai = if ai_config.enabled {
-            let tools = Arc::new(ToolRegistry::from_env());
-            let sessions: Arc<dyn munibot_ai::memory::SessionStore> =
-                Arc::new(InMemorySessionStore::new());
-            Some(Arc::new(Ai::new(&ai_config, tools, sessions)?))
-        } else {
-            info!("ai.enabled is false; skipping ai setup");
-            None
-        };
-
-        munibot::bot::start(config.clone(), ai).await;
+        munibot::bot::start(config.clone(), ai.clone()).await;
     } else {
         info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }
 
-    munibot_gui::server::run(config.discord).await
+    munibot_gui::server::run(config.discord, ai).await
 }
