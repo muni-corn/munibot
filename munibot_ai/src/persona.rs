@@ -28,11 +28,12 @@ mod prompt_tests {
     use super::PromptTemplate;
 
     #[test]
-    fn test_companion_prompt_declares_exactly_user_name_and_platform() {
+    fn test_companion_prompt_declares_exactly_user_name_platform_and_memories() {
         let template = PromptTemplate::new(include_str!("../prompts/companion.md"));
         let mut variables = template.required_variables();
         variables.sort();
         assert_eq!(variables, vec![
+            "memories".to_string(),
             "platform".to_string(),
             "user_name".to_string()
         ]);
@@ -44,19 +45,21 @@ mod prompt_tests {
         let context = [
             ("user_name".to_string(), "muni".to_string()),
             ("platform".to_string(), "Discord".to_string()),
+            ("memories".to_string(), "Nothing recorded yet.".to_string()),
         ]
         .into_iter()
         .collect();
 
         let rendered = template
             .render(&context)
-            .expect("should render with both variables provided");
+            .expect("should render with every variable provided");
 
         assert!(
             rendered.contains("muni"),
             "the user's name should appear in the rendered prompt"
         );
         assert!(rendered.contains("Discord"));
+        assert!(rendered.contains("Nothing recorded yet."));
         assert!(
             !rendered.contains("{{"),
             "no placeholder should survive rendering"
