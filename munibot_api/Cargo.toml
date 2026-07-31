@@ -12,11 +12,15 @@ license.workspace = true
 dioxus.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
+# the chat stream payload types have to compile for wasm too, even though
+# nothing wasm-side actually drives a stream itself
+futures.workspace = true
 
 # server-only deps, enabled by the `server` feature: db access, the oauth
 # client, the axum session/auth stack, and everything native-only that
 # can't compile for wasm32
 munibot_core = { path = "../munibot_core", optional = true }
+munibot_ai = { path = "../munibot_ai", optional = true }
 anyhow = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
@@ -33,6 +37,7 @@ web = ["dioxus/web"]
 server = [
   "dioxus/server",
   "dep:munibot_core",
+  "dep:munibot_ai",
   "dep:anyhow",
   "dep:async-trait",
   "dep:axum",
