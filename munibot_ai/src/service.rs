@@ -70,6 +70,17 @@ pub struct AiTurnRequest {
     pub guild_id: Option<u64>,
     pub message: String,
     pub cancellation: CancellationToken,
+    /// When `true`, `message` is not appended to the session store before
+    /// building history, because the caller already persisted it.
+    ///
+    /// Every adapter so far leaves this `false`: `message` is fresh text
+    /// [`Ai::turn`]/[`Ai::turn_streamed`] is trusted to store on the
+    /// caller's behalf. The web chat surface needs the opposite - its
+    /// `send_message` server function already writes the user's message to
+    /// the same table, since SSE (a `GET`) can't carry a pasted code block
+    /// as a query string, so by the time a stream request reaches here,
+    /// storing `message` again would duplicate it.
+    pub already_persisted: bool,
 }
 
 /// Everything [`Ai::prepare`] resolves once, shared by both [`Ai::turn`] and
@@ -408,10 +419,13 @@ impl Ai {
         // stored regardless of the persona's memory policy: a durable per-scope
         // record is harmless to keep even for a persona that does not read it back,
         // and a later policy change should not start from a conversation with a gap
-        // in it
-        self.sessions
-            .append(conversation.id, Message::user(req.message.clone()))
-            .await?;
+        // in it. skipped when the caller has already persisted the message
+        // themselves, so it is never stored twice
+        if !req.already_persisted {
+            self.sessions
+                .append(conversation.id, Message::user(req.message.clone()))
+                .await?;
+        }
 
         let history = match persona.memory {
             MemoryPolicy::None => History::from(vec![Message::user(req.message.clone())]),
@@ -765,6 +779,7 @@ mod tests {
             guild_id: None,
             message: message.to_string(),
             cancellation: CancellationToken::new(),
+            already_persisted: false,
         }
     }
 
@@ -853,6 +868,67 @@ mod tests {
             second_sent.history.len() > 1,
             "a MemoryPolicy::Conversation persona should see prior turns too, got {:?}",
             second_sent.history
+        );
+    }
+
+    #[tokio::test]
+    async fn test_already_persisted_does_not_store_the_message_a_second_time() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new().respond_text("ok"));
+        let sessions: Arc<dyn SessionStore> = Arc::new(InMemorySessionStore::new());
+
+        // simulates what the web chat surface's send_message server function
+        // already did before a stream request ever reaches Ai::turn
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = sessions.load_or_create(&scope, "companion").await.unwrap();
+        sessions
+            .append(conversation.id, Message::user("already stored"))
+            .await
+            .unwrap();
+
+        let ai = Ai::from_parts(
+            personas_with_memory(MemoryPolicy::Conversation),
+            Arc::new(ToolRegistry::new()),
+            sessions.clone(),
+            Arc::new(FixedProviderSource(provider)),
+        );
+
+        let mut req = request("companion", "already stored");
+        req.already_persisted = true;
+        ai.turn(req).await.expect("should succeed");
+
+        let history = sessions.history(conversation.id, None).await.unwrap();
+        let occurrences = history
+            .iter()
+            .filter(|message| message.text() == "already stored")
+            .count();
+        assert_eq!(
+            occurrences, 1,
+            "already_persisted should skip appending the message again, got {history:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_not_already_persisted_still_stores_the_message_as_before() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new().respond_text("ok"));
+        let sessions: Arc<dyn SessionStore> = Arc::new(InMemorySessionStore::new());
+        let ai = Ai::from_parts(
+            personas_with_memory(MemoryPolicy::Conversation),
+            Arc::new(ToolRegistry::new()),
+            sessions.clone(),
+            Arc::new(FixedProviderSource(provider)),
+        );
+
+        ai.turn(request("companion", "hello"))
+            .await
+            .expect("should succeed");
+
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = sessions.load_or_create(&scope, "companion").await.unwrap();
+        let history = sessions.history(conversation.id, None).await.unwrap();
+        assert!(
+            history.iter().any(|message| message.text() == "hello"),
+            "the default (already_persisted: false) should still store the message itself, got \
+             {history:?}"
         );
     }
 
