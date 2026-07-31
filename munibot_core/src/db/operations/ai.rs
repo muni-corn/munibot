@@ -248,6 +248,46 @@ pub async fn get_messages(
     Ok(newest_first)
 }
 
+/// One page of a conversation's messages, oldest first within the page.
+///
+/// `before_seq` bounds the page to messages older than that sequence number,
+/// for loading history a page at a time as someone scrolls up; `None` starts
+/// from the most recent message. Separate from [`get_messages`], which the
+/// harness uses to load a conversation's whole recent tail for a turn's
+/// context - a different question (how much fits in a prompt) from this
+/// one (what page comes next in a transcript).
+pub async fn get_messages_page(
+    pool: &DbPool,
+    conversation_id: i64,
+    before_seq: Option<i32>,
+    limit: i64,
+) -> QueryResult<Vec<AiMessage>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+
+    let Some(before_seq) = before_seq else {
+        let mut newest_first = ai_messages::table
+            .filter(ai_messages::conversation_id.eq(conversation_id))
+            .order(ai_messages::seq.desc())
+            .limit(limit)
+            .select(AiMessage::as_select())
+            .load(&mut conn)
+            .await?;
+        newest_first.reverse();
+        return Ok(newest_first);
+    };
+
+    let mut newest_first = ai_messages::table
+        .filter(ai_messages::conversation_id.eq(conversation_id))
+        .filter(ai_messages::seq.lt(before_seq))
+        .order(ai_messages::seq.desc())
+        .limit(limit)
+        .select(AiMessage::as_select())
+        .load(&mut conn)
+        .await?;
+    newest_first.reverse();
+    Ok(newest_first)
+}
+
 /// Deletes a conversation's messages and clears its summary, without deleting
 /// the conversation itself.
 ///

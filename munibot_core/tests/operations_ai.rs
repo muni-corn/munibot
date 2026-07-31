@@ -233,6 +233,80 @@ async fn test_get_messages_limit_keeps_the_most_recent_still_oldest_first() {
 }
 
 #[tokio::test]
+async fn test_get_messages_page_with_no_cursor_returns_the_most_recent_page() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+
+    for content in ["one", "two", "three", "four"] {
+        ai::append_message(&db.pool, conversation.id, "user", &text_content(content), 0)
+            .await
+            .unwrap();
+    }
+
+    let messages = ai::get_messages_page(&db.pool, conversation.id, None, 2)
+        .await
+        .expect("load failed");
+    let contents: Vec<String> = messages.iter().map(|m| m.content.clone()).collect();
+    assert_eq!(
+        contents,
+        vec![text_content("three"), text_content("four")],
+        "the first page should be the tail of the conversation, oldest-first"
+    );
+}
+
+#[tokio::test]
+async fn test_get_messages_page_with_a_cursor_returns_the_page_before_it() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+
+    for content in ["one", "two", "three", "four"] {
+        ai::append_message(&db.pool, conversation.id, "user", &text_content(content), 0)
+            .await
+            .unwrap();
+    }
+
+    let first_page = ai::get_messages_page(&db.pool, conversation.id, None, 2)
+        .await
+        .expect("load failed");
+    let oldest_in_first_page = first_page[0].seq;
+
+    let second_page =
+        ai::get_messages_page(&db.pool, conversation.id, Some(oldest_in_first_page), 2)
+            .await
+            .expect("load failed");
+    let contents: Vec<String> = second_page.iter().map(|m| m.content.clone()).collect();
+    assert_eq!(
+        contents,
+        vec![text_content("one"), text_content("two")],
+        "a cursor should return the page immediately before it, still oldest-first"
+    );
+}
+
+#[tokio::test]
+async fn test_get_messages_page_past_the_beginning_is_empty() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+
+    let first = ai::append_message(&db.pool, conversation.id, "user", &text_content("one"), 0)
+        .await
+        .unwrap();
+
+    let page = ai::get_messages_page(&db.pool, conversation.id, Some(first.seq), 10)
+        .await
+        .expect("load failed");
+    assert!(
+        page.is_empty(),
+        "asking for the page before the very first message should return nothing, not error"
+    );
+}
+
+#[tokio::test]
 async fn test_appending_bumps_last_active_at() {
     let db = TestDb::new().await;
     let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
