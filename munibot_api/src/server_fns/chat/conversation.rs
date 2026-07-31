@@ -22,13 +22,14 @@ fn check_ownership(owner_user_id: Option<i64>, user_id: i64) -> ChatResult<()> {
 
 /// Loads a conversation and verifies the signed-in user owns it.
 ///
-/// Every function below that acts on an existing conversation id calls this
-/// first. `ConversationNotFound` and `NotYourConversation` both eventually
-/// render as a 404 (see `ChatError::as_status_code`), so a caller can never
-/// use the difference to discover whether an id they don't own exists at
-/// all.
+/// Every function in this module (and `super::message`, for sending into an
+/// existing conversation) that acts on an existing conversation id calls
+/// this first. `ConversationNotFound` and `NotYourConversation` both
+/// eventually render as a 404 (see `ChatError::as_status_code`), so a caller
+/// can never use the difference to discover whether an id they don't own
+/// exists at all.
 #[cfg(feature = "server")]
-async fn owned_conversation(
+pub(super) async fn owned_conversation(
     pool: &munibot_core::db::DbPool,
     conversation_id: i64,
     user_id: i64,
