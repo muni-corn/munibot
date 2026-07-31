@@ -75,3 +75,4 @@ twitch_api = { version = "0.7", features = [
 ] }
 twitch_oauth2 = "0.15"
 url = "2.4"
+uuid = { version = "1.24.0", features = ["v4"] }
