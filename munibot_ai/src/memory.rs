@@ -21,6 +21,7 @@ pub mod in_memory;
 pub mod opt_in;
 pub mod store;
 pub mod summarise;
+pub mod tool_backend;
 pub mod user_memory;
 
 pub use context::assemble_context;
@@ -33,4 +34,5 @@ pub use in_memory::InMemorySessionStore;
 pub use opt_in::{GatedMemoryStore, MemoryOptIn};
 pub use store::SessionStore;
 pub use summarise::{CompactionPersona, CompactionSettings, Summariser, compact_if_needed};
+pub use tool_backend::MemoryToolBackend;
 pub use user_memory::{Memory, MemoryStore};

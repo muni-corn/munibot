@@ -16,6 +16,7 @@ pub mod tier;
 pub mod todo_write;
 pub mod tool;
 pub mod untrusted;
+pub mod user_memory;
 pub mod web_fetch;
 pub mod web_search;
 
@@ -28,5 +29,6 @@ pub use tier::RiskTier;
 pub use todo_write::{TodoItem, TodoStatus, TodoWriteTool};
 pub use tool::{Tool, ToolOutcome};
 pub use untrusted::wrap_untrusted;
+pub use user_memory::{ForgetTool, MemoryBackend, RememberTool};
 pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;
