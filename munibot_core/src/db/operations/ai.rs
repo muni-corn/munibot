@@ -10,10 +10,12 @@ use diesel_async::RunQueryDsl;
 use crate::db::{
     DbPool,
     models::{
-        AiConversation, AiMemory, AiMessage, NewAiConversation, NewAiMemory, NewAiMessage,
-        NewAiToolCall, NewAiUsage,
+        AiConversation, AiMemory, AiMessage, AiUserSettings, NewAiConversation, NewAiMemory,
+        NewAiMessage, NewAiToolCall, NewAiUsage, NewAiUserSettings,
     },
-    schema::{ai_conversations, ai_memories, ai_messages, ai_tool_calls, ai_usage},
+    schema::{
+        ai_conversations, ai_memories, ai_messages, ai_tool_calls, ai_usage, ai_user_settings,
+    },
 };
 
 // mysql has no `RETURNING`, so an insert's generated id comes from a second,
@@ -443,4 +445,54 @@ pub async fn wipe_memories(pool: &DbPool, user_id: i64) -> QueryResult<()> {
         .execute(&mut conn)
         .await?;
     Ok(())
+}
+
+// ai_user_settings
+
+/// Looks up a user's AI settings row, if they have ever touched a setting.
+pub async fn get_user_settings(pool: &DbPool, user_id: i64) -> QueryResult<Option<AiUserSettings>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_user_settings::table
+        .filter(ai_user_settings::user_id.eq(user_id))
+        .select(AiUserSettings::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+}
+
+/// Sets a user's memory opt-in flag, creating their settings row on first use.
+///
+/// Uses `INSERT ... ON DUPLICATE KEY UPDATE` for the same reason
+/// `upsert_guild_config` and `upsert_memory` do: a `REPLACE INTO` would
+/// delete and reinsert the row, losing `created_at` and, once this table
+/// gains a second setting, silently clearing it on every unrelated write.
+pub async fn set_memory_opt_in(
+    pool: &DbPool,
+    user_id: i64,
+    opted_in: bool,
+) -> QueryResult<AiUserSettings> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    let now = chrono::Utc::now().naive_utc();
+
+    diesel::insert_into(ai_user_settings::table)
+        .values(NewAiUserSettings {
+            user_id,
+            memory_opt_in: opted_in,
+            created_at: now,
+            updated_at: now,
+        })
+        .on_conflict(diesel::dsl::DuplicatedKeys)
+        .do_update()
+        .set((
+            ai_user_settings::memory_opt_in.eq(opted_in),
+            ai_user_settings::updated_at.eq(now),
+        ))
+        .execute(&mut conn)
+        .await?;
+
+    ai_user_settings::table
+        .filter(ai_user_settings::user_id.eq(user_id))
+        .select(AiUserSettings::as_select())
+        .first(&mut conn)
+        .await
 }
