@@ -17,8 +17,8 @@ use crate::{
     audit::ToolAuditor,
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
     memory::{
-        CompactionSettings, ConversationScope, SessionStore, Summariser, assemble_context,
-        compact_if_needed,
+        CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
+        assemble_context, compact_if_needed,
     },
     persona::{AiConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
     provider::{Provider, ProviderRegistry, ProviderResolver, estimate_cost},
@@ -109,6 +109,11 @@ pub struct Ai {
     usage_recorder: Option<Arc<dyn UsageRecorder>>,
     /// `None` until [`Self::with_tool_auditor`] enables it.
     tool_auditor: Option<Arc<dyn ToolAuditor>>,
+    /// `None` until [`Self::with_memory_store`] enables it. Without it, a
+    /// `MemoryPolicy::User` persona's `{{memories}}` renders as a neutral
+    /// placeholder rather than any real memories - see
+    /// [`Self::load_memories_text`].
+    memory_store: Option<Arc<dyn MemoryStore>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -174,6 +179,7 @@ impl Ai {
             compaction: None,
             usage_recorder: None,
             tool_auditor: None,
+            memory_store: None,
         }
     }
 
@@ -199,6 +205,14 @@ impl Ai {
     /// Enables auditing every tool call a turn makes.
     pub fn with_tool_auditor(mut self, auditor: Arc<dyn ToolAuditor>) -> Self {
         self.tool_auditor = Some(auditor);
+        self
+    }
+
+    /// Enables rendering a `MemoryPolicy::User` persona's `{{memories}}`
+    /// system prompt variable from a real store, rather than a neutral
+    /// placeholder.
+    pub fn with_memory_store(mut self, store: Arc<dyn MemoryStore>) -> Self {
+        self.memory_store = Some(store);
         self
     }
 
@@ -437,7 +451,7 @@ impl Ai {
             }
         };
 
-        let system = Self::render_system_prompt(persona, req)?;
+        let system = self.render_system_prompt(persona, req).await?;
 
         let ctx = ToolCtx {
             user_id: req.user_id,
@@ -468,12 +482,58 @@ impl Ai {
 
     /// Renders a persona's system prompt with the variables every persona
     /// prompt references: `{{user_name}}` and `{{platform}}`.
-    fn render_system_prompt(persona: &Persona, req: &AiTurnRequest) -> Result<String, AiError> {
+    ///
+    /// `memories` is always populated, regardless of `persona.memory` -
+    /// [`crate::persona::PromptTemplate`] silently ignores a context entry a
+    /// prompt never references, so it costs nothing for a persona whose
+    /// prompt has no `{{memories}}` placeholder at all, and it means a
+    /// prompt that does reference it never fails to render just because a
+    /// persona was configured without `MemoryPolicy::User`.
+    async fn render_system_prompt(
+        &self,
+        persona: &Persona,
+        req: &AiTurnRequest,
+    ) -> Result<String, AiError> {
+        let memories = if persona.memory == MemoryPolicy::User {
+            self.load_memories_text(req.user_id).await
+        } else {
+            String::new()
+        };
+
         let context = HashMap::from([
             ("user_name".to_string(), req.user_name.clone()),
             ("platform".to_string(), req.scope.platform.to_string()),
+            ("memories".to_string(), memories),
         ]);
         persona.system_prompt.render(&context)
+    }
+
+    /// Renders a `{{memories}}` block for `user_id`, best-effort.
+    ///
+    /// Retrieval is deliberately not the model's job - see
+    /// [`crate::tools::RememberTool`]'s own doc comment - so this is the one
+    /// and only place a persona's memories are ever read back, once per
+    /// turn, rather than a tool call the model would have to think to make.
+    /// A failure to load (no store wired, or a transient error) falls back
+    /// to a neutral message rather than failing the whole turn over
+    /// something this unimportant to get exactly right every single time.
+    async fn load_memories_text(&self, user_id: u64) -> String {
+        let Some(store) = &self.memory_store else {
+            return "(memory is not set up right now)".to_string();
+        };
+
+        match store.list(user_id).await {
+            Ok(memories) if memories.is_empty() => "Nothing recorded yet.".to_string(),
+            Ok(memories) => memories
+                .iter()
+                .map(|memory| format!("- {}: {}", memory.key, memory.value))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Err(error) => {
+                tracing::warn!(%error, user_id, "couldn't load memories for a turn");
+                "(couldn't load memories just now)".to_string()
+            }
+        }
     }
 }
 
@@ -551,6 +611,71 @@ mod tests {
     impl ToolAuditor for FakeToolAuditor {
         async fn record(&self, record: ToolCallRecord) {
             self.records.lock().unwrap().push(record);
+        }
+    }
+
+    /// A [`MemoryStore`] returning a fixed, scripted answer to `list`, and
+    /// recording how many times it was called - so a test can assert both
+    /// what got rendered and whether the store was reached at all.
+    struct FakeMemoryStore {
+        memories: Vec<crate::memory::Memory>,
+        list_calls: std::sync::Mutex<usize>,
+    }
+
+    impl FakeMemoryStore {
+        fn with(memories: Vec<crate::memory::Memory>) -> Self {
+            Self {
+                memories,
+                list_calls: std::sync::Mutex::new(0),
+            }
+        }
+
+        fn list_call_count(&self) -> usize {
+            *self.list_calls.lock().unwrap()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::memory::MemoryStore for FakeMemoryStore {
+        async fn list(&self, _user_id: u64) -> Result<Vec<crate::memory::Memory>, AiError> {
+            *self.list_calls.lock().unwrap() += 1;
+            Ok(self.memories.clone())
+        }
+
+        async fn record(&self, _user_id: u64, _key: &str, _value: &str) -> Result<(), AiError> {
+            Ok(())
+        }
+
+        async fn forget(&self, _user_id: u64, _key: &str) -> Result<(), AiError> {
+            Ok(())
+        }
+
+        async fn wipe(&self, _user_id: u64) -> Result<(), AiError> {
+            Ok(())
+        }
+    }
+
+    /// A [`MemoryStore`] whose `list` always fails, for testing that a
+    /// memory-loading failure falls back gracefully rather than failing the
+    /// turn.
+    struct FailingMemoryStore;
+
+    #[async_trait::async_trait]
+    impl crate::memory::MemoryStore for FailingMemoryStore {
+        async fn list(&self, _user_id: u64) -> Result<Vec<crate::memory::Memory>, AiError> {
+            Err(AiError::Other("memory storage is down".to_string()))
+        }
+
+        async fn record(&self, _user_id: u64, _key: &str, _value: &str) -> Result<(), AiError> {
+            Ok(())
+        }
+
+        async fn forget(&self, _user_id: u64, _key: &str) -> Result<(), AiError> {
+            Ok(())
+        }
+
+        async fn wipe(&self, _user_id: u64) -> Result<(), AiError> {
+            Ok(())
         }
     }
 
@@ -1195,5 +1320,106 @@ mod tests {
             .await
             .expect("should succeed");
         assert_eq!(outcome.text.as_deref(), Some("it is some time"));
+    }
+
+    #[tokio::test]
+    async fn test_memory_policy_user_gets_real_memories_rendered_into_the_prompt() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let store = Arc::new(FakeMemoryStore::with(vec![crate::memory::Memory {
+            key: "favorite_color".to_string(),
+            value: "purple".to_string(),
+            updated_at: chrono::Utc::now(),
+        }]));
+        let ai = ai_with(MemoryPolicy::User, provider.clone()).with_memory_store(store);
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("should succeed");
+
+        let sent = &provider.requests()[0];
+        let system = sent.system.as_deref().expect("should have a system prompt");
+        assert!(
+            system.contains("favorite_color") && system.contains("purple"),
+            "the real memory should reach the rendered prompt: {system:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_memory_policy_conversation_never_reaches_the_memory_store() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let store = Arc::new(FakeMemoryStore::with(Vec::new()));
+        let ai = ai_with(MemoryPolicy::Conversation, provider).with_memory_store(store.clone());
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(
+            store.list_call_count(),
+            0,
+            "only MemoryPolicy::User should ever read memories"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_memory_policy_none_never_reaches_the_memory_store() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let store = Arc::new(FakeMemoryStore::with(Vec::new()));
+        let ai = ai_with(MemoryPolicy::None, provider).with_memory_store(store.clone());
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(store.list_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_no_memory_store_wired_falls_back_to_a_neutral_placeholder() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::User, provider.clone());
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("should succeed");
+
+        let sent = &provider.requests()[0];
+        let system = sent.system.as_deref().expect("should have a system prompt");
+        assert!(
+            !system.contains("{{memories}}"),
+            "the placeholder itself must never leak into what the model sees: {system:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_memories_yet_renders_a_friendly_placeholder_not_emptiness() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let store = Arc::new(FakeMemoryStore::with(Vec::new()));
+        let ai = ai_with(MemoryPolicy::User, provider.clone()).with_memory_store(store);
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("should succeed");
+
+        let sent = &provider.requests()[0];
+        let system = sent.system.as_deref().unwrap();
+        assert!(
+            system.contains("Nothing recorded yet"),
+            "a user with no memories yet should get a friendly note, not a blank section: \
+             {system:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_memory_store_failure_falls_back_gracefully() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai =
+            ai_with(MemoryPolicy::User, provider).with_memory_store(Arc::new(FailingMemoryStore));
+
+        let result = ai.turn(request("companion", "hi")).await;
+        assert!(
+            result.is_ok(),
+            "a memory-loading failure must not fail the whole turn over something this minor"
+        );
     }
 }
