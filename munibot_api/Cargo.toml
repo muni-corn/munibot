@@ -32,6 +32,7 @@ diesel = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -50,4 +51,5 @@ server = [
   "dep:reqwest",
   "dep:tracing",
   "dep:uuid",
+  "dep:tokio-util",
 ]
