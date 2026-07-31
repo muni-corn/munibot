@@ -8,7 +8,9 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use crate::db::schema::{ai_conversations, ai_messages, ai_tool_calls, ai_usage};
+use crate::db::schema::{
+    ai_conversations, ai_memories, ai_messages, ai_tool_calls, ai_usage, ai_user_settings,
+};
 
 // ai_conversations
 
@@ -154,4 +156,64 @@ pub struct NewAiToolCall {
     pub duration_ms: i64,
     pub status: String,
     pub created_at: NaiveDateTime,
+}
+
+// ai_memories
+
+/// A row in the `ai_memories` table: one fact a user has asked munibot to
+/// remember.
+#[derive(Clone, Debug, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = ai_memories)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiMemory {
+    pub id: i64,
+    pub user_id: i64,
+    pub key: String,
+    pub value: String,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+/// Insertable and upsertable shape for `ai_memories`.
+///
+/// Used both to insert a new memory and, via `ON DUPLICATE KEY UPDATE` on the
+/// `(user_id, key)` unique index, to update an existing one's `value` in
+/// place - the same upsert pattern `operations.rs:33` already documents.
+#[derive(Clone, Debug, Insertable, AsChangeset)]
+#[diesel(table_name = ai_memories)]
+pub struct NewAiMemory {
+    pub user_id: i64,
+    pub key: String,
+    pub value: String,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+// ai_user_settings
+
+/// A row in the `ai_user_settings` table: one user's AI-related preferences.
+///
+/// No `Identifiable` derive: its primary key is `user_id`, not the `id` the
+/// derive assumes by default, and every lookup here goes through a plain
+/// `.filter(...)` rather than `.find(...)` - the same choice
+/// [`crate::db::models::GuildConfig`] makes for the same reason.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = ai_user_settings)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiUserSettings {
+    pub user_id: i64,
+    /// Defaults to `false`: memory is opt-in, never assumed.
+    pub memory_opt_in: bool,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+/// Insertable and upsertable shape for `ai_user_settings`.
+#[derive(Clone, Debug, Insertable, AsChangeset)]
+#[diesel(table_name = ai_user_settings)]
+pub struct NewAiUserSettings {
+    pub user_id: i64,
+    pub memory_opt_in: bool,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
