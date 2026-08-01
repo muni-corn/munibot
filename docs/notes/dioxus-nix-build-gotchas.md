@@ -76,20 +76,28 @@ preFixup = ''
 '';
 ```
 
-## Local mysql `root` password can drift from what `devenv.nix` declares
+## Local mysql `root` password (or app users) can drift from what `devenv.nix` declares
 
-devenv's `services.mysql.ensureUsers` sets a user's password **at creation time only** -- if the
-mysql data directory already existed (e.g. from before a password was added to `devenv.nix`, or from
-some other prior state), it won't retroactively enforce the declared password. If `root` access
-suddenly starts failing with the password from `devenv.nix` but an empty password works, that's why;
-`ALTER USER 'root'@'localhost' IDENTIFIED BY '<password>';` against the (passwordless) local instance
-brings it back in line with the declared config. This blocked `munibot_core`'s `TestDb` (which needs
-root to create/drop per-test databases) independently of anything gui-related.
+devenv's `services.mysql.ensureUsers`/`initialDatabases` only apply at data-directory creation time,
+via the `devenv:mysql:configure` task (a `processes.mysql.before` dependency, defined in devenv's own
+`services/mysql.nix` module). If the mysql data directory already existed before a user/password was
+added to `devenv.nix`, or the data dir predates some other declared change, the running instance can
+drift out of sync with `devenv.nix` -- e.g. `root` access failing with the declared password but an
+empty password working, or `munibot`/`munibot_test` (the app users `TestDb` and the real pool connect
+as) missing entirely.
 
-Same drift can leave `munibot`/`munibot_test` (the app users `TestDb` and the real pool connect as)
-missing entirely from an old data directory, since `ensureUsers` never ran against it in the first
-place. `CREATE USER IF NOT EXISTS`/`GRANT` by hand, matching `devenv.nix`'s declared
-username/password/privilege scope, brings an old data dir back in line.
+The task's underlying SQL is idempotent (`CREATE USER IF NOT EXISTS`, `ALTER USER ... IDENTIFIED BY`
+for root, `GRANT`), so re-running it by hand against an already-existing data dir reconciles things
+without needing to manually reconstruct the SQL yourself:
+
+```console
+$ devenv tasks run devenv:mysql:configure
+```
+
+This blocked `munibot_core`'s `TestDb` (which needs root to create/drop per-test databases)
+independently of anything gui-related.
+
+**This task does _not_ touch anonymous accounts, though**, so it won't fix the following on its own:
 
 **A blank-username anonymous account at the same host silently shadows a real, differently-hosted
 user of the same name.** MySQL/MariaDB sorts `mysql.user` rows by host specificity first (a literal
