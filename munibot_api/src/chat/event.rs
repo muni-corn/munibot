@@ -56,11 +56,46 @@ pub enum ChatEvent {
     Handoff(serde_json::Value),
     /// The turn is over.
     TurnFinished { usage: ChatUsage, cost_micros: i64 },
-    /// The turn failed. Carries the error's own friendly, lowercase message
-    /// (`AiError`'s `Display` impl) rather than the error type itself, which
-    /// isn't `Serialize` and shouldn't cross the wire as anything richer
-    /// than the same text a person is already meant to read.
-    Failed { message: String },
+    /// The turn failed. `message` is the error's own friendly, lowercase
+    /// text (`AiError`'s `Display` impl) rather than the error type itself,
+    /// which isn't `Serialize` and shouldn't cross the wire as anything
+    /// richer than the same text a person is already meant to read.
+    /// `kind` is just enough structure for the chat page to react
+    /// differently - a budget refusal explains itself kindly, a transient
+    /// provider outage offers a retry - without needing the whole error
+    /// type for that.
+    Failed {
+        message: String,
+        kind: ChatFailureKind,
+    },
+}
+
+/// Just enough of an `AiError`'s shape to render a failed turn
+/// appropriately, without exposing the whole (non-`Serialize`) error type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ChatFailureKind {
+    /// A configured budget (iterations, tokens, wall clock, cost) was hit.
+    /// Retrying the same message immediately would just hit it again.
+    BudgetExceeded,
+    /// A transient, provider-side problem - worth offering a retry for.
+    Transient,
+    /// Anything else: a tool failure, a schema violation, a cancelled
+    /// turn, a misconfiguration. Not obviously worth a blind retry, but
+    /// also not explainable as a budget message.
+    Other,
+}
+
+#[cfg(feature = "server")]
+impl From<&munibot_ai::types::AiError> for ChatFailureKind {
+    fn from(error: &munibot_ai::types::AiError) -> Self {
+        use munibot_ai::types::AiError;
+
+        match error {
+            AiError::BudgetExceeded { .. } => Self::BudgetExceeded,
+            _ if error.is_transient() => Self::Transient,
+            _ => Self::Other,
+        }
+    }
 }
 
 #[cfg(feature = "server")]
@@ -94,6 +129,7 @@ impl From<munibot_ai::harness::HarnessEvent> for ChatEvent {
                 cost_micros: cost.0,
             },
             HarnessEvent::Failed(error) => Self::Failed {
+                kind: ChatFailureKind::from(&error),
                 message: error.to_string(),
             },
         }
@@ -204,7 +240,47 @@ mod tests {
     fn test_failed_carries_the_error_s_friendly_message_not_the_error_type() {
         let event: ChatEvent = HarnessEvent::Failed(AiError::Cancelled).into();
         assert_eq!(event, ChatEvent::Failed {
-            message: AiError::Cancelled.to_string()
+            message: AiError::Cancelled.to_string(),
+            kind: ChatFailureKind::Other,
         });
+    }
+
+    #[test]
+    fn test_budget_exceeded_maps_to_its_own_kind() {
+        let error = AiError::BudgetExceeded {
+            limit: "8 iterations".to_string(),
+        };
+        assert_eq!(
+            ChatFailureKind::from(&error),
+            ChatFailureKind::BudgetExceeded
+        );
+    }
+
+    #[test]
+    fn test_a_transient_provider_error_maps_to_its_own_kind() {
+        assert_eq!(
+            ChatFailureKind::from(&AiError::Provider("gateway timeout".to_string())),
+            ChatFailureKind::Transient
+        );
+        assert_eq!(
+            ChatFailureKind::from(&AiError::RateLimited { retry_after: None }),
+            ChatFailureKind::Transient
+        );
+    }
+
+    #[test]
+    fn test_everything_else_falls_back_to_other() {
+        assert_eq!(
+            ChatFailureKind::from(&AiError::Cancelled),
+            ChatFailureKind::Other
+        );
+        assert_eq!(
+            ChatFailureKind::from(&AiError::Rejected("bad key".to_string())),
+            ChatFailureKind::Other
+        );
+        assert_eq!(
+            ChatFailureKind::from(&AiError::Tool("boom".to_string())),
+            ChatFailureKind::Other
+        );
     }
 }

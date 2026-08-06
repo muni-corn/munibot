@@ -10,6 +10,7 @@ use crate::components::{
         composer::Composer,
         message_list::MessageList,
         tool_activity::{ToolActivityEntry, ToolActivityResult, record_finished, record_started},
+        turn_failure::{TurnFailure, TurnFailureBanner},
     },
 };
 
@@ -32,14 +33,14 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
     // can't just be another entry in `messages` itself
     let mut live_reply = use_signal(|| None::<String>);
     let mut tool_activity = use_signal(Vec::<ToolActivityEntry>::new);
-    let mut turn_error = use_signal(|| None::<String>);
+    let mut turn_failure = use_signal(|| None::<TurnFailure>);
+    // the last message id a turn was run for, so `retry` can re-ask munibot
+    // to answer the same, already-persisted message rather than sending a
+    // new one
+    let mut last_message_id = use_signal(|| None::<i64>);
 
-    let on_sent = move |message_id: i64| {
-        // the user's own message is already durably persisted by the time
-        // send_message returns, so it's safe to reload the transcript right
-        // away rather than waiting for the reply too
-        messages.restart();
-        turn_error.set(None);
+    let mut run_turn = move |message_id: i64| {
+        turn_failure.set(None);
         live_reply.set(Some(String::new()));
         tool_activity.set(Vec::new());
 
@@ -72,18 +73,22 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
                                     },
                                 );
                             }
-                            Ok(ChatEvent::Failed { message }) => turn_error.set(Some(message)),
+                            Ok(ChatEvent::Failed { message, kind }) => {
+                                turn_failure.set(Some(TurnFailure::from_event(kind, message)));
+                            }
                             // not shown yet: TurnStarted/IterationComplete/Thinking/Handoff
                             // are persona-driven signals nothing here renders
                             Ok(_) => {}
                             Err(error) => {
-                                turn_error.set(Some(error.to_string()));
+                                turn_failure.set(Some(TurnFailure::from_transport_error(
+                                    error.to_string(),
+                                )));
                                 break;
                             }
                         }
                     }
                 }
-                Err(error) => turn_error.set(Some(error.to_string())),
+                Err(error) => turn_failure.set(Some(TurnFailure::from_chat_error(&error))),
             }
 
             // cleared together, not separately: see MessageList's doc comment
@@ -93,6 +98,21 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
             tool_activity.set(Vec::new());
             messages.restart();
         });
+    };
+
+    let on_sent = move |message_id: i64| {
+        // the user's own message is already durably persisted by the time
+        // send_message returns, so it's safe to reload the transcript right
+        // away rather than waiting for the reply too
+        messages.restart();
+        last_message_id.set(Some(message_id));
+        run_turn(message_id);
+    };
+
+    let retry = move |_| {
+        if let Some(message_id) = *last_message_id.read() {
+            run_turn(message_id);
+        }
     };
 
     let content = match &*messages.read() {
@@ -115,10 +135,8 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
         document::Title { "chat ~ munibot" }
         div { class: "flex h-full flex-col",
             div { class: "grow overflow-y-auto", {content} }
-            if let Some(message) = &*turn_error.read() {
-                div { class: "px-4 pb-2 text-sm text-error",
-                    "munibot couldn't finish that :< {message}"
-                }
+            if let Some(failure) = turn_failure.read().clone() {
+                TurnFailureBanner { failure, on_retry: retry }
             }
             Composer {
                 conversation_id,
