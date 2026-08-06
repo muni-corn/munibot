@@ -198,6 +198,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    user_permissions (id) {
+        id -> Bigint,
+        user_id -> Bigint,
+        #[max_length = 64]
+        permission -> Varchar,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     users (id) {
         id -> Bigint,
         #[max_length = 255]
@@ -217,6 +227,7 @@ diesel::joinable!(ai_usage -> users (user_id));
 diesel::joinable!(ai_user_settings -> users (user_id));
 diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
+diesel::joinable!(user_permissions -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     ai_conversations,
@@ -234,5 +245,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     guild_wallets,
     linked_accounts,
     quotes,
+    user_permissions,
     users,
 );

@@ -3,7 +3,7 @@ use diesel::prelude::*;
 
 use crate::db::schema::{
     autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets,
-    linked_accounts, quotes, users,
+    linked_accounts, quotes, user_permissions, users,
 };
 
 pub mod ai;
@@ -203,4 +203,28 @@ pub struct NewLinkedAccount {
     pub token_expires_at: Option<NaiveDateTime>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+}
+
+// user_permissions
+
+/// A row in the `user_permissions` table: one permission (the snake_case
+/// string form of `crate::permission::Permission`) granted to a munibot
+/// user.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = user_permissions)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct UserPermission {
+    pub id: i64,
+    pub user_id: i64,
+    pub permission: String,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable shape for `user_permissions`.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = user_permissions)]
+pub struct NewUserPermission {
+    pub user_id: i64,
+    pub permission: String,
+    pub created_at: NaiveDateTime,
 }
