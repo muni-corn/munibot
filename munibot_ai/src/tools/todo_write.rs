@@ -116,6 +116,8 @@ mod tests {
             guild_id: None,
             conversation_id,
             cancellation: tokio_util::sync::CancellationToken::new(),
+            delegation_depth: 0,
+            remaining_budget: crate::harness::Budget::default(),
         }
     }
 

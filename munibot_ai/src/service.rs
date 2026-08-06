@@ -795,6 +795,12 @@ impl Ai {
             guild_id: req.guild_id,
             conversation_id: conversation.id,
             cancellation: req.cancellation.clone(),
+            // a turn started directly by a human is always depth 0; the
+            // delegate tool increments this for the nested turn it starts
+            delegation_depth: 0,
+            // nothing has been spent yet at turn start, so the persona's
+            // own configured budget is the remaining budget
+            remaining_budget: persona.budget.clone(),
         };
 
         let mut turn_request = TurnRequest::new(persona.model.clone(), history, ctx)

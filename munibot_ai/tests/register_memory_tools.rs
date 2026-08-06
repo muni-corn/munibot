@@ -50,6 +50,8 @@ fn ctx(user_id: u64) -> ToolCtx {
         guild_id: None,
         conversation_id: ConversationId(1),
         cancellation: tokio_util::sync::CancellationToken::new(),
+        delegation_depth: 0,
+        remaining_budget: munibot_ai::harness::Budget::default(),
     }
 }
 

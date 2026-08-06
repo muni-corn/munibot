@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::{tools::RiskTier, types::AiError};
+use crate::{harness::Budget, tools::RiskTier, types::AiError};
 
 /// A stable identifier for one stored conversation.
 ///
@@ -85,6 +85,17 @@ pub struct ToolCtx {
     pub guild_id: Option<u64>,
     pub conversation_id: ConversationId,
     pub cancellation: CancellationToken,
+    /// How many delegations deep this invocation already is: `0` for a
+    /// turn started directly by a human, incremented by the `delegate`
+    /// tool for the nested turn it starts. Checked against a configured
+    /// maximum so a delegation chain terminates rather than recursing.
+    pub delegation_depth: usize,
+    /// The enclosing turn's own budget, minus whatever it has already
+    /// spent - see [`crate::harness::BudgetTracker::remaining`]. What the
+    /// `delegate` tool bounds a nested turn by, rather than handing the
+    /// specialist persona's full configured budget regardless of how much
+    /// of the enclosing turn has already run.
+    pub remaining_budget: Budget,
 }
 
 impl ToolCtx {
@@ -128,6 +139,8 @@ mod tests {
             guild_id: Some(42),
             conversation_id: ConversationId(7),
             cancellation: CancellationToken::new(),
+            delegation_depth: 0,
+            remaining_budget: Budget::default(),
         }
     }
 
@@ -215,5 +228,20 @@ mod tests {
         // "the web" reads well in a prompt and is useless as a database key
         assert_eq!(Platform::Web.as_key(), "web");
         assert_eq!(Platform::Web.to_string(), "the web");
+    }
+
+    #[test]
+    fn test_a_turn_started_directly_by_a_human_has_depth_zero() {
+        assert_eq!(ctx(RiskTier::Safe).delegation_depth, 0);
+    }
+
+    #[test]
+    fn test_remaining_budget_is_reachable() {
+        let mut context = ctx(RiskTier::Safe);
+        context.remaining_budget = Budget {
+            max_iterations: Some(3),
+            ..Budget::default()
+        };
+        assert_eq!(context.remaining_budget.max_iterations, Some(3));
     }
 }

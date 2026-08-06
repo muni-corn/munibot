@@ -119,6 +119,45 @@ impl BudgetTracker {
     pub fn iterations(&self) -> usize {
         self.iterations
     }
+
+    /// This turn's own budget, minus whatever has already been spent - what
+    /// a delegated turn should be bounded by, rather than the specialist
+    /// persona's full configured budget regardless of how much of the
+    /// enclosing turn has already run.
+    ///
+    /// Every field saturates at zero rather than going negative: a limit
+    /// already exceeded (checked separately by [`Self::check`], before this
+    /// is ever consulted) means nothing at all is left, not a negative
+    /// allowance.
+    pub fn remaining(&self) -> Budget {
+        Budget {
+            max_iterations: self
+                .budget
+                .max_iterations
+                .map(|max| max.saturating_sub(self.iterations)),
+            max_input_tokens: self
+                .budget
+                .max_input_tokens
+                .map(|max| max.saturating_sub(self.usage.input_tokens)),
+            max_output_tokens: self
+                .budget
+                .max_output_tokens
+                .map(|max| max.saturating_sub(self.usage.output_tokens)),
+            max_wall_clock: self
+                .budget
+                .max_wall_clock
+                .map(|max| max.saturating_sub(self.started_at.elapsed())),
+            max_cost: self
+                .budget
+                .max_cost
+                .map(|max| Cost((max.0 - self.cost.0).max(0))),
+            // tool retries aren't tracked by BudgetTracker itself (the harness
+            // loop counts them separately), so there is nothing spent to
+            // subtract here - a delegated turn gets the same retry allowance
+            // the enclosing one was configured with
+            max_tool_retries: self.budget.max_tool_retries,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -270,5 +309,66 @@ mod tests {
             error.to_string().contains("iterations"),
             "the error should say which limit was hit, got {error}"
         );
+    }
+
+    #[test]
+    fn test_remaining_of_a_fresh_tracker_is_the_full_budget() {
+        let budget = Budget {
+            max_iterations: Some(8),
+            max_cost: Some(Cost::from_dollars(0.25)),
+            ..unlimited()
+        };
+        let tracker = BudgetTracker::new(budget.clone());
+        let remaining = tracker.remaining();
+        assert_eq!(remaining.max_iterations, Some(8));
+        assert_eq!(remaining.max_cost, Some(Cost::from_dollars(0.25)));
+    }
+
+    #[test]
+    fn test_remaining_subtracts_what_has_been_spent() {
+        let budget = Budget {
+            max_iterations: Some(8),
+            max_cost: Some(Cost::from_micros(1000)),
+            ..unlimited()
+        };
+        let mut tracker = BudgetTracker::new(budget);
+        tracker.record(Usage::new(10, 20), Cost::from_micros(300));
+
+        let remaining = tracker.remaining();
+        assert_eq!(remaining.max_iterations, Some(7));
+        assert_eq!(remaining.max_cost, Some(Cost::from_micros(700)));
+    }
+
+    #[test]
+    fn test_remaining_saturates_at_zero_rather_than_going_negative() {
+        let budget = Budget {
+            max_iterations: Some(1),
+            max_cost: Some(Cost::from_micros(100)),
+            ..unlimited()
+        };
+        let mut tracker = BudgetTracker::new(budget);
+        tracker.record(Usage::default(), Cost::from_micros(500));
+        tracker.record(Usage::default(), Cost::ZERO);
+
+        let remaining = tracker.remaining();
+        assert_eq!(remaining.max_iterations, Some(0));
+        assert_eq!(remaining.max_cost, Some(Cost::ZERO));
+    }
+
+    #[test]
+    fn test_remaining_keeps_unset_fields_unset() {
+        let tracker = BudgetTracker::new(unlimited());
+        let remaining = tracker.remaining();
+        assert_eq!(remaining, unlimited());
+    }
+
+    #[test]
+    fn test_remaining_keeps_the_same_tool_retry_allowance() {
+        let budget = Budget {
+            max_tool_retries: Some(3),
+            ..unlimited()
+        };
+        let tracker = BudgetTracker::new(budget);
+        assert_eq!(tracker.remaining().max_tool_retries, Some(3));
     }
 }

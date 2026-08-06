@@ -558,8 +558,16 @@ impl Harness {
             .iter()
             .map(|(_, _, tool, arguments)| (Arc::clone(tool), arguments.clone()))
             .collect();
+        // recomputed fresh from the live tracker on every dispatch, rather than
+        // whatever was baked into request.ctx at turn start: a tool call late in
+        // a long turn (most importantly delegate, see harness commit 110's own
+        // plan entry) must see what is actually left, not a fresh allowance
+        let dispatch_ctx = ToolCtx {
+            remaining_budget: tracker.remaining(),
+            ..request.ctx.clone()
+        };
         let outcomes = self
-            .dispatch_calls(&to_dispatch, &request.ctx, events)
+            .dispatch_calls(&to_dispatch, &dispatch_ctx, events)
             .await;
 
         for ((index, call_id, ..), outcome) in dispatchable.into_iter().zip(outcomes) {
@@ -769,6 +777,8 @@ mod tests {
             guild_id: None,
             conversation_id: ConversationId(1),
             cancellation: tokio_util::sync::CancellationToken::new(),
+            delegation_depth: 0,
+            remaining_budget: crate::harness::Budget::default(),
         }
     }
 
@@ -927,6 +937,44 @@ mod tests {
             _ctx: &ToolCtx,
         ) -> crate::tools::ToolOutcome {
             crate::tools::ToolOutcome::ok(self.reply)
+        }
+    }
+
+    /// Records the `remaining_budget` it was invoked with on every call, so a
+    /// test can assert it reflects the live tracker rather than whatever
+    /// `TurnRequest.ctx` carried at turn start.
+    struct CtxCapturingTool {
+        captured: std::sync::Arc<std::sync::Mutex<Vec<crate::harness::Budget>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::tools::Tool for CtxCapturingTool {
+        fn name(&self) -> &str {
+            "capture"
+        }
+
+        fn description(&self) -> &str {
+            "captures the remaining budget it was invoked with"
+        }
+
+        fn tier(&self) -> RiskTier {
+            RiskTier::Safe
+        }
+
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        async fn invoke(
+            &self,
+            _input: serde_json::Value,
+            ctx: &ToolCtx,
+        ) -> crate::tools::ToolOutcome {
+            self.captured
+                .lock()
+                .unwrap()
+                .push(ctx.remaining_budget.clone());
+            crate::tools::ToolOutcome::ok("captured")
         }
     }
 
@@ -1603,6 +1651,52 @@ mod tests {
         assert!(
             text.contains("budget"),
             "the truncation reason should be visible in the returned text, got {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_dispatched_tool_call_sees_the_live_remaining_budget() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(CtxCapturingTool {
+            captured: captured.clone(),
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![ContentBlock::tool_use(
+                        "c1",
+                        "capture",
+                        serde_json::json!({}),
+                    )],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("done"),
+        );
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["capture"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+        turn_request.budget = Budget {
+            max_iterations: Some(5),
+            ..Budget::default()
+        };
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        let captured = captured.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(
+            captured[0].max_iterations,
+            Some(4),
+            "the first iteration's own usage is recorded before its tool calls dispatch, so \
+             remaining_budget should already reflect it rather than the full starting budget"
         );
     }
 
