@@ -46,6 +46,32 @@ diesel::table! {
 }
 
 diesel::table! {
+    ai_rate_limits (id) {
+        id -> Bigint,
+        #[max_length = 16]
+        scope_type -> Varchar,
+        scope_id -> Nullable<Bigint>,
+        window_start -> Datetime,
+        request_count -> Integer,
+        token_count -> Bigint,
+    }
+}
+
+diesel::table! {
+    ai_spend_caps (id) {
+        id -> Bigint,
+        #[max_length = 16]
+        scope_type -> Varchar,
+        scope_id -> Nullable<Bigint>,
+        #[max_length = 16]
+        period -> Varchar,
+        limit_micros -> Bigint,
+        current_micros -> Bigint,
+        reset_at -> Datetime,
+    }
+}
+
+diesel::table! {
     ai_tool_calls (id) {
         id -> Bigint,
         conversation_id -> Nullable<Bigint>,
@@ -196,6 +222,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     ai_conversations,
     ai_memories,
     ai_messages,
+    ai_rate_limits,
+    ai_spend_caps,
     ai_tool_calls,
     ai_usage,
     ai_user_settings,
