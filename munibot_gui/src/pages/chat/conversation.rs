@@ -6,7 +6,11 @@ use munibot_api::{
 
 use crate::components::{
     Spinner,
-    chat::{composer::Composer, message_list::MessageList},
+    chat::{
+        composer::Composer,
+        message_list::MessageList,
+        tool_activity::{ToolActivityEntry, ToolActivityResult, record_finished, record_started},
+    },
 };
 
 /// How many of a conversation's most recent messages load up front.
@@ -18,10 +22,6 @@ use crate::components::{
 const MESSAGE_PAGE_SIZE: i64 = 100;
 
 /// One conversation's transcript and composer.
-///
-/// The tool activity display arrives in a later commit;
-/// `ChatEvent::ToolStarted`/ `ToolFinished` are received here already but not
-/// yet shown.
 #[component]
 pub fn ChatConversation(conversation_id: i64) -> Element {
     let mut messages = use_resource(move || async move {
@@ -31,6 +31,7 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
     // `None` once it's over -- see MessageList's own doc comment for why this
     // can't just be another entry in `messages` itself
     let mut live_reply = use_signal(|| None::<String>);
+    let mut tool_activity = use_signal(Vec::<ToolActivityEntry>::new);
     let mut turn_error = use_signal(|| None::<String>);
 
     let on_sent = move |message_id: i64| {
@@ -40,6 +41,7 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
         messages.restart();
         turn_error.set(None);
         live_reply.set(Some(String::new()));
+        tool_activity.set(Vec::new());
 
         spawn(async move {
             match chat_stream(message_id).await {
@@ -51,10 +53,28 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
                                     reply.push_str(&text);
                                 }
                             }
+                            Ok(ChatEvent::ToolStarted { name }) => {
+                                record_started(&mut tool_activity.write(), name);
+                            }
+                            Ok(ChatEvent::ToolFinished {
+                                name,
+                                duration_ms,
+                                ok,
+                                result,
+                            }) => {
+                                record_finished(
+                                    &mut tool_activity.write(),
+                                    &name,
+                                    ToolActivityResult {
+                                        ok,
+                                        duration_ms,
+                                        result,
+                                    },
+                                );
+                            }
                             Ok(ChatEvent::Failed { message }) => turn_error.set(Some(message)),
-                            // handled in a later commit: tool activity display, and
-                            // the persona-driven ones (TurnStarted/IterationComplete/
-                            // Thinking/Handoff) that nothing here shows yet
+                            // not shown yet: TurnStarted/IterationComplete/Thinking/Handoff
+                            // are persona-driven signals nothing here renders
                             Ok(_) => {}
                             Err(error) => {
                                 turn_error.set(Some(error.to_string()));
@@ -66,7 +86,11 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
                 Err(error) => turn_error.set(Some(error.to_string())),
             }
 
+            // cleared together, not separately: see MessageList's doc comment
+            // on why the strip must disappear alongside the live reply rather
+            // than being stranded once the persisted transcript reloads below
             live_reply.set(None);
+            tool_activity.set(Vec::new());
             messages.restart();
         });
     };
@@ -76,6 +100,7 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
             MessageList {
                 messages: loaded.clone(),
                 live_reply: live_reply.read().clone(),
+                tool_activity: tool_activity.read().clone(),
             }
         },
         Some(Err(e)) => rsx! {
