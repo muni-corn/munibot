@@ -9,3 +9,5 @@
 
 #[cfg(feature = "server")]
 pub mod bot;
+#[cfg(feature = "server")]
+pub mod permissions;
