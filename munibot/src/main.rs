@@ -1,10 +1,7 @@
 #[cfg(feature = "server")]
-use std::sync::Arc;
-
-#[cfg(feature = "server")]
 use clap::Parser;
 #[cfg(feature = "server")]
-use munibot_ai::{Ai, memory::DieselSessionStore, persona::AiConfig, tools::ToolRegistry};
+use munibot_ai::persona::AiConfig;
 #[cfg(feature = "server")]
 use munibot_core::{
     config::Config,
@@ -63,21 +60,13 @@ async fn main() -> anyhow::Result<()> {
     // local gui development workflow, so gating this on the same guard would
     // leave the chat page with no service behind it
     let ai_config = AiConfig::load_from_file(&config_file)?;
-    let ai = if ai_config.enabled {
-        let tools = Arc::new(ToolRegistry::from_env());
-        // diesel-backed, not in-memory: conversations started through the
-        // gui have to survive a server restart, which is the entire point
-        // of this milestone
-        let pool = establish_pool()
-            .await
-            .expect("couldn't establish database connection pool for ai");
-        let sessions: Arc<dyn munibot_ai::memory::SessionStore> =
-            Arc::new(DieselSessionStore::new(pool));
-        Some(Arc::new(Ai::new(&ai_config, tools, sessions)?))
-    } else {
-        info!("ai.enabled is false; skipping ai setup");
-        None
-    };
+    // diesel-backed, not in-memory: conversations started through the gui
+    // have to survive a server restart, which is the entire point of this
+    // milestone
+    let ai_pool = establish_pool()
+        .await
+        .expect("couldn't establish database connection pool for ai");
+    let ai = munibot::ai::build(&ai_config, ai_pool).await?;
 
     // start the bots alongside the gui server, unless explicitly disabled for
     // local gui development (so `dx serve` reloads don't reconnect discord)
