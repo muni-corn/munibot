@@ -44,6 +44,11 @@ pub enum ChatEvent {
         name: String,
         duration_ms: u64,
         ok: bool,
+        /// The tool's own success text, recoverable error, or fatal error
+        /// message, for the tool activity display's "inspect" affordance.
+        /// Not truncated here the way an audit record is: showing it in
+        /// full is the entire point of a person explicitly inspecting it.
+        result: String,
     },
     /// One provider round trip has finished.
     IterationComplete { iteration: usize, usage: ChatUsage },
@@ -68,10 +73,16 @@ impl From<munibot_ai::harness::HarnessEvent> for ChatEvent {
             HarnessEvent::Thinking(text) => Self::Thinking(text),
             HarnessEvent::TextDelta(text) => Self::TextDelta(text),
             HarnessEvent::ToolStarted { name } => Self::ToolStarted { name },
-            HarnessEvent::ToolFinished { name, duration, ok } => Self::ToolFinished {
+            HarnessEvent::ToolFinished {
+                name,
+                duration,
+                ok,
+                result,
+            } => Self::ToolFinished {
                 name,
                 duration_ms: duration.as_millis() as u64,
                 ok,
+                result,
             },
             HarnessEvent::IterationComplete { iteration, usage } => Self::IterationComplete {
                 iteration,
@@ -134,12 +145,14 @@ mod tests {
             name: "web_search".to_string(),
             duration: Duration::from_millis(250),
             ok: true,
+            result: "three results found".to_string(),
         }
         .into();
         assert_eq!(event, ChatEvent::ToolFinished {
             name: "web_search".to_string(),
             duration_ms: 250,
             ok: true,
+            result: "three results found".to_string(),
         });
     }
 

@@ -38,20 +38,36 @@ impl ToolCallRecord {
         outcome: &ToolOutcome,
         duration: Duration,
     ) -> Self {
-        let (output, status) = match outcome {
-            ToolOutcome::Ok(text) => (text.clone(), ToolCallStatus::Ok),
-            ToolOutcome::Err(text) => (text.clone(), ToolCallStatus::Err),
-            ToolOutcome::Fatal(error) => (error.to_string(), ToolCallStatus::Fatal),
-        };
-
         Self {
             conversation_id: Some(conversation_id),
             tool_name: tool_name.to_string(),
             input: truncate(&input.to_string(), MAX_FIELD_LEN),
-            output: truncate(&output, MAX_FIELD_LEN),
+            output: truncate(&outcome_text(outcome), MAX_FIELD_LEN),
             duration,
-            status,
+            status: outcome_status(outcome),
         }
+    }
+}
+
+/// The text worth showing for a finished tool call: its success text, its
+/// recoverable error, or its fatal error's message.
+///
+/// Shared with [`crate::harness::HarnessEvent::ToolFinished`], which carries
+/// this same text out to a live consumer (a chat page's tool activity
+/// display) rather than only ever landing it in an audit record after the
+/// fact.
+pub fn outcome_text(outcome: &ToolOutcome) -> String {
+    match outcome {
+        ToolOutcome::Ok(text) | ToolOutcome::Err(text) => text.clone(),
+        ToolOutcome::Fatal(error) => error.to_string(),
+    }
+}
+
+fn outcome_status(outcome: &ToolOutcome) -> ToolCallStatus {
+    match outcome {
+        ToolOutcome::Ok(_) => ToolCallStatus::Ok,
+        ToolOutcome::Err(_) => ToolCallStatus::Err,
+        ToolOutcome::Fatal(_) => ToolCallStatus::Fatal,
     }
 }
 

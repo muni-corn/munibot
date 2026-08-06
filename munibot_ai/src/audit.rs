@@ -7,4 +7,4 @@ pub mod diesel_auditor;
 pub mod record;
 
 pub use diesel_auditor::DieselToolAuditor;
-pub use record::{ToolAuditor, ToolCallRecord, ToolCallStatus};
+pub use record::{ToolAuditor, ToolCallRecord, ToolCallStatus, outcome_text};
