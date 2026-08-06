@@ -28,6 +28,11 @@ pub enum HarnessEvent {
         name: String,
         duration: Duration,
         ok: bool,
+        /// The tool's own success text, recoverable error, or fatal error
+        /// message - the same text an audit record keeps, carried out here
+        /// too so a live consumer (a chat page's tool activity display) can
+        /// show it without waiting for the turn to end.
+        result: String,
     },
     /// One provider round trip has finished.
     IterationComplete { iteration: usize, usage: Usage },
@@ -62,12 +67,19 @@ mod tests {
             name: "web_search".to_string(),
             duration: Duration::from_millis(250),
             ok: true,
+            result: "three results found".to_string(),
         };
         match event {
-            HarnessEvent::ToolFinished { name, duration, ok } => {
+            HarnessEvent::ToolFinished {
+                name,
+                duration,
+                ok,
+                result,
+            } => {
                 assert_eq!(name, "web_search");
                 assert_eq!(duration, Duration::from_millis(250));
                 assert!(ok);
+                assert_eq!(result, "three results found");
             }
             other => panic!("expected ToolFinished, got {other:?}"),
         }

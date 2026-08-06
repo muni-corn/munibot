@@ -710,6 +710,7 @@ impl Harness {
                 name: tool.name().to_string(),
                 duration,
                 ok: matches!(outcome, crate::tools::ToolOutcome::Ok(_)),
+                result: crate::audit::outcome_text(&outcome),
             });
         }
 
