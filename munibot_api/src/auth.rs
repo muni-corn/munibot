@@ -5,6 +5,8 @@ use thiserror::Error;
 #[cfg(feature = "server")]
 pub mod guild;
 #[cfg(feature = "server")]
+pub mod operator;
+#[cfg(feature = "server")]
 pub mod server;
 
 /// User data safe to send to and render on the client.

@@ -12,6 +12,12 @@ pub enum ChatError {
     #[error("you need to sign in first")]
     NotSignedIn,
 
+    /// The signed-in user lacks `Permission::Operator`. Distinct from
+    /// [`Self::NotSignedIn`] - a 403 rather than a 401 - since this person
+    /// is genuinely signed in, just not authorized for this.
+    #[error("you don't have permission to see that")]
+    NotOperator,
+
     /// The conversation exists, but belongs to someone else. Kept distinct
     /// from [`Self::ConversationNotFound`] at the type level even though both
     /// currently render the same "not found" response -- returning 404
@@ -39,6 +45,7 @@ impl AsStatusCode for ChatError {
     fn as_status_code(&self) -> StatusCode {
         match self {
             Self::NotSignedIn => StatusCode::UNAUTHORIZED,
+            Self::NotOperator => StatusCode::FORBIDDEN,
             // both render as a plain 404: existence of a conversation id
             // owned by someone else is not confirmed to the caller
             Self::NotYourConversation | Self::ConversationNotFound => StatusCode::NOT_FOUND,
@@ -106,6 +113,14 @@ mod tests {
         assert_eq!(
             ChatError::ConversationNotFound.as_status_code(),
             StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn test_not_operator_is_forbidden_not_unauthorized() {
+        assert_eq!(
+            ChatError::NotOperator.as_status_code(),
+            StatusCode::FORBIDDEN
         );
     }
 
