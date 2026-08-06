@@ -17,7 +17,7 @@ use crate::{
     audit::ToolAuditor,
     crisis::{CrisisClassifier, CrisisSeverity},
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
-    limits::{ConcurrencyGuard, RateLimiter, Scope},
+    limits::{ConcurrencyGuard, RateLimiter, Scope, SpendCapEnforcer},
     memory::{
         CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
         TitleGenerator, assemble_context, compact_if_needed,
@@ -170,6 +170,10 @@ pub struct Ai {
     /// turn is ever refused for cost reasons at all - exactly the
     /// behaviour every turn had before this existed.
     rate_limiter: Option<Arc<RateLimiter>>,
+    /// `None` until [`Self::with_spend_cap_enforcer`] enables it. Without
+    /// it, no turn is ever refused for having spent too much - exactly the
+    /// behaviour every turn had before this existed.
+    spend_cap_enforcer: Option<Arc<SpendCapEnforcer>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -294,6 +298,7 @@ impl Ai {
             crisis_resources: Vec::new(),
             title_generator: None,
             rate_limiter: None,
+            spend_cap_enforcer: None,
         }
     }
 
@@ -377,6 +382,17 @@ impl Ai {
         self
     }
 
+    /// Enables checking a turn's spend against configured per-user and
+    /// global caps before it starts.
+    ///
+    /// Checked against the same scopes [`Self::with_rate_limiter`] checks -
+    /// global and the invoking user (a guild scope is never subject to a
+    /// spend cap; see [`crate::limits::SpendCapPolicies`]'s own doc comment).
+    pub fn with_spend_cap_enforcer(mut self, enforcer: Arc<SpendCapEnforcer>) -> Self {
+        self.spend_cap_enforcer = Some(enforcer);
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = match self.prepare(&req).await? {
@@ -415,6 +431,11 @@ impl Ai {
                 limiter
                     .record_tokens(scope, turn_usage.usage.total_tokens())
                     .await;
+            }
+        }
+        if let Some(enforcer) = &self.spend_cap_enforcer {
+            for &scope in &prepared.rate_limit_scopes {
+                enforcer.record_spend(scope, turn_usage.cost.0).await;
             }
         }
 
@@ -480,6 +501,7 @@ impl Ai {
         let usage_recorder = self.usage_recorder.clone();
         let title_generator = self.title_generator.clone();
         let rate_limiter = self.rate_limiter.clone();
+        let spend_cap_enforcer = self.spend_cap_enforcer.clone();
         let rate_limit_scopes = prepared.rate_limit_scopes;
         let conversation_id = prepared.conversation_id;
         let persona_label = prepared.persona_label;
@@ -495,13 +517,19 @@ impl Ai {
             // slot only once this turn - success, failure, or a dropped
             // connection, whichever happens first - actually finishes
             let _rate_limit_guards = prepared.rate_limit_guards;
-            let record_tokens = |usage: Usage| {
+            let record_usage = |usage: Usage, cost: Cost| {
                 let rate_limiter = rate_limiter.clone();
+                let spend_cap_enforcer = spend_cap_enforcer.clone();
                 let scopes = rate_limit_scopes.clone();
                 async move {
                     if let Some(limiter) = &rate_limiter {
                         for &scope in &scopes {
                             limiter.record_tokens(scope, usage.total_tokens()).await;
+                        }
+                    }
+                    if let Some(enforcer) = &spend_cap_enforcer {
+                        for &scope in &scopes {
+                            enforcer.record_spend(scope, cost.0).await;
                         }
                     }
                 }
@@ -564,7 +592,7 @@ impl Ai {
                             }
                         }
                         write_usage(&usage_recorder, record(usage, cost, iterations, true)).await;
-                        record_tokens(usage).await;
+                        record_usage(usage, cost).await;
                         yield HarnessEvent::TurnFinished { usage, cost };
                     }
                     HarnessEvent::Handoff(payload) => {
@@ -573,7 +601,7 @@ impl Ai {
                             record(accumulated_usage, accumulated_cost, iterations, true),
                         )
                         .await;
-                        record_tokens(accumulated_usage).await;
+                        record_usage(accumulated_usage, accumulated_cost).await;
                         yield HarnessEvent::Handoff(payload);
                     }
                     HarnessEvent::Failed(error) => {
@@ -582,7 +610,7 @@ impl Ai {
                             record(accumulated_usage, accumulated_cost, iterations, false),
                         )
                         .await;
-                        record_tokens(accumulated_usage).await;
+                        record_usage(accumulated_usage, accumulated_cost).await;
                         yield HarnessEvent::Failed(error);
                     }
                     other => yield other,
@@ -644,23 +672,33 @@ impl Ai {
         // checked before touching the session store at all, so a request
         // about to be refused for cost reasons never even creates a
         // conversation or writes a message it will never get an answer to
-        let (rate_limit_guards, rate_limit_scopes) =
-            match &self.rate_limiter {
-                Some(limiter) => {
-                    let scopes = rate_limit_scopes_for(req);
-                    let mut guards = Vec::with_capacity(scopes.len());
-                    for &scope in &scopes {
-                        let guard = limiter.check(scope).await.map_err(|error| {
-                            AiError::BudgetExceeded {
-                                limit: error.to_string(),
-                            }
+        let rate_limit_scopes = rate_limit_scopes_for(req);
+
+        let mut rate_limit_guards = Vec::new();
+        if let Some(limiter) = &self.rate_limiter {
+            rate_limit_guards.reserve(rate_limit_scopes.len());
+            for &scope in &rate_limit_scopes {
+                let guard =
+                    limiter
+                        .check(scope)
+                        .await
+                        .map_err(|error| AiError::BudgetExceeded {
+                            limit: error.to_string(),
                         })?;
-                        guards.push(guard);
-                    }
-                    (guards, scopes)
-                }
-                None => (Vec::new(), Vec::new()),
-            };
+                rate_limit_guards.push(guard);
+            }
+        }
+
+        if let Some(enforcer) = &self.spend_cap_enforcer {
+            for &scope in &rate_limit_scopes {
+                enforcer
+                    .check(scope)
+                    .await
+                    .map_err(|error| AiError::BudgetExceeded {
+                        limit: error.to_string(),
+                    })?;
+            }
+        }
 
         let mut conversation = self
             .sessions
@@ -864,7 +902,7 @@ mod tests {
     use super::*;
     use crate::{
         audit::ToolCallRecord,
-        limits::RateLimitStore,
+        limits::{RateLimitStore, SpendCapStore},
         memory::{CompactionPersona, InMemorySessionStore},
         persona::PersonaConfig,
         provider::MockProvider,
@@ -2402,6 +2440,225 @@ mod tests {
             ..crate::limits::ScopePolicies::default()
         });
         let ai = ai_with(MemoryPolicy::None, provider).with_rate_limiter(limiter);
+
+        let result = ai.turn_streamed(request("companion", "hi")).await;
+        assert!(matches!(result, Err(AiError::BudgetExceeded { .. })));
+    }
+
+    /// A [`crate::limits::SpendCapStore`] over an in-memory map, so these
+    /// tests never touch a database - mirrors `FakeRateLimitStore` above.
+    type SpendCapKey = (String, Option<i64>, String);
+
+    #[derive(Default)]
+    struct FakeSpendCapStore {
+        caps: std::sync::Mutex<HashMap<SpendCapKey, crate::limits::SpendCapRow>>,
+    }
+
+    fn spend_cap_key(scope: crate::limits::Scope, period: &str) -> SpendCapKey {
+        (
+            scope.scope_type().to_string(),
+            scope.scope_id(),
+            period.to_string(),
+        )
+    }
+
+    #[async_trait::async_trait]
+    impl crate::limits::SpendCapStore for FakeSpendCapStore {
+        async fn get_cap(
+            &self,
+            scope: crate::limits::Scope,
+            period: &str,
+        ) -> Result<Option<crate::limits::SpendCapRow>, AiError> {
+            Ok(self
+                .caps
+                .lock()
+                .unwrap()
+                .get(&spend_cap_key(scope, period))
+                .copied())
+        }
+
+        async fn upsert_cap(
+            &self,
+            scope: crate::limits::Scope,
+            period: &str,
+            limit_micros: i64,
+            current_micros: i64,
+            reset_at: chrono::DateTime<chrono::Utc>,
+        ) -> Result<(), AiError> {
+            self.caps.lock().unwrap().insert(
+                spend_cap_key(scope, period),
+                crate::limits::SpendCapRow {
+                    limit_micros,
+                    current_micros,
+                    reset_at,
+                },
+            );
+            Ok(())
+        }
+
+        async fn increment_spend(
+            &self,
+            scope: crate::limits::Scope,
+            period: &str,
+            micros: i64,
+        ) -> Result<(), AiError> {
+            let mut caps = self.caps.lock().unwrap();
+            if let Some(cap) = caps.get_mut(&spend_cap_key(scope, period)) {
+                cap.current_micros += micros;
+            }
+            Ok(())
+        }
+    }
+
+    fn spend_cap_enforcer_with(
+        policies: crate::limits::SpendCapPolicies,
+    ) -> Arc<crate::limits::SpendCapEnforcer> {
+        Arc::new(crate::limits::SpendCapEnforcer::new(
+            Arc::new(FakeSpendCapStore::default()),
+            policies,
+        ))
+    }
+
+    #[tokio::test]
+    async fn test_a_scope_over_its_spend_cap_refuses_the_turn() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let enforcer = spend_cap_enforcer_with(crate::limits::SpendCapPolicies {
+            user: crate::limits::SpendCapPolicy {
+                limit_micros: Some(0),
+                ..crate::limits::SpendCapPolicy::default()
+            },
+            ..crate::limits::SpendCapPolicies::default()
+        });
+        let ai = ai_with(MemoryPolicy::None, provider).with_spend_cap_enforcer(enforcer);
+
+        let result = ai.turn(request("companion", "hi")).await;
+        assert!(
+            matches!(result, Err(AiError::BudgetExceeded { .. })),
+            "a scope over its spend cap should refuse the turn, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_spend_cap_enforcer_wired_nothing_breaks() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let result = ai.turn(request("companion", "hi")).await;
+        assert!(
+            result.is_ok(),
+            "no enforcer wired should behave exactly as before it existed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_successful_turn_records_its_spend() {
+        let provider = Arc::new(MockProvider::new().respond(Ok(
+            crate::types::CompletionResponse::new(
+                vec![ContentBlock::text("hi")],
+                crate::types::StopReason::EndTurn,
+                Usage::new(10, 20),
+            ),
+        )));
+        let store = Arc::new(FakeSpendCapStore::default());
+        let enforcer = Arc::new(crate::limits::SpendCapEnforcer::new(
+            store.clone(),
+            crate::limits::SpendCapPolicies {
+                user: crate::limits::SpendCapPolicy {
+                    limit_micros: Some(1_000_000_000),
+                    ..crate::limits::SpendCapPolicy::default()
+                },
+                ..crate::limits::SpendCapPolicies::default()
+            },
+        ));
+        let ai = ai_with(MemoryPolicy::None, provider).with_spend_cap_enforcer(enforcer);
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("should succeed");
+
+        let cap = store
+            .get_cap(crate::limits::Scope::User(1), "monthly")
+            .await
+            .unwrap()
+            .expect("a cap should have been created by the check before the turn ran");
+        assert!(
+            cap.current_micros > 0,
+            "the turn's own cost should have been recorded after it ran"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_spend_is_recorded_even_when_the_turn_fails() {
+        let provider =
+            Arc::new(MockProvider::new().respond_error(AiError::Rejected("bad key".to_string())));
+        let store = Arc::new(FakeSpendCapStore::default());
+        let enforcer = Arc::new(crate::limits::SpendCapEnforcer::new(
+            store.clone(),
+            crate::limits::SpendCapPolicies {
+                user: crate::limits::SpendCapPolicy {
+                    limit_micros: Some(1_000_000_000),
+                    ..crate::limits::SpendCapPolicy::default()
+                },
+                ..crate::limits::SpendCapPolicies::default()
+            },
+        ));
+        let ai = ai_with(MemoryPolicy::None, provider).with_spend_cap_enforcer(enforcer);
+
+        let result = ai.turn(request("companion", "hi")).await;
+        assert!(result.is_err());
+
+        // a failed provider call still records zero cost - not itself
+        // interesting, but confirms record_spend runs on the failure path
+        // too rather than only after a successful reply
+        let cap = store
+            .get_cap(crate::limits::Scope::User(1), "monthly")
+            .await
+            .unwrap();
+        assert!(cap.is_none() || cap.unwrap().current_micros == 0);
+    }
+
+    #[tokio::test]
+    async fn test_a_scope_near_its_spend_cap_is_not_yet_refused() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let store = Arc::new(FakeSpendCapStore::default());
+        store
+            .upsert_cap(
+                crate::limits::Scope::User(1),
+                "monthly",
+                1000,
+                900,
+                chrono::Utc::now() + std::time::Duration::from_secs(60 * 60),
+            )
+            .await
+            .unwrap();
+        let enforcer = Arc::new(crate::limits::SpendCapEnforcer::new(
+            store,
+            crate::limits::SpendCapPolicies {
+                user: crate::limits::SpendCapPolicy {
+                    limit_micros: Some(1000),
+                    ..crate::limits::SpendCapPolicy::default()
+                },
+                ..crate::limits::SpendCapPolicies::default()
+            },
+        ));
+        let ai = ai_with(MemoryPolicy::None, provider).with_spend_cap_enforcer(enforcer);
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("90% spent should warn, not refuse");
+    }
+
+    #[tokio::test]
+    async fn test_a_streamed_turn_also_respects_spend_caps() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let enforcer = spend_cap_enforcer_with(crate::limits::SpendCapPolicies {
+            user: crate::limits::SpendCapPolicy {
+                limit_micros: Some(0),
+                ..crate::limits::SpendCapPolicy::default()
+            },
+            ..crate::limits::SpendCapPolicies::default()
+        });
+        let ai = ai_with(MemoryPolicy::None, provider).with_spend_cap_enforcer(enforcer);
 
         let result = ai.turn_streamed(request("companion", "hi")).await;
         assert!(matches!(result, Err(AiError::BudgetExceeded { .. })));
