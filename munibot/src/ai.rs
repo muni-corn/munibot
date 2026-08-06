@@ -12,6 +12,7 @@ use std::sync::Arc;
 use munibot_ai::{
     Ai,
     audit::DieselToolAuditor,
+    crisis::{CrisisClassifier, CrisisPersona},
     memory::{
         CompactionPersona, CompactionSettings, DieselMemoryOptIn, DieselMemoryStore,
         DieselSessionStore, GatedMemoryStore, MemoryStore, SessionStore, Summariser,
@@ -20,10 +21,25 @@ use munibot_ai::{
     persona::AiConfig,
     provider::ProviderResolver,
     tools::ToolRegistry,
+    types::ModelRef,
     usage::DieselUsageRecorder,
 };
 use munibot_core::db::DbPool;
 use tracing::{info, warn};
+
+/// The model the default persona is configured with, if one is set.
+///
+/// Both conversation compaction and crisis classification fall back to this
+/// rather than adding their own config knobs for it: an operator who already
+/// trusts a model for real conversation has no reason to want a different
+/// one just to summarise it or screen it.
+fn default_persona_model(config: &AiConfig) -> Option<ModelRef> {
+    config
+        .default_persona
+        .as_ref()
+        .and_then(|id| config.personas.get(id))
+        .map(|persona| persona.model.clone())
+}
 
 /// Builds the AI service, or `None` when `ai.enabled` is `false` in config.
 ///
@@ -53,31 +69,35 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
         .with_usage_recorder(Arc::new(DieselUsageRecorder::new(pool.clone())))
         .with_tool_auditor(Arc::new(DieselToolAuditor::new(pool.clone())));
 
-    // compaction needs a real, working provider - reuses the default
-    // persona's own model rather than adding a separate config knob for it,
-    // since an operator who already trusts that model for real conversation
-    // has no reason to want a different one just for summarising it
-    let compaction_model = config
-        .default_persona
-        .as_ref()
-        .and_then(|id| config.personas.get(id))
-        .map(|persona| persona.model.clone());
-    match compaction_model {
-        Some(model) => match ProviderResolver::new().resolve(&model) {
+    let providers = ProviderResolver::new();
+    match default_persona_model(config) {
+        Some(model) => match providers.resolve(&model) {
             Ok(provider) => {
-                let summariser = Summariser::new(provider, CompactionPersona::embedded(model));
+                let summariser =
+                    Summariser::new(provider.clone(), CompactionPersona::embedded(model.clone()));
                 ai = ai.with_summariser(summariser, CompactionSettings::default());
+
+                // reuses the same resolved provider and model as compaction above,
+                // for the same reason - see default_persona_model's own doc comment.
+                // a genuinely cheaper, dedicated model for this is worth adding once
+                // there is a real cost signal to justify a new config knob for it
+                let classifier = CrisisClassifier::new(provider, CrisisPersona::embedded(model));
+                ai = ai.with_crisis_classifier(classifier);
             }
             Err(error) => {
                 warn!(
                     %error,
-                    "couldn't resolve a provider for conversation compaction; long conversations \
-                     won't compact themselves"
+                    "couldn't resolve a provider for the default persona's model; \
+                     conversations won't compact themselves and inbound messages won't be \
+                     screened for crisis signals"
                 );
             }
         },
         None => {
-            warn!("ai.default_persona isn't set; conversations won't compact themselves");
+            warn!(
+                "ai.default_persona isn't set; conversations won't compact themselves and inbound \
+                 messages won't be screened for crisis signals"
+            );
         }
     }
 
