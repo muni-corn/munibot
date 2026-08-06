@@ -13,8 +13,9 @@ use tracing::warn;
 ///
 /// Grant-only: removing an entry from config does not revoke a permission
 /// already granted. An operator who no longer belongs must be revoked by
-/// hand for now - see `docs/notes` for why this was deliberately deferred
-/// rather than added speculatively.
+/// hand for now - see `docs/notes/permission-system.md` for why this was
+/// deliberately deferred rather than added speculatively, and what a real
+/// revocation sync would need to check.
 pub async fn sync_operators(config: &Config, pool: &DbPool) {
     for entry in &config.operators {
         let user = match entry {
