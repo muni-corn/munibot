@@ -7,6 +7,7 @@ use crate::{
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
         home::Home,
+        memory::Memory,
     },
 };
 
@@ -65,6 +66,8 @@ pub enum Route {
                 #[route("/chat/:conversation_id")]
                 ChatConversation { conversation_id: i64 },
             #[end_layout]
+            #[route("/memory")]
+            Memory {},
         #[end_layout]
     #[end_layout]
 
