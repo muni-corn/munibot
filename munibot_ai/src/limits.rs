@@ -21,7 +21,7 @@ pub use error::RateLimitError;
 pub use limiter::RateLimiter;
 pub use policy::{RateLimitPolicy, ScopePolicies};
 pub use scope::Scope;
-pub use spend_enforcer::SpendCapEnforcer;
+pub use spend_enforcer::{SpendCapEnforcer, SpendCapStatus};
 pub use spend_error::SpendCapError;
 pub use spend_policy::{SpendCapPolicies, SpendCapPolicy};
 pub use spend_store::{DieselSpendCapStore, SpendCapRow, SpendCapStore};

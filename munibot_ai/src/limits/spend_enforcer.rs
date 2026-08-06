@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use crate::limits::{Scope, SpendCapError, SpendCapPolicies, SpendCapPolicy, SpendCapStore};
 
@@ -8,6 +8,16 @@ use crate::limits::{Scope, SpendCapError, SpendCapPolicies, SpendCapPolicy, Spen
 /// operator sees a scope approaching its limit before it actually refuses
 /// anything.
 const WARN_AT_RATIO: f64 = 0.8;
+
+/// A read-only snapshot of one scope's spend against its configured cap -
+/// what a usage panel shows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpendCapStatus {
+    pub limit_micros: i64,
+    pub current_micros: i64,
+    pub reset_at: DateTime<Utc>,
+    pub period: String,
+}
 
 /// Tracks spend per scope against configured caps, refusing new turns once
 /// one is fully spent while letting anything already running finish - the
@@ -95,6 +105,37 @@ impl SpendCapEnforcer {
         }
 
         Ok(())
+    }
+
+    /// A read-only snapshot of `scope`'s spend against its configured cap,
+    /// for a usage panel - `None` if `scope` has no cap configured (see
+    /// [`Self::policy_for`]) or the store couldn't be read.
+    ///
+    /// Never creates or rolls a stored row over, unlike [`Self::check`]: an
+    /// expired period here just reports zero current spend against the same
+    /// limit, rather than mutating storage from what is meant to be a
+    /// read-only view.
+    pub async fn status(&self, scope: Scope) -> Option<SpendCapStatus> {
+        let policy = self.policy_for(scope)?;
+        let limit_micros = policy.limit_micros?;
+
+        let existing = self.store.get_cap(scope, &policy.period).await.ok()?;
+        let now = Utc::now();
+
+        Some(match existing {
+            Some(cap) if cap.reset_at > now => SpendCapStatus {
+                limit_micros,
+                current_micros: cap.current_micros,
+                reset_at: cap.reset_at,
+                period: policy.period.clone(),
+            },
+            _ => SpendCapStatus {
+                limit_micros,
+                current_micros: 0,
+                reset_at: now + policy.duration,
+                period: policy.period.clone(),
+            },
+        })
     }
 
     /// Records spend actually incurred by a turn, once it has finished -
@@ -331,5 +372,86 @@ mod tests {
             .check(Scope::User(1))
             .await
             .expect("should still succeed");
+    }
+
+    #[tokio::test]
+    async fn test_status_is_none_for_an_unconfigured_scope() {
+        let enforcer = enforcer_with(SpendCapPolicies::default());
+        assert!(enforcer.status(Scope::User(1)).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_status_is_none_for_a_guild_scope() {
+        let enforcer = enforcer_with(SpendCapPolicies {
+            user: SpendCapPolicy {
+                limit_micros: Some(1000),
+                ..SpendCapPolicy::default()
+            },
+            global: SpendCapPolicy {
+                limit_micros: Some(1000),
+                ..SpendCapPolicy::default()
+            },
+        });
+        assert!(enforcer.status(Scope::Guild(1)).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_status_before_any_check_reports_zero_spent_against_the_limit() {
+        let enforcer = enforcer_with(SpendCapPolicies {
+            user: SpendCapPolicy {
+                limit_micros: Some(1000),
+                period: "monthly".to_string(),
+                duration: Duration::from_secs(60 * 60),
+            },
+            ..SpendCapPolicies::default()
+        });
+
+        let status = enforcer
+            .status(Scope::User(1))
+            .await
+            .expect("should have a status once a cap is configured");
+        assert_eq!(status.limit_micros, 1000);
+        assert_eq!(status.current_micros, 0);
+        assert_eq!(status.period, "monthly");
+    }
+
+    #[tokio::test]
+    async fn test_status_reflects_recorded_spend() {
+        let enforcer = enforcer_with(SpendCapPolicies {
+            user: SpendCapPolicy {
+                limit_micros: Some(1000),
+                period: "monthly".to_string(),
+                duration: Duration::from_secs(60 * 60),
+            },
+            ..SpendCapPolicies::default()
+        });
+
+        enforcer.check(Scope::User(1)).await.unwrap();
+        enforcer.record_spend(Scope::User(1), 400).await;
+
+        let status = enforcer.status(Scope::User(1)).await.unwrap();
+        assert_eq!(status.current_micros, 400);
+    }
+
+    #[tokio::test]
+    async fn test_status_never_mutates_an_expired_period() {
+        let enforcer = enforcer_with(SpendCapPolicies {
+            user: SpendCapPolicy {
+                limit_micros: Some(1000),
+                period: "monthly".to_string(),
+                duration: Duration::from_millis(10),
+            },
+            ..SpendCapPolicies::default()
+        });
+
+        enforcer.check(Scope::User(1)).await.unwrap();
+        enforcer.record_spend(Scope::User(1), 400).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        // reading status after the period has expired should report a
+        // fresh zero, but must not itself create or reset a stored row -
+        // check() (still) owns rolling a period over
+        let status = enforcer.status(Scope::User(1)).await.unwrap();
+        assert_eq!(status.current_micros, 0);
     }
 }
