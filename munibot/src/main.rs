@@ -66,6 +66,12 @@ async fn main() -> anyhow::Result<()> {
     let ai_pool = establish_pool()
         .await
         .expect("couldn't establish database connection pool for ai");
+
+    // grant-only, best-effort - see permissions::sync_operators's own doc
+    // comment. run before the bots/gui server start, so an operator's
+    // permission is already in place for their very first request
+    munibot::permissions::sync_operators(&config, &ai_pool).await;
+
     let ai = munibot::ai::build(&ai_config, ai_pool).await?;
 
     // start the bots alongside the gui server, unless explicitly disabled for
