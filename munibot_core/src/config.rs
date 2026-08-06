@@ -9,6 +9,29 @@ use crate::error::MuniBotError;
 pub struct Config {
     pub discord: DiscordConfig,
     pub twitch: TwitchConfig,
+    /// Users granted `Permission::Operator` on startup - see
+    /// `munibot::permissions::sync_operators`. Empty by default, so an
+    /// existing config file gains no operators until someone is added here.
+    #[serde(default)]
+    pub operators: Vec<OperatorConfig>,
+}
+
+/// One configured operator, identified either by a linked provider account
+/// (Discord, Twitch, ...) or directly by their munibot user id.
+///
+/// An untagged enum rather than two separate fields: TOML has no natural
+/// "exactly one of these" construct, and each variant's own field names
+/// already disambiguate which was meant.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(untagged)]
+pub enum OperatorConfig {
+    LinkedAccount {
+        provider: String,
+        provider_user_id: String,
+    },
+    MunibotUser {
+        munibot_user_id: i64,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -109,6 +132,7 @@ impl Default for Config {
                 twitch_user: default_twitch_user(),
                 initial_channels: Vec::new(),
             },
+            operators: Vec::new(),
         }
     }
 }
@@ -121,7 +145,7 @@ fn default_twitch_user() -> String {
 mod tests {
     use std::fs;
 
-    use super::Config;
+    use super::{Config, OperatorConfig};
 
     #[test]
     fn test_default_config_discord_invite_link_is_none() {
@@ -154,6 +178,60 @@ mod tests {
             config.twitch.initial_channels.is_empty(),
             "default initial_channels should be empty"
         );
+    }
+
+    #[test]
+    fn test_default_config_operators_is_empty() {
+        let config = Config::default();
+        assert!(config.operators.is_empty());
+    }
+
+    #[test]
+    fn test_operator_config_parses_a_linked_account() {
+        let config: OperatorConfig = toml::from_str(
+            r#"
+            provider = "discord"
+            provider_user_id = "123456789012345678"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config, OperatorConfig::LinkedAccount {
+            provider: "discord".to_string(),
+            provider_user_id: "123456789012345678".to_string(),
+        });
+    }
+
+    #[test]
+    fn test_operator_config_parses_a_raw_munibot_user_id() {
+        let config: OperatorConfig = toml::from_str("munibot_user_id = 7").unwrap();
+        assert_eq!(config, OperatorConfig::MunibotUser { munibot_user_id: 7 });
+    }
+
+    #[test]
+    fn test_loading_a_real_operators_section() {
+        let config: Config = toml::from_str(
+            r#"
+            [discord]
+            [twitch]
+
+            [[operators]]
+            provider = "discord"
+            provider_user_id = "123456789012345678"
+
+            [[operators]]
+            munibot_user_id = 7
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(config.operators.len(), 2);
+        assert_eq!(config.operators[0], OperatorConfig::LinkedAccount {
+            provider: "discord".to_string(),
+            provider_user_id: "123456789012345678".to_string(),
+        });
+        assert_eq!(config.operators[1], OperatorConfig::MunibotUser {
+            munibot_user_id: 7
+        });
     }
 
     #[test]
