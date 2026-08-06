@@ -2,10 +2,18 @@
 //!
 //! Free async functions taking `&DbPool` and returning `QueryResult<T>`, in
 //! their own submodule because `operations.rs` is already long enough without
-//! them.
+//! them. Rate limit and spend cap operations live in their own `limits`
+//! submodule rather than growing this file further - see that module's own
+//! doc comment.
+
+pub mod limits;
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+pub use limits::{
+    get_rate_limit, get_spend_cap, increment_rate_limit, increment_spend, reset_rate_limit_window,
+    upsert_spend_cap,
+};
 
 use crate::db::{
     DbPool,

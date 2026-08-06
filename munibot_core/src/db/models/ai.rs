@@ -9,7 +9,8 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::db::schema::{
-    ai_conversations, ai_memories, ai_messages, ai_tool_calls, ai_usage, ai_user_settings,
+    ai_conversations, ai_memories, ai_messages, ai_rate_limits, ai_spend_caps, ai_tool_calls,
+    ai_usage, ai_user_settings,
 };
 
 // ai_conversations
@@ -216,4 +217,71 @@ pub struct NewAiUserSettings {
     pub memory_opt_in: bool,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+}
+
+// ai_rate_limits
+
+/// A row in the `ai_rate_limits` table: one scope's counter for the current
+/// window.
+///
+/// `scope_type` is one of `"user"`, `"guild"`, or `"global"` (see
+/// `munibot_ai::limits::Scope`, which this mirrors); `scope_id` is `None`
+/// for the single global row. No `Identifiable` derive: every lookup goes
+/// through the `(scope_type, scope_id)` unique index via a plain
+/// `.filter(...)`, the same choice
+/// [`GuildConfig`](crate::db::models::GuildConfig) makes for the same reason.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = ai_rate_limits)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiRateLimit {
+    pub id: i64,
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub window_start: NaiveDateTime,
+    pub request_count: i32,
+    pub token_count: i64,
+}
+
+/// Insertable and upsertable shape for `ai_rate_limits`.
+#[derive(Clone, Debug, Insertable, AsChangeset)]
+#[diesel(table_name = ai_rate_limits)]
+pub struct NewAiRateLimit {
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub window_start: NaiveDateTime,
+    pub request_count: i32,
+    pub token_count: i64,
+}
+
+// ai_spend_caps
+
+/// A row in the `ai_spend_caps` table: one scope's spend against a
+/// configured cap for one period (e.g. `"monthly"`).
+///
+/// No `Identifiable` derive, for the same reason [`AiRateLimit`] has none:
+/// every lookup goes through the `(scope_type, scope_id, period)` unique
+/// index.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = ai_spend_caps)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiSpendCap {
+    pub id: i64,
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub period: String,
+    pub limit_micros: i64,
+    pub current_micros: i64,
+    pub reset_at: NaiveDateTime,
+}
+
+/// Insertable and upsertable shape for `ai_spend_caps`.
+#[derive(Clone, Debug, Insertable, AsChangeset)]
+#[diesel(table_name = ai_spend_caps)]
+pub struct NewAiSpendCap {
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub period: String,
+    pub limit_micros: i64,
+    pub current_micros: i64,
+    pub reset_at: NaiveDateTime,
 }
