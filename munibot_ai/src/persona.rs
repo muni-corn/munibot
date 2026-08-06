@@ -76,6 +76,24 @@ mod prompt_tests {
     }
 
     #[test]
+    fn test_companion_prompt_states_it_can_search_and_fetch_the_web() {
+        // milestone 2 phase 13's own requirement: the companion carries research
+        // tools himself, so the prompt must say so for both of them, not just
+        // searching - a link handed to him or turned up by a search should
+        // actually get read, not guessed at from its url alone
+        let source = include_str!("../prompts/companion.md");
+        assert!(
+            source.contains("search the web"),
+            "the companion prompt must state plainly that it can search the web"
+        );
+        assert!(
+            source.contains("follow a specific link") || source.contains("follow a link"),
+            "the companion prompt must state plainly that it can fetch and read a specific link, \
+             not just search"
+        );
+    }
+
+    #[test]
     fn test_writer_prompt_declares_exactly_user_name_and_platform() {
         let template = PromptTemplate::new(include_str!("../prompts/writer.md"));
         let mut variables = template.required_variables();
