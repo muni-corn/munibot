@@ -54,6 +54,20 @@ pub trait SessionStore: Send + Sync {
         summary: String,
     ) -> Result<(), AiError>;
 
+    /// Sets or replaces a conversation's title.
+    ///
+    /// A different concern from
+    /// [`crate::memory::ConversationDirectory::rename`], which exists for a
+    /// person explicitly renaming a conversation from the sidebar - this is
+    /// for `Ai::prepare` checking and setting a **generated** title on the
+    /// same load it already does, both ultimately writing the same
+    /// underlying column.
+    async fn set_title(
+        &self,
+        conversation_id: ConversationId,
+        title: String,
+    ) -> Result<(), AiError>;
+
     /// Clears a conversation's history and summary, without deleting the
     /// conversation row (or its scope-to-id mapping) itself - a fresh
     /// `/reset` should still resolve to the same conversation, just an

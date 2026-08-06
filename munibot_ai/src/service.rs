@@ -19,7 +19,7 @@ use crate::{
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
     memory::{
         CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
-        assemble_context, compact_if_needed,
+        TitleGenerator, assemble_context, compact_if_needed,
     },
     persona::{AiConfig, CrisisResourceConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
     provider::{Provider, ProviderRegistry, ProviderResolver, estimate_cost},
@@ -97,6 +97,9 @@ struct PreparedTurn {
     /// from `persona_label`, which is the display name shown to a user rather
     /// than the identifier a usage dashboard groups and filters by.
     persona_id: String,
+    /// Whether this conversation has no title yet, so a caller knows
+    /// whether to spawn title generation once this turn's own reply is in.
+    needs_title: bool,
 }
 
 /// What [`Ai::prepare`] produces: either a normal turn ready to run through
@@ -148,6 +151,11 @@ pub struct Ai {
     /// called, or [`Self::new`] was given an [`AiConfig`] that configured
     /// some.
     crisis_resources: Vec<CrisisResourceConfig>,
+    /// `None` until [`Self::with_title_generator`] enables it. Without it, a
+    /// conversation is never named automatically - exactly the behaviour
+    /// every turn had before this existed, and a sidebar shows its own
+    /// "new conversation" fallback for one with no title either way.
+    title_generator: Option<TitleGenerator>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -168,6 +176,48 @@ async fn write_usage(recorder: &Option<Arc<dyn UsageRecorder>>, record: UsageRec
     if let Err(error) = recorder.record(record).await {
         tracing::warn!(%error, "failed to record ai usage");
     }
+}
+
+/// Spawns a detached background task naming `conversation_id` from its first
+/// exchange, if `generator` is `Some`. A no-op otherwise.
+///
+/// A free function rather than a method on `Ai`, for the same reason
+/// [`write_usage`] already is: [`Ai::turn_streamed`] needs to call this from
+/// inside its `'static` stream body, which cannot hold a borrow of `&self`.
+///
+/// A failure - the model, or saving the result - is logged and otherwise
+/// ignored: naming a conversation is never something a turn's own success
+/// should depend on, and a still-untitled conversation already has a
+/// working fallback (a sidebar's own "new conversation" label).
+fn spawn_title_generation(
+    generator: Option<TitleGenerator>,
+    sessions: Arc<dyn SessionStore>,
+    conversation_id: ConversationId,
+    user_message: String,
+    assistant_reply: String,
+) {
+    let Some(generator) = generator else { return };
+
+    tokio::spawn(async move {
+        match generator.generate(&user_message, &assistant_reply).await {
+            Ok(title) => {
+                if let Err(error) = sessions.set_title(conversation_id, title).await {
+                    tracing::warn!(
+                        %error,
+                        conversation_id = conversation_id.0,
+                        "couldn't save a generated conversation title"
+                    );
+                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    conversation_id = conversation_id.0,
+                    "couldn't generate a conversation title"
+                );
+            }
+        }
+    });
 }
 
 impl Ai {
@@ -214,6 +264,7 @@ impl Ai {
             memory_store: None,
             crisis_classifier: None,
             crisis_resources: Vec::new(),
+            title_generator: None,
         }
     }
 
@@ -274,6 +325,18 @@ impl Ai {
         self
     }
 
+    /// Enables naming a conversation from its first exchange, once that
+    /// exchange finishes successfully.
+    ///
+    /// Runs in a detached background task rather than delaying a turn's own
+    /// response on it - naming a conversation is not something anyone is
+    /// waiting on, and a failure here is logged and otherwise ignored (see
+    /// [`Self::spawn_title_generation`]), never surfaced as a turn failure.
+    pub fn with_title_generator(mut self, generator: TitleGenerator) -> Self {
+        self.title_generator = Some(generator);
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = match self.prepare(&req).await? {
@@ -311,6 +374,16 @@ impl Ai {
             self.sessions
                 .append(conversation_id, Message::assistant(text.clone()))
                 .await?;
+
+            if prepared.needs_title {
+                spawn_title_generation(
+                    self.title_generator.clone(),
+                    self.sessions.clone(),
+                    conversation_id,
+                    req.message.clone(),
+                    text.clone(),
+                );
+            }
         }
 
         Ok(outcome)
@@ -355,12 +428,15 @@ impl Ai {
         let harness = Arc::new(harness);
         let sessions = self.sessions.clone();
         let usage_recorder = self.usage_recorder.clone();
+        let title_generator = self.title_generator.clone();
         let conversation_id = prepared.conversation_id;
         let persona_label = prepared.persona_label;
         let persona_id = prepared.persona_id;
+        let needs_title = prepared.needs_title;
         let model = prepared.request.model.clone();
         let user_id = req.user_id;
         let guild_id = req.guild_id;
+        let user_message = req.message.clone();
 
         let stream = async_stream::stream! {
             let mut assistant_text = String::new();
@@ -408,6 +484,16 @@ impl Ai {
                             let _ = sessions
                                 .append(conversation_id, Message::assistant(assistant_text.clone()))
                                 .await;
+
+                            if needs_title {
+                                spawn_title_generation(
+                                    title_generator.clone(),
+                                    sessions.clone(),
+                                    conversation_id,
+                                    user_message.clone(),
+                                    assistant_text.clone(),
+                                );
+                            }
                         }
                         write_usage(&usage_recorder, record(usage, cost, iterations, true)).await;
                         yield HarnessEvent::TurnFinished { usage, cost };
@@ -588,6 +674,7 @@ impl Ai {
             conversation_id: conversation.id,
             persona_label: persona.display_name.clone(),
             persona_id: persona.id.0.clone(),
+            needs_title: conversation.title.is_none(),
         })))
     }
 
@@ -1862,5 +1949,151 @@ mod tests {
             events.last(),
             Some(HarnessEvent::TurnFinished { .. })
         ));
+    }
+
+    fn title_generator(response_text: &str) -> (TitleGenerator, Arc<MockProvider>) {
+        let provider = Arc::new(MockProvider::new().respond_text(response_text));
+        let generator = TitleGenerator::new(
+            provider.clone(),
+            crate::memory::TitlePersona::embedded(ModelRef::new("anthropic", "claude-haiku")),
+        );
+        (generator, provider)
+    }
+
+    /// Background title generation is genuinely detached (`tokio::spawn`),
+    /// so every test here yields back to the scheduler a few times after
+    /// its turn finishes, giving the spawned task room to run to
+    /// completion before asserting on its effect.
+    async fn let_background_tasks_run() {
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_new_conversation_gets_a_title_generated_after_its_first_turn() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi there"));
+        let (generator, generator_provider) = title_generator("weekend hiking plans");
+        let ai = ai_with(MemoryPolicy::None, provider).with_title_generator(generator);
+
+        ai.turn(request("companion", "want to go hiking?"))
+            .await
+            .expect("should succeed");
+        let_background_tasks_run().await;
+
+        assert_eq!(generator_provider.request_count(), 1);
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = ai
+            .sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .unwrap();
+        assert_eq!(conversation.title.as_deref(), Some("weekend hiking plans"));
+    }
+
+    #[tokio::test]
+    async fn test_a_conversation_that_already_has_a_title_is_never_regenerated() {
+        let provider = Arc::new(
+            MockProvider::new()
+                .respond_text("hi there")
+                .respond_text("hi again"),
+        );
+        let (generator, generator_provider) = title_generator("weekend hiking plans");
+        let ai = ai_with(MemoryPolicy::None, provider).with_title_generator(generator);
+
+        ai.turn(request("companion", "want to go hiking?"))
+            .await
+            .expect("should succeed");
+        let_background_tasks_run().await;
+        assert_eq!(generator_provider.request_count(), 1);
+
+        ai.turn(request("companion", "what about next week?"))
+            .await
+            .expect("should succeed");
+        let_background_tasks_run().await;
+
+        assert_eq!(
+            generator_provider.request_count(),
+            1,
+            "a conversation that already has a title should never be renamed automatically"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_title_generator_wired_nothing_breaks() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi there"));
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let result = ai.turn(request("companion", "want to go hiking?")).await;
+        assert!(
+            result.is_ok(),
+            "no generator wired should behave exactly as before it existed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_title_generation_failure_does_not_fail_the_turn_or_set_a_title() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi there"));
+        let (generator, _) = title_generator("   "); // blank -> TitleGenerator::generate errors
+        let ai = ai_with(MemoryPolicy::None, provider).with_title_generator(generator);
+
+        let outcome = ai.turn(request("companion", "want to go hiking?")).await;
+        assert!(
+            outcome.is_ok(),
+            "a title generation failure must not fail the turn itself"
+        );
+        let_background_tasks_run().await;
+
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = ai
+            .sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .unwrap();
+        assert_eq!(conversation.title, None);
+    }
+
+    #[tokio::test]
+    async fn test_a_streamed_turn_also_generates_a_title() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi there"));
+        let (generator, generator_provider) = title_generator("weekend hiking plans");
+        let ai = ai_with(MemoryPolicy::None, provider).with_title_generator(generator);
+
+        let _events: Vec<HarnessEvent> = ai
+            .turn_streamed(request("companion", "want to go hiking?"))
+            .await
+            .expect("should succeed")
+            .collect()
+            .await;
+        let_background_tasks_run().await;
+
+        assert_eq!(generator_provider.request_count(), 1);
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = ai
+            .sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .unwrap();
+        assert_eq!(conversation.title.as_deref(), Some("weekend hiking plans"));
+    }
+
+    #[tokio::test]
+    async fn test_a_crisis_bypassed_turn_never_generates_a_title() {
+        // deliberately skipped: see spawn_title_generation's own call sites -
+        // no automated extra model call over a message that just triggered
+        // the crisis classifier
+        let provider = Arc::new(MockProvider::new().respond_text("unused"));
+        let (classifier, _) = crisis_classifier("SEVERE");
+        let (generator, generator_provider) = title_generator("weekend hiking plans");
+        let ai = ai_with(MemoryPolicy::User, provider)
+            .with_crisis_classifier(classifier)
+            .with_title_generator(generator);
+
+        ai.turn(request("companion", "anything"))
+            .await
+            .expect("should succeed");
+        let_background_tasks_run().await;
+
+        assert_eq!(generator_provider.request_count(), 0);
     }
 }

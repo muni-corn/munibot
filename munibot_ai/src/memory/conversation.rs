@@ -41,6 +41,11 @@ pub struct Conversation {
     /// A condensed summary of older messages, once the conversation has been
     /// compacted. `None` until compaction lands in milestone 2.
     pub summary: Option<String>,
+    /// `None` until a title has been generated or set. Read here (rather
+    /// than only through `ConversationDirectory`'s own listing) so
+    /// `Ai::prepare` can tell, from the same load it already does, whether
+    /// this conversation still needs one.
+    pub title: Option<String>,
     pub last_active_at: DateTime<Utc>,
 }
 
@@ -98,6 +103,7 @@ mod tests {
             scope: ConversationScope::new(Platform::Discord, "channel-1"),
             persona_id: "companion".to_string(),
             summary: None,
+            title: None,
             last_active_at: Utc::now(),
         };
         assert_eq!(conversation.summary, None);

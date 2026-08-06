@@ -22,6 +22,7 @@ pub mod opt_in;
 pub mod setup;
 pub mod store;
 pub mod summarise;
+pub mod title;
 pub mod tool_backend;
 pub mod user_memory;
 
@@ -36,5 +37,6 @@ pub use opt_in::{GatedMemoryStore, MemoryOptIn};
 pub use setup::register_memory_tools;
 pub use store::SessionStore;
 pub use summarise::{CompactionPersona, CompactionSettings, Summariser, compact_if_needed};
+pub use title::{TitleGenerator, TitlePersona};
 pub use tool_backend::MemoryToolBackend;
 pub use user_memory::{Memory, MemoryStore};

@@ -75,6 +75,7 @@ fn to_conversation(row: AiConversation) -> Conversation {
         scope: ConversationScope::new(platform, row.scope_key),
         persona_id: row.persona_id,
         summary: row.summary,
+        title: row.title,
         last_active_at: DateTime::<Utc>::from_naive_utc_and_offset(row.last_active_at, Utc),
     }
 }
@@ -165,6 +166,16 @@ impl SessionStore for DieselSessionStore {
     ) -> Result<(), AiError> {
         let tokens = i32::try_from(rough_token_estimate(&summary)).unwrap_or(i32::MAX);
         ai::set_conversation_summary(&self.pool, conversation_id.0 as i64, Some(&summary), tokens)
+            .await
+            .map_err(db_error)
+    }
+
+    async fn set_title(
+        &self,
+        conversation_id: ConversationId,
+        title: String,
+    ) -> Result<(), AiError> {
+        ai::rename_conversation(&self.pool, conversation_id.0 as i64, &title)
             .await
             .map_err(db_error)
     }

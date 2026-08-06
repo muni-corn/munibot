@@ -16,7 +16,7 @@ use munibot_ai::{
     memory::{
         CompactionPersona, CompactionSettings, DieselMemoryOptIn, DieselMemoryStore,
         DieselSessionStore, GatedMemoryStore, MemoryStore, SessionStore, Summariser,
-        register_memory_tools,
+        TitleGenerator, TitlePersona, register_memory_tools,
     },
     persona::AiConfig,
     provider::ProviderResolver,
@@ -73,30 +73,37 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
     match default_persona_model(config) {
         Some(model) => match providers.resolve(&model) {
             Ok(provider) => {
+                // compaction, crisis classification, and title generation all reuse
+                // this same resolved provider and model - see
+                // default_persona_model's own doc comment. a genuinely cheaper,
+                // dedicated model for these is worth adding once there is a real
+                // cost signal to justify a new config knob for it
                 let summariser =
                     Summariser::new(provider.clone(), CompactionPersona::embedded(model.clone()));
                 ai = ai.with_summariser(summariser, CompactionSettings::default());
 
-                // reuses the same resolved provider and model as compaction above,
-                // for the same reason - see default_persona_model's own doc comment.
-                // a genuinely cheaper, dedicated model for this is worth adding once
-                // there is a real cost signal to justify a new config knob for it
-                let classifier = CrisisClassifier::new(provider, CrisisPersona::embedded(model));
+                let classifier =
+                    CrisisClassifier::new(provider.clone(), CrisisPersona::embedded(model.clone()));
                 ai = ai.with_crisis_classifier(classifier);
+
+                let title_generator = TitleGenerator::new(provider, TitlePersona::embedded(model));
+                ai = ai.with_title_generator(title_generator);
             }
             Err(error) => {
                 warn!(
                     %error,
                     "couldn't resolve a provider for the default persona's model; \
-                     conversations won't compact themselves and inbound messages won't be \
-                     screened for crisis signals"
+                     conversations won't compact themselves, inbound messages won't be \
+                     screened for crisis signals, and conversations won't be named \
+                     automatically"
                 );
             }
         },
         None => {
             warn!(
-                "ai.default_persona isn't set; conversations won't compact themselves and inbound \
-                 messages won't be screened for crisis signals"
+                "ai.default_persona isn't set; conversations won't compact themselves, inbound \
+                 messages won't be screened for crisis signals, and conversations won't be named \
+                 automatically"
             );
         }
     }

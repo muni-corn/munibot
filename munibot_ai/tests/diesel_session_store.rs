@@ -149,6 +149,29 @@ async fn test_summary_is_stored_and_reloaded() {
 }
 
 #[tokio::test]
+async fn test_a_new_conversation_has_no_title_until_one_is_set() {
+    let store = store!();
+    let scope = unique_scope();
+    let conversation = store.load_or_create(&scope, "companion").await.unwrap();
+    assert_eq!(conversation.title, None);
+}
+
+#[tokio::test]
+async fn test_title_is_stored_and_reloaded() {
+    let store = store!();
+    let scope = unique_scope();
+    let conversation = store.load_or_create(&scope, "companion").await.unwrap();
+
+    store
+        .set_title(conversation.id, "weekend plans".to_string())
+        .await
+        .unwrap();
+
+    let reloaded = store.load_or_create(&scope, "companion").await.unwrap();
+    assert_eq!(reloaded.title.as_deref(), Some("weekend plans"));
+}
+
+#[tokio::test]
 async fn test_clear_empties_history_but_keeps_the_conversation() {
     let store = store!();
     let scope = unique_scope();

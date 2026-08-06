@@ -106,6 +106,7 @@ impl SessionStore for InMemorySessionStore {
             scope: scope.clone(),
             persona_id: persona_id.to_string(),
             summary: None,
+            title: None,
             last_active_at: Utc::now(),
         };
 
@@ -162,6 +163,18 @@ impl SessionStore for InMemorySessionStore {
         let mut state = self.state.write().unwrap();
         if let Some(conversation) = state.conversations.get_mut(&conversation_id) {
             conversation.summary = Some(summary);
+        }
+        Ok(())
+    }
+
+    async fn set_title(
+        &self,
+        conversation_id: ConversationId,
+        title: String,
+    ) -> Result<(), AiError> {
+        let mut state = self.state.write().unwrap();
+        if let Some(conversation) = state.conversations.get_mut(&conversation_id) {
+            conversation.title = Some(title);
         }
         Ok(())
     }
@@ -358,6 +371,36 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(reloaded.summary.as_deref(), Some("a condensed summary"));
+    }
+
+    #[tokio::test]
+    async fn test_a_new_conversation_has_no_title_until_one_is_set() {
+        let store = InMemorySessionStore::new();
+        let conversation = store
+            .load_or_create(&scope("channel-1"), "companion")
+            .await
+            .unwrap();
+        assert_eq!(conversation.title, None);
+    }
+
+    #[tokio::test]
+    async fn test_set_title_is_visible_on_reload() {
+        let store = InMemorySessionStore::new();
+        let conversation = store
+            .load_or_create(&scope("channel-1"), "companion")
+            .await
+            .unwrap();
+
+        store
+            .set_title(conversation.id, "weekend plans".to_string())
+            .await
+            .unwrap();
+
+        let reloaded = store
+            .load_or_create(&scope("channel-1"), "companion")
+            .await
+            .unwrap();
+        assert_eq!(reloaded.title.as_deref(), Some("weekend plans"));
     }
 
     #[tokio::test]
