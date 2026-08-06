@@ -4513,6 +4513,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "strum",
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
