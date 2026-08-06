@@ -177,6 +177,7 @@ mod tests {
             enabled: true,
             default_persona: None,
             prompt_dir: None,
+            crisis_resources: Vec::new(),
             personas: personas
                 .into_iter()
                 .map(|(id, config)| (PersonaId::new(id), config))

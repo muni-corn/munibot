@@ -102,6 +102,25 @@ pub struct AiConfig {
     pub prompt_dir: Option<PathBuf>,
     #[serde(default)]
     pub personas: HashMap<PersonaId, PersonaConfig>,
+    /// Real, region-appropriate crisis resources (a hotline, a text line, a
+    /// website), surfaced verbatim by the crisis response path on a positive
+    /// signal from a [`crate::crisis::CrisisClassifier`]. Never a model's own
+    /// invention - see that module and `Ai`'s own crisis-handling code for
+    /// why this must always be reviewed, real contact information rather
+    /// than anything generated.
+    #[serde(default)]
+    pub crisis_resources: Vec<CrisisResourceConfig>,
+}
+
+/// One crisis resource an operator has configured: a hotline, a text line, a
+/// website, or similar. `contact` is free text (a phone number, a "text HOME
+/// to 741741" instruction, a URL) rather than a typed phone/url field, since
+/// how someone actually reaches a given resource varies too much to force
+/// into one shape.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CrisisResourceConfig {
+    pub name: String,
+    pub contact: String,
 }
 
 impl AiConfig {

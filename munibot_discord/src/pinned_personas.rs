@@ -85,6 +85,7 @@ mod tests {
             enabled: true,
             default_persona: Some(PersonaId::new("companion")),
             prompt_dir: None,
+            crisis_resources: Vec::new(),
             personas,
         };
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);

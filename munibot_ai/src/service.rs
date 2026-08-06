@@ -21,7 +21,7 @@ use crate::{
         CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
         assemble_context, compact_if_needed,
     },
-    persona::{AiConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
+    persona::{AiConfig, CrisisResourceConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
     provider::{Provider, ProviderRegistry, ProviderResolver, estimate_cost},
     tools::{ConversationId, RiskTier, ToolCtx, ToolRegistry},
     types::{AiError, Cost, History, Message, ModelRef, Usage, rough_token_estimate},
@@ -99,6 +99,19 @@ struct PreparedTurn {
     persona_id: String,
 }
 
+/// What [`Ai::prepare`] produces: either a normal turn ready to run through
+/// the harness, or a reviewed crisis response that bypasses the harness (and
+/// the model) entirely.
+enum Preparation {
+    Turn(Box<PreparedTurn>),
+    /// A crisis signal crossed the threshold: the exchange is already
+    /// stored, and `outcome` is ready to return or stream as-is.
+    CrisisResponse {
+        persona_label: String,
+        outcome: TurnOutcome,
+    },
+}
+
 /// The one surface every platform adapter touches.
 ///
 /// Wraps a resolved [`PersonaRegistry`], the shared tool registry, a session
@@ -130,6 +143,11 @@ pub struct Ai {
     /// no inbound message is ever screened at all - exactly the behaviour
     /// every turn had before this existed.
     crisis_classifier: Option<CrisisClassifier>,
+    /// Real, region-appropriate crisis resources surfaced by the crisis
+    /// response path. Empty unless [`Self::with_crisis_resources`] was
+    /// called, or [`Self::new`] was given an [`AiConfig`] that configured
+    /// some.
+    crisis_resources: Vec<CrisisResourceConfig>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -168,12 +186,10 @@ impl Ai {
     ) -> Result<Self, AiError> {
         let provider_registry = ProviderRegistry::from_env();
         let personas = PersonaRegistry::load(config, &provider_registry)?;
-        Ok(Self::from_parts(
-            personas,
-            tools,
-            sessions,
-            Arc::new(ProviderResolver::new()),
-        ))
+        Ok(
+            Self::from_parts(personas, tools, sessions, Arc::new(ProviderResolver::new()))
+                .with_crisis_resources(config.crisis_resources.clone()),
+        )
     }
 
     /// Builds the service from already-resolved parts.
@@ -197,6 +213,7 @@ impl Ai {
             tool_auditor: None,
             memory_store: None,
             crisis_classifier: None,
+            crisis_resources: Vec::new(),
         }
     }
 
@@ -236,20 +253,34 @@ impl Ai {
     /// Enables screening every inbound message a `MemoryPolicy::User`
     /// persona receives for [`CrisisSeverity`].
     ///
-    /// Only screens, for now: a positive signal is logged so a pattern of
-    /// them is visible to an operator, but nothing yet changes about how the
-    /// turn itself proceeds. Bypassing the normal turn for a reviewed,
-    /// non-generated response on a positive signal is a separate, later
-    /// concern - see `crisis`'s own module doc comment for why that split is
-    /// deliberate.
+    /// A signal at [`CrisisSeverity::Elevated`] or above bypasses the normal
+    /// turn entirely: see [`Self::prepare`]'s own handling of
+    /// [`Preparation::CrisisResponse`], and [`crisis_response_text`] for the
+    /// reviewed, never-generated reply itself.
     pub fn with_crisis_classifier(mut self, classifier: CrisisClassifier) -> Self {
         self.crisis_classifier = Some(classifier);
         self
     }
 
+    /// Sets the real, region-appropriate crisis resources the crisis
+    /// response path surfaces on a positive signal.
+    ///
+    /// [`Self::new`] already calls this from the [`AiConfig`] it was given;
+    /// this exists for [`Self::from_parts`] callers (tests, and any other
+    /// caller with its own source of providers) that build a service
+    /// without going through a config file at all.
+    pub fn with_crisis_resources(mut self, resources: Vec<CrisisResourceConfig>) -> Self {
+        self.crisis_resources = resources;
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
-        let prepared = self.prepare(&req).await?;
+        let prepared = match self.prepare(&req).await? {
+            // already stored by `prepare` itself; nothing left to do but hand it back
+            Preparation::CrisisResponse { outcome, .. } => return Ok(outcome),
+            Preparation::Turn(prepared) => *prepared,
+        };
         let conversation_id = prepared.conversation_id;
         let model = prepared.request.model.clone();
         let persona_id = prepared.persona_id.clone();
@@ -291,11 +322,32 @@ impl Ai {
     /// reference, since the harness has no persona type of its own to name
     /// instead; this replaces it with the persona's display name, which is
     /// what an adapter actually wants to show a user.
+    ///
+    /// A crisis response synthesizes the same event shape a normal turn
+    /// produces (`TurnStarted`, one `TextDelta`, `TurnFinished`) rather than
+    /// a special case, so a consumer built against a normal turn's stream -
+    /// the chat page, in particular - needs no separate handling for it.
     pub async fn turn_streamed(
         &self,
         req: AiTurnRequest,
     ) -> Result<BoxStream<'static, HarnessEvent>, AiError> {
-        let prepared = self.prepare(&req).await?;
+        let prepared = match self.prepare(&req).await? {
+            Preparation::CrisisResponse {
+                persona_label,
+                outcome,
+            } => {
+                let text = outcome.text.unwrap_or_default();
+                let usage = outcome.usage;
+                let cost = outcome.cost;
+                let stream = async_stream::stream! {
+                    yield HarnessEvent::TurnStarted { persona: persona_label };
+                    yield HarnessEvent::TextDelta(text);
+                    yield HarnessEvent::TurnFinished { usage, cost };
+                };
+                return Ok(Box::pin(stream));
+            }
+            Preparation::Turn(prepared) => *prepared,
+        };
         let mut harness = Harness::new(prepared.provider, self.tools.clone());
         if let Some(auditor) = &self.tool_auditor {
             harness = harness.with_auditor(auditor.clone());
@@ -426,25 +478,11 @@ impl Ai {
     }
 
     /// Everything shared between [`Self::turn`] and [`Self::turn_streamed`]:
-    /// persona lookup, provider resolution, conversation loading, context
-    /// assembly, and system prompt rendering.
-    async fn prepare(&self, req: &AiTurnRequest) -> Result<PreparedTurn, AiError> {
+    /// persona lookup, provider resolution, conversation loading, crisis
+    /// screening, context assembly, and system prompt rendering.
+    async fn prepare(&self, req: &AiTurnRequest) -> Result<Preparation, AiError> {
         let persona = self.require_persona(&req.persona_id)?;
         let provider = self.providers.resolve(&persona.model)?;
-
-        if persona.memory == MemoryPolicy::User
-            && let Some(classifier) = &self.crisis_classifier
-        {
-            let severity = classifier.classify(&req.message).await;
-            if severity >= CrisisSeverity::Elevated {
-                tracing::warn!(
-                    user_id = req.user_id,
-                    ?severity,
-                    "crisis classifier flagged an inbound message :< no automated response path \
-                     exists yet"
-                );
-            }
-        }
 
         let mut conversation = self
             .sessions
@@ -459,6 +497,31 @@ impl Ai {
             self.sessions
                 .append(conversation.id, Message::user(req.message.clone()))
                 .await?;
+        }
+
+        if persona.memory == MemoryPolicy::User
+            && let Some(classifier) = &self.crisis_classifier
+        {
+            let severity = classifier.classify(&req.message).await;
+            if severity >= CrisisSeverity::Elevated {
+                tracing::warn!(
+                    user_id = req.user_id,
+                    conversation_id = conversation.id.0,
+                    ?severity,
+                    "crisis classifier flagged an inbound message; bypassing the normal turn for \
+                     the reviewed crisis response"
+                );
+
+                let text = crisis_response_text(&self.crisis_resources);
+                self.sessions
+                    .append(conversation.id, Message::assistant(text.clone()))
+                    .await?;
+
+                return Ok(Preparation::CrisisResponse {
+                    persona_label: persona.display_name.clone(),
+                    outcome: TurnOutcome::text(text, Usage::default(), Cost::ZERO, 0),
+                });
+            }
         }
 
         let history = match persona.memory {
@@ -519,13 +582,13 @@ impl Ai {
             turn_request = turn_request.with_handoff(handoff.clone());
         }
 
-        Ok(PreparedTurn {
+        Ok(Preparation::Turn(Box::new(PreparedTurn {
             request: turn_request,
             provider,
             conversation_id: conversation.id,
             persona_label: persona.display_name.clone(),
             persona_id: persona.id.0.clone(),
-        })
+        })))
     }
 
     /// Renders a persona's system prompt with the variables every persona
@@ -583,6 +646,36 @@ impl Ai {
             }
         }
     }
+}
+
+/// The reviewed, non-generated reply the crisis response path returns on a
+/// positive signal.
+///
+/// **Never model output.** A model asked to write something like this can
+/// still improvise past whatever it was told, and improvising here is
+/// exactly the failure mode this path exists to rule out - acknowledging
+/// without diagnosing, never counselling, and surfacing only real, reviewed
+/// resources rather than anything invented. If this text is ever wrong, it
+/// is wrong the same way every time until someone edits it, not
+/// unpredictably; that is the whole point of it being a plain function
+/// instead of a persona.
+fn crisis_response_text(resources: &[CrisisResourceConfig]) -> String {
+    let mut text = String::from(
+        "That sounds really heavy, and I'm glad you told me. This is more serious than I know how \
+         to help with well, though, and I don't want to guess at something this important. Please \
+         reach out to one of these if you can:\n",
+    );
+
+    if resources.is_empty() {
+        text.push_str("\n- a local crisis line or emergency services");
+    } else {
+        for resource in resources {
+            text.push_str(&format!("\n- {}: {}", resource.name, resource.contact));
+        }
+    }
+
+    text.push_str("\n\nI'm still here, and I'm glad to keep talking with you.");
+    text
 }
 
 #[cfg(test)]
@@ -737,6 +830,7 @@ mod tests {
             enabled: true,
             default_persona: Some(PersonaId::new("companion")),
             prompt_dir: None,
+            crisis_resources: Vec::new(),
             personas: HashMap::new(),
         };
         config
@@ -774,6 +868,7 @@ mod tests {
             enabled: true,
             default_persona: Some(PersonaId::new("companion")),
             prompt_dir: None,
+            crisis_resources: Vec::new(),
             personas: HashMap::new(),
         };
         config
@@ -1533,6 +1628,46 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_crisis_response_text_lists_every_configured_resource() {
+        let resources = vec![
+            CrisisResourceConfig {
+                name: "988 Suicide & Crisis Lifeline".to_string(),
+                contact: "call or text 988 (US)".to_string(),
+            },
+            CrisisResourceConfig {
+                name: "Samaritans".to_string(),
+                contact: "116 123 (UK and Ireland)".to_string(),
+            },
+        ];
+
+        let text = crisis_response_text(&resources);
+
+        assert!(text.contains("988 Suicide & Crisis Lifeline"));
+        assert!(text.contains("call or text 988 (US)"));
+        assert!(text.contains("Samaritans"));
+        assert!(text.contains("116 123 (UK and Ireland)"));
+    }
+
+    #[test]
+    fn test_crisis_response_text_falls_back_when_nothing_is_configured() {
+        let text = crisis_response_text(&[]);
+        assert!(
+            text.contains("crisis line") || text.contains("emergency services"),
+            "an operator who configured nothing should still get a real fallback, not an empty \
+             list: {text:?}"
+        );
+    }
+
+    #[test]
+    fn test_crisis_response_text_never_diagnoses_or_counsels() {
+        let text = crisis_response_text(&[]).to_lowercase();
+        assert!(
+            !text.contains("diagnos"),
+            "the reviewed response must never diagnose: {text:?}"
+        );
+    }
+
     fn crisis_classifier(response_text: &str) -> (CrisisClassifier, Arc<MockProvider>) {
         let provider = Arc::new(MockProvider::new().respond_text(response_text));
         let classifier = CrisisClassifier::new(
@@ -1602,11 +1737,80 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_a_severe_signal_does_not_yet_change_the_turn_s_outcome() {
-        // commit 99 only screens and logs - bypassing the normal turn for a
-        // reviewed response on a positive signal is a separate, later
-        // concern (crisis's own module doc comment explains why)
+    async fn test_a_severe_signal_bypasses_the_model_entirely() {
         let provider = Arc::new(MockProvider::new().respond_text("the ordinary reply"));
+        let (classifier, _) = crisis_classifier("SEVERE");
+        let ai = ai_with(MemoryPolicy::User, provider.clone()).with_crisis_classifier(classifier);
+
+        let outcome = ai
+            .turn(request("companion", "anything"))
+            .await
+            .expect("should succeed");
+
+        assert_ne!(
+            outcome.text.as_deref(),
+            Some("the ordinary reply"),
+            "a severe signal must bypass the model, not just log and continue"
+        );
+        assert_eq!(
+            provider.request_count(),
+            0,
+            "the main model should never be asked to answer a flagged message"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_an_elevated_signal_also_bypasses_the_model() {
+        let provider = Arc::new(MockProvider::new().respond_text("the ordinary reply"));
+        let (classifier, _) = crisis_classifier("ELEVATED");
+        let ai = ai_with(MemoryPolicy::User, provider.clone()).with_crisis_classifier(classifier);
+
+        ai.turn(request("companion", "anything"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(provider.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_a_low_signal_does_not_bypass_the_model() {
+        let provider = Arc::new(MockProvider::new().respond_text("the ordinary reply"));
+        let (classifier, _) = crisis_classifier("LOW");
+        let ai = ai_with(MemoryPolicy::User, provider.clone()).with_crisis_classifier(classifier);
+
+        let outcome = ai
+            .turn(request("companion", "anything"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(outcome.text.as_deref(), Some("the ordinary reply"));
+        assert_eq!(provider.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_the_crisis_response_surfaces_configured_resources() {
+        let provider = Arc::new(MockProvider::new().respond_text("unused"));
+        let (classifier, _) = crisis_classifier("SEVERE");
+        let ai = ai_with(MemoryPolicy::User, provider)
+            .with_crisis_classifier(classifier)
+            .with_crisis_resources(vec![CrisisResourceConfig {
+                name: "988 Suicide & Crisis Lifeline".to_string(),
+                contact: "call or text 988 (US)".to_string(),
+            }]);
+
+        let outcome = ai
+            .turn(request("companion", "anything"))
+            .await
+            .expect("should succeed");
+
+        let text = outcome.text.expect("crisis response should have text");
+        assert!(text.contains("988 Suicide & Crisis Lifeline"));
+        assert!(text.contains("call or text 988 (US)"));
+    }
+
+    #[tokio::test]
+    async fn test_the_crisis_response_is_stored_in_the_conversation() {
+        let provider = Arc::new(MockProvider::new().respond_text("unused"));
         let (classifier, _) = crisis_classifier("SEVERE");
         let ai = ai_with(MemoryPolicy::User, provider).with_crisis_classifier(classifier);
 
@@ -1615,6 +1819,48 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(outcome.text.as_deref(), Some("the ordinary reply"));
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = ai
+            .sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .unwrap();
+        let history = ai.sessions.history(conversation.id, None).await.unwrap();
+
+        assert!(
+            history
+                .iter()
+                .any(|message| Some(message.text()) == outcome.text),
+            "the crisis response should be stored the same as any other reply, got {history:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_crisis_bypass_streams_the_same_event_shape_as_a_normal_turn() {
+        let provider = Arc::new(MockProvider::new().respond_text("unused"));
+        let (classifier, _) = crisis_classifier("SEVERE");
+        let ai = ai_with(MemoryPolicy::User, provider).with_crisis_classifier(classifier);
+
+        let events: Vec<HarnessEvent> = ai
+            .turn_streamed(request("companion", "anything"))
+            .await
+            .expect("should succeed")
+            .collect()
+            .await;
+
+        assert!(matches!(
+            events.first(),
+            Some(HarnessEvent::TurnStarted { .. })
+        ));
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, HarnessEvent::TextDelta(_))),
+            "a crisis response should still arrive as a text delta, got {events:?}"
+        );
+        assert!(matches!(
+            events.last(),
+            Some(HarnessEvent::TurnFinished { .. })
+        ));
     }
 }
