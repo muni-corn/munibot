@@ -17,7 +17,7 @@ mod persona;
 
 pub use conversation::ConversationSummary;
 pub use error::{ChatError, ChatResult};
-pub use event::ChatEvent;
+pub use event::{ChatEvent, ChatFailureKind};
 pub use memory::{MemoryEntry, MemorySettings};
 pub use message::{ChatMessage, ChatRole};
 pub use persona::PersonaSummary;
