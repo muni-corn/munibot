@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::app::Route;
+use crate::{app::Route, pages::chat::sidebar::ConversationSidebar};
 
 pub mod conversation;
+pub mod sidebar;
 
 /// Layout for every `/chat/*` route: the conversation sidebar beside
 /// whichever `Chat`/`ChatConversation` route matched, in the outlet.
@@ -10,14 +11,11 @@ pub mod conversation;
 /// Not nested under `Dashboard`: that layout's sidebar is guild-scoped and
 /// irrelevant to a person's own chat history, and this is munibot's own
 /// page rather than a settings screen.
-///
-/// The sidebar itself is a placeholder here -- the real conversation list,
-/// from `list_conversations`, arrives in a later commit.
 #[component]
 pub fn ChatLayout() -> Element {
     rsx! {
         div { class: "flex h-full flex-row",
-            div { class: "p-4 text-slate-300 w-64 border-e border-slate-800", "conversations" }
+            ConversationSidebar {}
             div { class: "grow bg-slate-950/50 sm:rounded-ss-3xl", Outlet::<Route> {} }
         }
     }
