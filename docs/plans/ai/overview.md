@@ -184,6 +184,17 @@ default_persona = "companion"
 prompt_dir = "/etc/muni_bot/prompts" # optional; defaults to embedded prompts
 max_delegation_depth = 2
 
+# real, reviewed resources the crisis response path surfaces on a positive
+# signal - never a model's own invention. region-appropriate, not exhaustive:
+# an operator adds whichever regions their community actually needs.
+[[ai.crisis_resources]]
+name = "988 Suicide & Crisis Lifeline"
+contact = "call or text 988 (US)"
+
+[[ai.crisis_resources]]
+name = "Samaritans"
+contact = "116 123 (UK and Ireland)"
+
 [ai.personas.companion]
 model = "anthropic:claude-opus-5"
 prompt = "companion.md"
