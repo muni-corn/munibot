@@ -16,6 +16,12 @@ pub fn App() -> Element {
     rsx! {
         document::Stylesheet { href: asset!("/assets/tailwind.css") }
         document::Stylesheet { href: "https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/duotone/style.css" }
+        // syntax highlighting for chat code blocks, applied client-side by
+        // crate::components::chat::markdown's onmounted handler -- loaded
+        // from a cdn rather than shipping a full grammar set into the wasm
+        // bundle, the same reasoning as the phosphor icons above
+        document::Stylesheet { href: "https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/atom-one-dark.min.css" }
+        document::Script { src: "https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/common.js" }
         Router::<Route> {}
     }
 }

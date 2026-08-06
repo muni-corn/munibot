@@ -3,6 +3,7 @@ use munibot_api::server_fns::auth::get_authenticated_user;
 
 use crate::app::Route;
 
+pub mod chat;
 pub mod settings;
 
 /// Shows the current sign-in state: a "sign in with discord" link when

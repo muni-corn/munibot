@@ -4566,6 +4566,7 @@ dependencies = [
  "munibot_ai",
  "munibot_api",
  "munibot_core",
+ "pulldown-cmark",
  "redis",
  "redis_pool",
  "tokio",
