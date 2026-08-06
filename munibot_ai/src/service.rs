@@ -662,6 +662,14 @@ impl Ai {
         self.personas.default_persona().map(|persona| &persona.id)
     }
 
+    /// A read-only snapshot of `scope`'s spend against its configured cap,
+    /// for a usage panel. `None` if no [`crate::limits::SpendCapEnforcer`]
+    /// is wired at all, not just if `scope` itself has no cap configured -
+    /// see [`crate::limits::SpendCapEnforcer::status`] for that distinction.
+    pub async fn spend_cap_status(&self, scope: Scope) -> Option<crate::limits::SpendCapStatus> {
+        self.spend_cap_enforcer.as_ref()?.status(scope).await
+    }
+
     /// Everything shared between [`Self::turn`] and [`Self::turn_streamed`]:
     /// persona lookup, provider resolution, conversation loading, crisis
     /// screening, context assembly, and system prompt rendering.
@@ -2666,5 +2674,36 @@ mod tests {
 
         let result = ai.turn_streamed(request("companion", "hi")).await;
         assert!(matches!(result, Err(AiError::BudgetExceeded { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_spend_cap_status_is_none_without_an_enforcer_wired() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        assert!(
+            ai.spend_cap_status(crate::limits::Scope::User(1))
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_spend_cap_status_reflects_the_wired_enforcer() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let enforcer = spend_cap_enforcer_with(crate::limits::SpendCapPolicies {
+            user: crate::limits::SpendCapPolicy {
+                limit_micros: Some(1000),
+                ..crate::limits::SpendCapPolicy::default()
+            },
+            ..crate::limits::SpendCapPolicies::default()
+        });
+        let ai = ai_with(MemoryPolicy::None, provider).with_spend_cap_enforcer(enforcer);
+
+        let status = ai
+            .spend_cap_status(crate::limits::Scope::User(1))
+            .await
+            .expect("should have a status once an enforcer is wired");
+        assert_eq!(status.limit_micros, 1000);
     }
 }
