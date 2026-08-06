@@ -15,8 +15,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     audit::ToolAuditor,
-    crisis::{CrisisClassifier, CrisisSeverity},
+    crisis::CrisisClassifier,
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
+    limits::{ConcurrencyGuard, RateLimiter, Scope},
     memory::{
         CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
         assemble_context, compact_if_needed,
@@ -97,6 +98,15 @@ struct PreparedTurn {
     /// from `persona_label`, which is the display name shown to a user rather
     /// than the identifier a usage dashboard groups and filters by.
     persona_id: String,
+    /// Held for the harness's own run, releasing each scope's concurrency
+    /// slot when the turn finishes (on success, failure, or a dropped
+    /// connection - whichever happens first). Every scope this turn was
+    /// checked against (global, guild, user) has its own guard here.
+    rate_limit_guards: Vec<ConcurrencyGuard>,
+    /// Every scope this turn was checked against, kept so
+    /// [`Ai::turn`]/[`Ai::turn_streamed`] can record actual token usage
+    /// against each one afterward.
+    rate_limit_scopes: Vec<Scope>,
 }
 
 /// The one surface every platform adapter touches.
@@ -130,6 +140,10 @@ pub struct Ai {
     /// no inbound message is ever screened at all - exactly the behaviour
     /// every turn had before this existed.
     crisis_classifier: Option<CrisisClassifier>,
+    /// `None` until [`Self::with_rate_limiter`] enables it. Without it, no
+    /// turn is ever refused for cost reasons at all - exactly the
+    /// behaviour every turn had before this existed.
+    rate_limiter: Option<Arc<RateLimiter>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -150,6 +164,27 @@ async fn write_usage(recorder: &Option<Arc<dyn UsageRecorder>>, record: UsageRec
     if let Err(error) = recorder.record(record).await {
         tracing::warn!(%error, "failed to record ai usage");
     }
+}
+
+/// Spawns a detached background task naming `conversation_id` from its first
+/// exchange, if `generator` is `Some`. A no-op otherwise.
+///
+/// A free function rather than a method on `Ai`, for the same reason
+/// [`write_usage`] already is: [`Ai::turn_streamed`] needs to call this from
+/// inside its `'static` stream body, which cannot hold a borrow of `&self`.
+///
+/// Every scope a turn's rate limits and spend caps are checked against:
+/// global always, that guild if the request happened in one, and the
+/// invoking user always. Global comes first, since it is the last defence
+/// against a runaway loop and checking it before the more specific scopes
+/// short-circuits a request that was never going to succeed anyway.
+fn rate_limit_scopes_for(req: &AiTurnRequest) -> Vec<Scope> {
+    let mut scopes = vec![Scope::Global];
+    if let Some(guild_id) = req.guild_id {
+        scopes.push(Scope::Guild(guild_id));
+    }
+    scopes.push(Scope::User(req.user_id));
+    scopes
 }
 
 impl Ai {
@@ -197,6 +232,7 @@ impl Ai {
             tool_auditor: None,
             memory_store: None,
             crisis_classifier: None,
+            rate_limiter: None,
         }
     }
 
@@ -247,6 +283,17 @@ impl Ai {
         self
     }
 
+    /// Enables checking a turn's request/token rate and concurrency against
+    /// configured limits before it starts.
+    ///
+    /// Checked against every scope a turn touches - global, its guild (if
+    /// any), and the invoking user - global first, since it is the last
+    /// defence against a runaway loop.
+    pub fn with_rate_limiter(mut self, limiter: Arc<RateLimiter>) -> Self {
+        self.rate_limiter = Some(limiter);
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = self.prepare(&req).await?;
@@ -260,19 +307,32 @@ impl Ai {
         }
         let (result, turn_usage) = harness.run_turn_recording_usage(prepared.request).await;
 
-        write_usage(&self.usage_recorder, UsageRecord {
-            conversation_id: Some(conversation_id),
-            user_id: Some(req.user_id),
-            guild_id: req.guild_id,
-            provider: model.provider().to_string(),
-            model: model.model().to_string(),
-            persona_id,
-            usage: turn_usage.usage,
-            cost: turn_usage.cost,
-            iterations: turn_usage.iterations,
-            succeeded: result.is_ok(),
-        })
+        write_usage(
+            &self.usage_recorder,
+            UsageRecord {
+                conversation_id: Some(conversation_id),
+                user_id: Some(req.user_id),
+                guild_id: req.guild_id,
+                provider: model.provider().to_string(),
+                model: model.model().to_string(),
+                persona_id,
+                usage: turn_usage.usage,
+                cost: turn_usage.cost,
+                iterations: turn_usage.iterations,
+                succeeded: result.is_ok(),
+            },
+        )
         .await;
+
+        // recorded on failure too, the same reasoning as write_usage's own:
+        // a turn that errored on iteration nine still spent real tokens
+        if let Some(limiter) = &self.rate_limiter {
+            for &scope in &prepared.rate_limit_scopes {
+                limiter
+                    .record_tokens(scope, turn_usage.usage.total_tokens())
+                    .await;
+            }
+        }
 
         let outcome = result?;
 
@@ -303,6 +363,8 @@ impl Ai {
         let harness = Arc::new(harness);
         let sessions = self.sessions.clone();
         let usage_recorder = self.usage_recorder.clone();
+        let rate_limiter = self.rate_limiter.clone();
+        let rate_limit_scopes = prepared.rate_limit_scopes;
         let conversation_id = prepared.conversation_id;
         let persona_label = prepared.persona_label;
         let persona_id = prepared.persona_id;
@@ -311,6 +373,22 @@ impl Ai {
         let guild_id = req.guild_id;
 
         let stream = async_stream::stream! {
+            // held for the whole stream, releasing each scope's concurrency
+            // slot only once this turn - success, failure, or a dropped
+            // connection, whichever happens first - actually finishes
+            let _rate_limit_guards = prepared.rate_limit_guards;
+            let record_tokens = |usage: Usage| {
+                let rate_limiter = rate_limiter.clone();
+                let scopes = rate_limit_scopes.clone();
+                async move {
+                    if let Some(limiter) = &rate_limiter {
+                        for &scope in &scopes {
+                            limiter.record_tokens(scope, usage.total_tokens()).await;
+                        }
+                    }
+                }
+            };
+
             let mut assistant_text = String::new();
             // TurnFinished's own fields already carry the true cumulative totals
             // (straight from the harness's own budget tracker), so this accumulation
@@ -358,6 +436,7 @@ impl Ai {
                                 .await;
                         }
                         write_usage(&usage_recorder, record(usage, cost, iterations, true)).await;
+                        record_tokens(usage).await;
                         yield HarnessEvent::TurnFinished { usage, cost };
                     }
                     HarnessEvent::Handoff(payload) => {
@@ -366,6 +445,7 @@ impl Ai {
                             record(accumulated_usage, accumulated_cost, iterations, true),
                         )
                         .await;
+                        record_tokens(accumulated_usage).await;
                         yield HarnessEvent::Handoff(payload);
                     }
                     HarnessEvent::Failed(error) => {
@@ -374,6 +454,7 @@ impl Ai {
                             record(accumulated_usage, accumulated_cost, iterations, false),
                         )
                         .await;
+                        record_tokens(accumulated_usage).await;
                         yield HarnessEvent::Failed(error);
                     }
                     other => yield other,
@@ -432,24 +513,32 @@ impl Ai {
         let persona = self.require_persona(&req.persona_id)?;
         let provider = self.providers.resolve(&persona.model)?;
 
-        if persona.memory == MemoryPolicy::User
-            && let Some(classifier) = &self.crisis_classifier
-        {
-            let severity = classifier.classify(&req.message).await;
-            if severity >= CrisisSeverity::Elevated {
-                tracing::warn!(
-                    user_id = req.user_id,
-                    ?severity,
-                    "crisis classifier flagged an inbound message :< no automated response path \
-                     exists yet"
-                );
-            }
-        }
+        // checked before touching the session store at all, so a request
+        // about to be refused for cost reasons never even creates a
+        // conversation or writes a message it will never get an answer to
+        let (rate_limit_guards, rate_limit_scopes) =
+            match &self.rate_limiter {
+                Some(limiter) => {
+                    let scopes = rate_limit_scopes_for(req);
+                    let mut guards = Vec::with_capacity(scopes.len());
+                    for &scope in &scopes {
+                        let guard = limiter.check(scope).await.map_err(|error| {
+                            AiError::BudgetExceeded {
+                                limit: error.to_string(),
+                            }
+                        })?;
+                        guards.push(guard);
+                    }
+                    (guards, scopes)
+                }
+                None => (Vec::new(), Vec::new()),
+            };
 
         let mut conversation = self
             .sessions
             .load_or_create(&req.scope, &persona.id.0)
             .await?;
+
         // stored regardless of the persona's memory policy: a durable per-scope
         // record is harmless to keep even for a persona that does not read it back,
         // and a later policy change should not start from a conversation with a gap
@@ -525,6 +614,8 @@ impl Ai {
             conversation_id: conversation.id,
             persona_label: persona.display_name.clone(),
             persona_id: persona.id.0.clone(),
+            rate_limit_guards,
+            rate_limit_scopes,
         })
     }
 
@@ -590,11 +681,12 @@ mod tests {
     use super::*;
     use crate::{
         audit::ToolCallRecord,
+        limits::RateLimitStore,
         memory::{CompactionPersona, InMemorySessionStore},
         persona::PersonaConfig,
         provider::MockProvider,
         tools::Platform,
-        types::ModelRef,
+        types::{ContentBlock, ModelRef},
     };
 
     /// A [`ProviderSource`] that always returns the same fixed provider,
@@ -739,9 +831,9 @@ mod tests {
             prompt_dir: None,
             personas: HashMap::new(),
         };
-        config
-            .personas
-            .insert(PersonaId::new("companion"), PersonaConfig {
+        config.personas.insert(
+            PersonaId::new("companion"),
+            PersonaConfig {
                 model: ModelRef::new("anthropic", "claude-opus-5"),
                 prompt: "companion.md".to_string(),
                 display_name: Some("Companion".to_string()),
@@ -751,7 +843,8 @@ mod tests {
                 budget: crate::persona::BudgetConfig::default(),
                 memory: MemoryPolicy::None,
                 sandbox: crate::persona::SandboxPolicy::default(),
-            });
+            },
+        );
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
 
@@ -776,9 +869,9 @@ mod tests {
             prompt_dir: None,
             personas: HashMap::new(),
         };
-        config
-            .personas
-            .insert(PersonaId::new("companion"), PersonaConfig {
+        config.personas.insert(
+            PersonaId::new("companion"),
+            PersonaConfig {
                 model: ModelRef::new("anthropic", "claude-opus-5"),
                 prompt: "companion.md".to_string(),
                 display_name: Some("Companion".to_string()),
@@ -788,7 +881,8 @@ mod tests {
                 budget: crate::persona::BudgetConfig::default(),
                 memory,
                 sandbox: crate::persona::SandboxPolicy::default(),
-            });
+            },
+        );
 
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         PersonaRegistry::load(&config, &providers).expect("should resolve")
@@ -1616,5 +1710,220 @@ mod tests {
             .expect("should succeed");
 
         assert_eq!(outcome.text.as_deref(), Some("the ordinary reply"));
+    }
+
+    /// A [`RateLimitStore`] over an in-memory map, so these tests never
+    /// touch a database - mirrors `crate::limits::limiter::tests`'s own
+    /// fake, kept separate rather than shared since that one is private to
+    /// its module.
+    #[derive(Default)]
+    struct FakeRateLimitStore {
+        windows: std::sync::Mutex<HashMap<(String, Option<i64>), crate::limits::RateLimitWindow>>,
+    }
+
+    fn rate_limit_key(scope: crate::limits::Scope) -> (String, Option<i64>) {
+        (scope.scope_type().to_string(), scope.scope_id())
+    }
+
+    #[async_trait::async_trait]
+    impl crate::limits::RateLimitStore for FakeRateLimitStore {
+        async fn get_window(
+            &self,
+            scope: crate::limits::Scope,
+        ) -> Result<Option<crate::limits::RateLimitWindow>, AiError> {
+            Ok(self
+                .windows
+                .lock()
+                .unwrap()
+                .get(&rate_limit_key(scope))
+                .copied())
+        }
+
+        async fn reset_window(
+            &self,
+            scope: crate::limits::Scope,
+            window_start: chrono::DateTime<chrono::Utc>,
+            request_count: u32,
+            token_count: u64,
+        ) -> Result<(), AiError> {
+            self.windows.lock().unwrap().insert(
+                rate_limit_key(scope),
+                crate::limits::RateLimitWindow {
+                    window_start,
+                    request_count,
+                    token_count,
+                },
+            );
+            Ok(())
+        }
+
+        async fn increment(
+            &self,
+            scope: crate::limits::Scope,
+            requests: u32,
+            tokens: u64,
+        ) -> Result<(), AiError> {
+            let mut windows = self.windows.lock().unwrap();
+            let window =
+                windows
+                    .entry(rate_limit_key(scope))
+                    .or_insert(crate::limits::RateLimitWindow {
+                        window_start: chrono::Utc::now(),
+                        request_count: 0,
+                        token_count: 0,
+                    });
+            window.request_count += requests;
+            window.token_count += tokens;
+            Ok(())
+        }
+    }
+
+    fn rate_limiter_with(
+        policies: crate::limits::ScopePolicies,
+    ) -> Arc<crate::limits::RateLimiter> {
+        Arc::new(crate::limits::RateLimiter::new(
+            Arc::new(FakeRateLimitStore::default()),
+            policies,
+        ))
+    }
+
+    #[tokio::test]
+    async fn test_a_rate_limited_scope_refuses_the_turn() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let limiter = rate_limiter_with(crate::limits::ScopePolicies {
+            user: crate::limits::RateLimitPolicy {
+                max_requests: Some(0),
+                ..crate::limits::RateLimitPolicy::default()
+            },
+            ..crate::limits::ScopePolicies::default()
+        });
+        let ai = ai_with(MemoryPolicy::None, provider).with_rate_limiter(limiter);
+
+        let result = ai.turn(request("companion", "hi")).await;
+        assert!(
+            matches!(result, Err(AiError::BudgetExceeded { .. })),
+            "a rate-limited scope should refuse the turn, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_rate_limiter_wired_nothing_breaks() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let result = ai.turn(request("companion", "hi")).await;
+        assert!(
+            result.is_ok(),
+            "no limiter wired should behave exactly as before it existed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_concurrency_guard_releases_after_the_turn_finishes() {
+        let provider = Arc::new(
+            MockProvider::new()
+                .respond_text("first reply")
+                .respond_text("second reply"),
+        );
+        let limiter = rate_limiter_with(crate::limits::ScopePolicies {
+            user: crate::limits::RateLimitPolicy {
+                max_concurrent_turns: Some(1),
+                ..crate::limits::RateLimitPolicy::default()
+            },
+            ..crate::limits::ScopePolicies::default()
+        });
+        let ai = ai_with(MemoryPolicy::None, provider).with_rate_limiter(limiter);
+
+        // sequential, not actually concurrent - this only succeeds twice if
+        // the first turn's guard was released once it finished
+        ai.turn(request("companion", "one"))
+            .await
+            .expect("first should succeed");
+        ai.turn(request("companion", "two"))
+            .await
+            .expect("second should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_a_successful_turn_records_its_token_usage() {
+        let provider = Arc::new(MockProvider::new().respond(Ok(
+            crate::types::CompletionResponse::new(
+                vec![ContentBlock::text("hi")],
+                crate::types::StopReason::EndTurn,
+                Usage::new(10, 20),
+            ),
+        )));
+        let store = Arc::new(FakeRateLimitStore::default());
+        let limiter = Arc::new(crate::limits::RateLimiter::new(
+            store.clone(),
+            crate::limits::ScopePolicies {
+                user: crate::limits::RateLimitPolicy {
+                    max_tokens: Some(1000),
+                    ..crate::limits::RateLimitPolicy::default()
+                },
+                ..crate::limits::ScopePolicies::default()
+            },
+        ));
+        let ai = ai_with(MemoryPolicy::None, provider).with_rate_limiter(limiter);
+
+        ai.turn(request("companion", "hi"))
+            .await
+            .expect("should succeed");
+
+        let window = store
+            .get_window(crate::limits::Scope::User(1))
+            .await
+            .unwrap()
+            .expect("a window should have been created by the check before the turn ran");
+        assert_eq!(
+            window.token_count, 30,
+            "the actual usage (10 input + 20 output) should have been recorded after the turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_token_usage_is_recorded_even_when_the_turn_fails() {
+        let provider =
+            Arc::new(MockProvider::new().respond_error(AiError::Rejected("bad key".to_string())));
+        let store = Arc::new(FakeRateLimitStore::default());
+        let limiter = Arc::new(crate::limits::RateLimiter::new(
+            store.clone(),
+            crate::limits::ScopePolicies {
+                user: crate::limits::RateLimitPolicy {
+                    max_tokens: Some(1000),
+                    ..crate::limits::RateLimitPolicy::default()
+                },
+                ..crate::limits::ScopePolicies::default()
+            },
+        ));
+        let ai = ai_with(MemoryPolicy::None, provider).with_rate_limiter(limiter);
+
+        let result = ai.turn(request("companion", "hi")).await;
+        assert!(result.is_err());
+
+        // a failed provider call still records zero usage - not itself
+        // interesting, but confirms record_tokens runs on the failure path
+        // too rather than only after a successful reply
+        let window = store
+            .get_window(crate::limits::Scope::User(1))
+            .await
+            .unwrap();
+        assert!(window.is_none() || window.unwrap().token_count == 0);
+    }
+
+    #[tokio::test]
+    async fn test_a_streamed_turn_also_respects_rate_limits() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let limiter = rate_limiter_with(crate::limits::ScopePolicies {
+            user: crate::limits::RateLimitPolicy {
+                max_requests: Some(0),
+                ..crate::limits::RateLimitPolicy::default()
+            },
+            ..crate::limits::ScopePolicies::default()
+        });
+        let ai = ai_with(MemoryPolicy::None, provider).with_rate_limiter(limiter);
+
+        let result = ai.turn_streamed(request("companion", "hi")).await;
+        assert!(matches!(result, Err(AiError::BudgetExceeded { .. })));
     }
 }
