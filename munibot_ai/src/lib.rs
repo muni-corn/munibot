@@ -19,6 +19,7 @@
 pub mod audit;
 pub mod crisis;
 pub mod harness;
+pub mod limits;
 pub mod memory;
 pub mod persona;
 pub mod provider;

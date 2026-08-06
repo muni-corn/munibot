@@ -107,6 +107,7 @@ pub struct TurnUsage {
 /// A turn ends with either `text` or `handoff` populated, never both - enforced
 /// by the harness loop rather than by this type, so a partially-built outcome
 /// mid-construction is not forced through an awkward enum.
+#[derive(Debug)]
 pub struct TurnOutcome {
     /// The assistant's final text, when the turn ended that way rather than via
     /// handoff.
