@@ -32,6 +32,8 @@ pub fn AccountStatus() -> Element {
                 " · "
                 Link { to: Route::Memory {}, "memory" }
                 " · "
+                Link { to: Route::Usage {}, "usage" }
+                " · "
                 a { href: "/auth/logout", "sign out" }
             }
         }
