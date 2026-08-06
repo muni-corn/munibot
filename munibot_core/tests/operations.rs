@@ -677,3 +677,122 @@ async fn test_get_user_missing_returns_none() {
         .expect("query failed");
     assert!(missing.is_none());
 }
+
+#[tokio::test]
+async fn test_find_user_by_linked_account_finds_an_existing_user() {
+    let db = TestDb::new().await;
+
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "operator-snowflake",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let found = operations::find_user_by_linked_account(&db.pool, "discord", "operator-snowflake")
+        .await
+        .expect("query failed")
+        .expect("should find the user");
+    assert_eq!(found.id, user.id);
+}
+
+#[tokio::test]
+async fn test_find_user_by_linked_account_missing_returns_none_without_creating_one() {
+    let db = TestDb::new().await;
+
+    let missing = operations::find_user_by_linked_account(&db.pool, "discord", "never-signed-in")
+        .await
+        .expect("query failed");
+    assert!(missing.is_none());
+}
+
+#[tokio::test]
+async fn test_grant_permission_then_list_shows_it() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "grant-test",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    operations::grant_permission(&db.pool, user.id, "operator")
+        .await
+        .expect("grant failed");
+
+    let permissions = operations::list_user_permissions(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(permissions, vec!["operator".to_string()]);
+}
+
+#[tokio::test]
+async fn test_granting_the_same_permission_twice_is_not_an_error() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "grant-twice-test",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    operations::grant_permission(&db.pool, user.id, "operator")
+        .await
+        .expect("first grant failed");
+    operations::grant_permission(&db.pool, user.id, "operator")
+        .await
+        .expect("second grant should not error");
+
+    let permissions = operations::list_user_permissions(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(
+        permissions,
+        vec!["operator".to_string()],
+        "granting twice should not duplicate the row"
+    );
+}
+
+#[tokio::test]
+async fn test_list_user_permissions_for_a_user_with_none_is_empty() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "no-permissions-test",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let permissions = operations::list_user_permissions(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert!(permissions.is_empty());
+}

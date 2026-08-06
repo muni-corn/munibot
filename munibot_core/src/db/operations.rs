@@ -10,11 +10,11 @@ use crate::db::{
     models::{
         AutoDeleteTimerRow, CommunityLink, GuildConfig, GuildPayout, GuildWallet, LinkedAccount,
         NewCommunityLink, NewGuildPayout, NewGuildWallet, NewLinkedAccount, NewQuote, NewUser,
-        Quote, UpdateAutoDeleteTimer, User,
+        NewUserPermission, Quote, UpdateAutoDeleteTimer, User,
     },
     schema::{
         autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets,
-        linked_accounts, quotes, users,
+        linked_accounts, quotes, user_permissions, users,
     },
 };
 
@@ -567,5 +567,59 @@ pub async fn get_or_create_user_from_linked_account(
         .find(user_id)
         .select(User::as_select())
         .first(&mut conn)
+        .await
+}
+
+/// Finds the user linked to a provider account, without creating one -
+/// unlike `get_or_create_user_from_linked_account`, for a caller (resolving
+/// a configured operator) that only ever wants an existing user, never a
+/// newly created one.
+pub async fn find_user_by_linked_account(
+    pool: &DbPool,
+    provider: &str,
+    provider_user_id: &str,
+) -> QueryResult<Option<User>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    users::table
+        .inner_join(linked_accounts::table)
+        .filter(linked_accounts::provider.eq(provider))
+        .filter(linked_accounts::provider_user_id.eq(provider_user_id))
+        .select(User::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+}
+
+// user_permissions
+
+/// Grants `permission` (a `crate::permission::Permission`'s string form) to
+/// a user, idempotently - granting a permission a user already has is not
+/// an error, since `user_permissions` has nothing else to update on a
+/// repeat grant.
+pub async fn grant_permission(pool: &DbPool, user_id: i64, permission: &str) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::insert_into(user_permissions::table)
+        .values(NewUserPermission {
+            user_id,
+            permission: permission.to_owned(),
+            created_at: chrono::Utc::now().naive_utc(),
+        })
+        .on_conflict(diesel::dsl::DuplicatedKeys)
+        .do_update()
+        .set(user_permissions::permission.eq(user_permissions::permission))
+        .execute(&mut conn)
+        .await?;
+    Ok(())
+}
+
+/// Every permission a user currently holds, as canonical string tokens -
+/// what `munibot_api::auth::server::User::load_user` loads into the
+/// session's own in-memory permission set.
+pub async fn list_user_permissions(pool: &DbPool, user_id: i64) -> QueryResult<Vec<String>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    user_permissions::table
+        .filter(user_permissions::user_id.eq(user_id))
+        .select(user_permissions::permission)
+        .load(&mut conn)
         .await
 }
