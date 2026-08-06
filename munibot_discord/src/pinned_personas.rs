@@ -80,6 +80,7 @@ mod tests {
             budget: BudgetConfig::default(),
             memory: MemoryPolicy::default(),
             sandbox: SandboxPolicy::default(),
+            delegable: false,
         });
         let config = AiConfig {
             enabled: true,

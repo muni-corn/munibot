@@ -58,6 +58,7 @@ mod tests {
             handoff: None,
             memory: Default::default(),
             sandbox: Default::default(),
+            delegable: false,
         }
     }
 

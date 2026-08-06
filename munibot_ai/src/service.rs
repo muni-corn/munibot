@@ -1075,6 +1075,7 @@ mod tests {
                 budget: crate::persona::BudgetConfig::default(),
                 memory: MemoryPolicy::None,
                 sandbox: crate::persona::SandboxPolicy::default(),
+                delegable: false,
             });
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
@@ -1115,6 +1116,7 @@ mod tests {
                 budget: crate::persona::BudgetConfig::default(),
                 memory,
                 sandbox: crate::persona::SandboxPolicy::default(),
+                delegable: false,
             });
 
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);

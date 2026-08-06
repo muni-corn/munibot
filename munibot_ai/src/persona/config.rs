@@ -182,6 +182,13 @@ pub struct PersonaConfig {
     pub memory: MemoryPolicy,
     #[serde(default)]
     pub sandbox: SandboxPolicy,
+    /// Whether munibot may bring this persona in mid-conversation via the
+    /// `delegate` tool. Defaults to `false`, so an orchestration-only role
+    /// (a pipeline agent with no business fielding a stray chat message) is
+    /// excluded by construction rather than by remembering to exclude it -
+    /// see `Persona::delegable`.
+    #[serde(default)]
+    pub delegable: bool,
 }
 
 /// The `[ai]` section of munibot's configuration file.
@@ -532,6 +539,26 @@ mod tests {
             result.is_err(),
             "model and prompt should be required, not defaulted"
         );
+    }
+
+    #[test]
+    fn test_persona_config_delegable_defaults_to_false() {
+        let config: PersonaConfig =
+            toml::from_str("model = \"anthropic:claude-opus-5\"\nprompt = \"x.md\"").unwrap();
+        assert!(
+            !config.delegable,
+            "an orchestration-only role should be excluded by default, not by remembering to \
+             exclude it"
+        );
+    }
+
+    #[test]
+    fn test_persona_config_delegable_is_read_from_toml() {
+        let config: PersonaConfig = toml::from_str(
+            "model = \"anthropic:claude-opus-5\"\nprompt = \"x.md\"\ndelegable = true",
+        )
+        .unwrap();
+        assert!(config.delegable);
     }
 
     /// A minimal RAII temp directory, since this crate has no existing

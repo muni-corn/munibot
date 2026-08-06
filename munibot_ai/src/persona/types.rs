@@ -71,6 +71,12 @@ pub struct Persona {
     pub handoff: Option<HandoffSchema>,
     pub memory: MemoryPolicy,
     pub sandbox: SandboxPolicy,
+    /// Whether munibot may bring this persona in mid-conversation via the
+    /// `delegate` tool. Defaults to `false` (see [`PersonaConfig::delegable`]),
+    /// so an orchestration-only role is excluded by construction rather than
+    /// by remembering to exclude it in every tool schema that lists
+    /// candidates.
+    pub delegable: bool,
 }
 
 #[cfg(test)]
@@ -90,6 +96,7 @@ mod tests {
             handoff: None,
             memory: MemoryPolicy::default(),
             sandbox: SandboxPolicy::default(),
+            delegable: false,
         }
     }
 
@@ -142,5 +149,13 @@ mod tests {
         assert_eq!(persona.model, ModelRef::new("anthropic", "claude-opus-5"));
         assert_eq!(persona.memory, MemoryPolicy::None);
         assert_eq!(persona.sandbox, SandboxPolicy::Forbidden);
+    }
+
+    #[test]
+    fn test_a_persona_is_not_delegable_by_default() {
+        // orchestration-only roles are excluded by construction, not by
+        // remembering to exclude them everywhere a persona list is built
+        let persona = persona();
+        assert!(!persona.delegable);
     }
 }

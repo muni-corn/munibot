@@ -101,6 +101,7 @@ impl PersonaRegistry {
             handoff: None,
             memory: config.memory,
             sandbox: config.sandbox,
+            delegable: config.delegable,
         })
     }
 
@@ -169,6 +170,7 @@ mod tests {
             budget: BudgetConfig::default(),
             memory: MemoryPolicy::default(),
             sandbox: SandboxPolicy::default(),
+            delegable: false,
         }
     }
 
@@ -392,6 +394,39 @@ mod tests {
                 .unwrap()
                 .handoff
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn test_delegable_defaults_to_false_when_resolved() {
+        let config = ai_config(vec![(
+            "companion",
+            persona_config("anthropic:claude-opus-5", "companion.md"),
+        )]);
+        let providers = providers_with(&["anthropic"]);
+
+        let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
+        assert!(
+            !registry
+                .get(&PersonaId::new("companion"))
+                .unwrap()
+                .delegable
+        );
+    }
+
+    #[test]
+    fn test_delegable_is_carried_through_from_config() {
+        let mut config = persona_config("anthropic:claude-opus-5", "researcher.md");
+        config.delegable = true;
+        let config = ai_config(vec![("researcher", config)]);
+        let providers = providers_with(&["anthropic"]);
+
+        let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
+        assert!(
+            registry
+                .get(&PersonaId::new("researcher"))
+                .unwrap()
+                .delegable
         );
     }
 
