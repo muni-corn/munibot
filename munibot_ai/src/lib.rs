@@ -17,6 +17,7 @@
 //! ship into an untrusted container.
 
 pub mod audit;
+pub mod crisis;
 pub mod harness;
 pub mod memory;
 pub mod persona;
