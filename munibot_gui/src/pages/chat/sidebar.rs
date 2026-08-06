@@ -6,16 +6,10 @@ use munibot_api::{
     },
 };
 
-use crate::{app::Route, components::Spinner};
-
-/// The persona a conversation created from the sidebar's "new" button is
-/// bound to.
-///
-/// Hardcoded rather than offered as a choice: the persona picker (a later
-/// commit in this phase) is what actually lets someone choose, and until
-/// then the companion -- munibot's default, conversational persona -- is
-/// the only sensible thing to create.
-const DEFAULT_PERSONA_ID: &str = "companion";
+use crate::{
+    app::Route,
+    components::{Spinner, chat::persona_picker::NewConversationButton},
+};
 
 /// The list of the signed-in user's conversations, newest first, with
 /// new/rename/archive.
@@ -29,9 +23,9 @@ pub fn ConversationSidebar() -> Element {
     let mut error = use_signal(|| None::<String>);
     let navigator = use_navigator();
 
-    let start_new = move |_| {
+    let start_new = move |persona_id: String| {
         spawn(async move {
-            match create_conversation(DEFAULT_PERSONA_ID.to_string()).await {
+            match create_conversation(persona_id).await {
                 Ok(created) => {
                     conversations.restart();
                     navigator.push(Route::ChatConversation {
@@ -47,7 +41,7 @@ pub fn ConversationSidebar() -> Element {
         Some(Ok(entries)) if entries.is_empty() => rsx! {
             div { class: "flex grow flex-col place-content-center items-center p-4 gap-2 text-center text-slate-400",
                 p { "no conversations yet." }
-                button { class: "btn btn-primary btn-sm", onclick: start_new, "start one" }
+                NewConversationButton { on_picked: start_new }
             }
         },
         Some(Ok(entries)) => rsx! {
@@ -74,11 +68,7 @@ pub fn ConversationSidebar() -> Element {
         div { class: "flex h-full flex-col p-4 w-64 gap-2 border-e border-slate-800",
             div { class: "flex items-center justify-between",
                 span { class: "font-black", "conversations" }
-                button {
-                    class: "btn btn-square btn-ghost btn-sm",
-                    onclick: start_new,
-                    i { class: "ph-duotone ph-plus" }
-                }
+                NewConversationButton { on_picked: start_new }
             }
             if let Some(message) = &*error.read() {
                 div { class: "alert alert-error alert-sm text-xs", {message.as_str()} }
