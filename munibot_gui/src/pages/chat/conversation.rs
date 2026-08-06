@@ -1,7 +1,10 @@
 use dioxus::prelude::*;
 use munibot_api::server_fns::chat::conversation::get_conversation_messages;
 
-use crate::components::{Spinner, chat::message_list::MessageList};
+use crate::components::{
+    Spinner,
+    chat::{composer::Composer, message_list::MessageList},
+};
 
 /// How many of a conversation's most recent messages load up front.
 ///
@@ -13,11 +16,12 @@ const MESSAGE_PAGE_SIZE: i64 = 100;
 
 /// One conversation's transcript and composer.
 ///
-/// The composer, streaming reply, and tool activity display all arrive in
-/// their own later commits.
+/// The streaming reply and tool activity display arrive in their own later
+/// commits: sending a message persists it and reloads the transcript, but
+/// nothing yet actually asks munibot to answer it.
 #[component]
 pub fn ChatConversation(conversation_id: i64) -> Element {
-    let messages = use_resource(move || async move {
+    let mut messages = use_resource(move || async move {
         get_conversation_messages(conversation_id, None, MESSAGE_PAGE_SIZE).await
     });
 
@@ -35,6 +39,13 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
 
     rsx! {
         document::Title { "chat ~ munibot" }
-        div { class: "flex h-full flex-col overflow-y-auto", {content} }
+        div { class: "flex h-full flex-col",
+            div { class: "grow overflow-y-auto", {content} }
+            Composer {
+                conversation_id,
+                disabled: false,
+                on_sent: move |_message_id| messages.restart(),
+            }
+        }
     }
 }
