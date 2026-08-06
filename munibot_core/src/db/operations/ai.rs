@@ -7,6 +7,7 @@
 //! doc comment.
 
 pub mod limits;
+pub mod usage;
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
@@ -14,6 +15,7 @@ pub use limits::{
     get_rate_limit, get_spend_cap, increment_rate_limit, increment_spend, reset_rate_limit_window,
     upsert_spend_cap,
 };
+pub use usage::{UsageTotals, sum_usage_for_user, sum_usage_global};
 
 use crate::db::{
     DbPool,

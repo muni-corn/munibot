@@ -723,6 +723,75 @@ async fn test_deleting_a_user_does_not_delete_their_usage_history() {
     delete_user(&db.pool, user).await;
 }
 
+#[tokio::test]
+async fn test_sum_usage_for_user_totals_every_row() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    ai::record_usage(&db.pool, usage_row(None, Some(user), true))
+        .await
+        .unwrap();
+    ai::record_usage(&db.pool, usage_row(None, Some(user), false))
+        .await
+        .unwrap();
+
+    let totals = ai::sum_usage_for_user(&db.pool, user)
+        .await
+        .expect("sum failed");
+    assert_eq!(
+        totals.cost_micros, 10_000,
+        "a failed turn's cost should still count"
+    );
+    assert_eq!(totals.input_tokens, 200);
+    assert_eq!(totals.output_tokens, 400);
+    assert_eq!(totals.turn_count, 2);
+}
+
+#[tokio::test]
+async fn test_sum_usage_for_a_user_with_no_history_is_zero() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+
+    let totals = ai::sum_usage_for_user(&db.pool, user)
+        .await
+        .expect("sum failed");
+    assert_eq!(totals, ai::UsageTotals::default());
+}
+
+#[tokio::test]
+async fn test_sum_usage_for_user_never_counts_another_users_rows() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let other = a_user(&db.pool).await;
+    ai::record_usage(&db.pool, usage_row(None, Some(other), true))
+        .await
+        .unwrap();
+
+    let totals = ai::sum_usage_for_user(&db.pool, user)
+        .await
+        .expect("sum failed");
+    assert_eq!(totals, ai::UsageTotals::default());
+}
+
+#[tokio::test]
+async fn test_sum_usage_global_totals_across_every_user() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let other = a_user(&db.pool).await;
+    ai::record_usage(&db.pool, usage_row(None, Some(user), true))
+        .await
+        .unwrap();
+    ai::record_usage(&db.pool, usage_row(None, Some(other), true))
+        .await
+        .unwrap();
+    ai::record_usage(&db.pool, usage_row(None, None, false))
+        .await
+        .unwrap();
+
+    let totals = ai::sum_usage_global(&db.pool).await.expect("sum failed");
+    assert_eq!(totals.cost_micros, 15_000);
+    assert_eq!(totals.turn_count, 3);
+}
+
 // --- tool call auditing ---
 
 use munibot_core::db::models::NewAiToolCall;
