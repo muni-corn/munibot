@@ -4578,6 +4578,7 @@ dependencies = [
  "dioxus-html",
  "munibot_api",
  "munibot_core",
+ "pulldown-cmark",
  "redis",
  "redis_pool",
  "tokio",

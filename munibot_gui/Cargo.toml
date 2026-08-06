@@ -12,6 +12,9 @@ license.workspace = true
 dioxus.workspace = true
 dioxus-html.workspace = true
 munibot_api = { path = "../munibot_api", default-features = false }
+# markdown rendering for the chat page -- pure rust, compiles to wasm, so it
+# stays unconditional rather than gated behind `server`
+pulldown-cmark = { version = "0.9", default-features = false }
 
 # desktop-only, enabled by the `desktop` feature. pulls in native-tls and
 # openssl-sys transitively, which can't compile for wasm32, so it must
