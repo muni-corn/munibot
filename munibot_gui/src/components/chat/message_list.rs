@@ -1,7 +1,10 @@
 use dioxus::prelude::*;
 use munibot_api::chat::{ChatMessage, ChatRole};
 
-use crate::components::chat::markdown::render_markdown;
+use crate::components::chat::{
+    markdown::render_markdown,
+    tool_activity::{ToolActivityEntry, ToolActivityStrip},
+};
 
 /// Renders a conversation's messages as chat bubbles, oldest first.
 ///
@@ -11,14 +14,24 @@ use crate::components::chat::markdown::render_markdown;
 /// separate from `messages` itself rather than folded into it, since it has
 /// no database row (and so no id) until the turn finishes and the
 /// transcript is reloaded.
+///
+/// `tool_activity` is shown as a strip directly above the live reply, and
+/// only while `live_reply` is `Some` -- both clear together once the turn
+/// ends and the transcript reloads with the persisted reply, rather than
+/// leaving the strip stranded below a bubble that has since disappeared.
 #[component]
-pub fn MessageList(messages: Vec<ChatMessage>, live_reply: Option<String>) -> Element {
+pub fn MessageList(
+    messages: Vec<ChatMessage>,
+    live_reply: Option<String>,
+    tool_activity: Vec<ToolActivityEntry>,
+) -> Element {
     rsx! {
         div { class: "flex flex-col p-4 gap-1",
             for message in messages {
                 MessageBubble { key: "{message.id}", message }
             }
             if let Some(text) = live_reply {
+                ToolActivityStrip { entries: tool_activity }
                 LiveReplyBubble { text }
             }
         }

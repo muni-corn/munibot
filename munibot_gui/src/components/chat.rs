@@ -5,3 +5,4 @@
 pub mod composer;
 pub mod markdown;
 pub mod message_list;
+pub mod tool_activity;
