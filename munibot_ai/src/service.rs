@@ -15,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     audit::ToolAuditor,
+    crisis::{CrisisClassifier, CrisisSeverity},
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
     memory::{
         CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
@@ -125,6 +126,10 @@ pub struct Ai {
     /// placeholder rather than any real memories - see
     /// [`Self::load_memories_text`].
     memory_store: Option<Arc<dyn MemoryStore>>,
+    /// `None` until [`Self::with_crisis_classifier`] enables it. Without it,
+    /// no inbound message is ever screened at all - exactly the behaviour
+    /// every turn had before this existed.
+    crisis_classifier: Option<CrisisClassifier>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -191,6 +196,7 @@ impl Ai {
             usage_recorder: None,
             tool_auditor: None,
             memory_store: None,
+            crisis_classifier: None,
         }
     }
 
@@ -224,6 +230,20 @@ impl Ai {
     /// placeholder.
     pub fn with_memory_store(mut self, store: Arc<dyn MemoryStore>) -> Self {
         self.memory_store = Some(store);
+        self
+    }
+
+    /// Enables screening every inbound message a `MemoryPolicy::User`
+    /// persona receives for [`CrisisSeverity`].
+    ///
+    /// Only screens, for now: a positive signal is logged so a pattern of
+    /// them is visible to an operator, but nothing yet changes about how the
+    /// turn itself proceeds. Bypassing the normal turn for a reviewed,
+    /// non-generated response on a positive signal is a separate, later
+    /// concern - see `crisis`'s own module doc comment for why that split is
+    /// deliberate.
+    pub fn with_crisis_classifier(mut self, classifier: CrisisClassifier) -> Self {
+        self.crisis_classifier = Some(classifier);
         self
     }
 
@@ -411,6 +431,20 @@ impl Ai {
     async fn prepare(&self, req: &AiTurnRequest) -> Result<PreparedTurn, AiError> {
         let persona = self.require_persona(&req.persona_id)?;
         let provider = self.providers.resolve(&persona.model)?;
+
+        if persona.memory == MemoryPolicy::User
+            && let Some(classifier) = &self.crisis_classifier
+        {
+            let severity = classifier.classify(&req.message).await;
+            if severity >= CrisisSeverity::Elevated {
+                tracing::warn!(
+                    user_id = req.user_id,
+                    ?severity,
+                    "crisis classifier flagged an inbound message :< no automated response path \
+                     exists yet"
+                );
+            }
+        }
 
         let mut conversation = self
             .sessions
@@ -1497,5 +1531,90 @@ mod tests {
             result.is_ok(),
             "a memory-loading failure must not fail the whole turn over something this minor"
         );
+    }
+
+    fn crisis_classifier(response_text: &str) -> (CrisisClassifier, Arc<MockProvider>) {
+        let provider = Arc::new(MockProvider::new().respond_text(response_text));
+        let classifier = CrisisClassifier::new(
+            provider.clone(),
+            crate::crisis::CrisisPersona::embedded(ModelRef::new("anthropic", "claude-haiku")),
+        );
+        (classifier, provider)
+    }
+
+    #[tokio::test]
+    async fn test_memory_policy_user_screens_the_inbound_message_for_crisis() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let (classifier, classifier_provider) = crisis_classifier("NONE");
+        let ai = ai_with(MemoryPolicy::User, provider).with_crisis_classifier(classifier);
+
+        ai.turn(request("companion", "just chatting"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(
+            classifier_provider.request_count(),
+            1,
+            "a MemoryPolicy::User persona's inbound message should be screened"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_memory_policy_conversation_never_reaches_the_crisis_classifier() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let (classifier, classifier_provider) = crisis_classifier("NONE");
+        let ai = ai_with(MemoryPolicy::Conversation, provider).with_crisis_classifier(classifier);
+
+        ai.turn(request("companion", "just chatting"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(
+            classifier_provider.request_count(),
+            0,
+            "only MemoryPolicy::User should ever be screened"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_memory_policy_none_never_reaches_the_crisis_classifier() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let (classifier, classifier_provider) = crisis_classifier("NONE");
+        let ai = ai_with(MemoryPolicy::None, provider).with_crisis_classifier(classifier);
+
+        ai.turn(request("companion", "just chatting"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(classifier_provider.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_no_crisis_classifier_wired_the_turn_still_proceeds_normally() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::User, provider);
+
+        let result = ai.turn(request("companion", "just chatting")).await;
+        assert!(
+            result.is_ok(),
+            "no classifier wired should behave exactly as before it existed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_severe_signal_does_not_yet_change_the_turn_s_outcome() {
+        // commit 99 only screens and logs - bypassing the normal turn for a
+        // reviewed response on a positive signal is a separate, later
+        // concern (crisis's own module doc comment explains why)
+        let provider = Arc::new(MockProvider::new().respond_text("the ordinary reply"));
+        let (classifier, _) = crisis_classifier("SEVERE");
+        let ai = ai_with(MemoryPolicy::User, provider).with_crisis_classifier(classifier);
+
+        let outcome = ai
+            .turn(request("companion", "anything"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(outcome.text.as_deref(), Some("the ordinary reply"));
     }
 }
