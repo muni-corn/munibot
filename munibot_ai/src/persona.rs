@@ -13,7 +13,10 @@ pub mod registry;
 pub mod template;
 pub mod types;
 
-pub use config::{AiConfig, BudgetConfig, CrisisResourceConfig, PersonaConfig};
+pub use config::{
+    AiConfig, BudgetConfig, CrisisResourceConfig, PersonaConfig, RateLimitConfig,
+    RateLimitPolicyConfig,
+};
 pub use output_filter::{OutputLimits, filter_output};
 pub use registry::PersonaRegistry;
 pub use template::PromptTemplate;

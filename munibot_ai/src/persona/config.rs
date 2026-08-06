@@ -1,9 +1,10 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     harness::Budget,
+    limits::{RateLimitPolicy, ScopePolicies},
     persona::{MemoryPolicy, PersonaId, SandboxPolicy},
     tools::ToolSelection,
     types::{AiError, Cost, ModelRef},
@@ -45,6 +46,61 @@ impl BudgetConfig {
                 .map(Cost::from_dollars)
                 .or(default.max_cost),
             max_tool_retries: self.max_tool_retries.or(default.max_tool_retries),
+        }
+    }
+}
+
+/// The TOML-deserializable shape of one scope kind's rate limit, before
+/// [`Self::resolve`] fills in [`RateLimitPolicy::default`] for anything left
+/// unset - the same ergonomic-config-then-resolve shape [`BudgetConfig`]
+/// already uses.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct RateLimitPolicyConfig {
+    #[serde(default)]
+    pub max_requests: Option<u32>,
+    #[serde(default)]
+    pub max_tokens: Option<u64>,
+    #[serde(default)]
+    pub max_concurrent_turns: Option<u32>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub window: Option<Duration>,
+}
+
+impl RateLimitPolicyConfig {
+    /// Resolves to a real [`RateLimitPolicy`], falling back to
+    /// [`RateLimitPolicy::default`] for `window` when unset.
+    pub fn resolve(&self) -> RateLimitPolicy {
+        let default = RateLimitPolicy::default();
+        RateLimitPolicy {
+            max_requests: self.max_requests,
+            max_tokens: self.max_tokens,
+            max_concurrent_turns: self.max_concurrent_turns,
+            window: self.window.unwrap_or(default.window),
+        }
+    }
+}
+
+/// The TOML-deserializable shape of `[ai.rate_limits]`: every scope kind's
+/// own policy, all optional - an operator configures only the scopes they
+/// actually want limited.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct RateLimitConfig {
+    #[serde(default)]
+    pub user: RateLimitPolicyConfig,
+    #[serde(default)]
+    pub guild: RateLimitPolicyConfig,
+    #[serde(default)]
+    pub global: RateLimitPolicyConfig,
+}
+
+impl RateLimitConfig {
+    /// Resolves to real [`ScopePolicies`], for
+    /// [`crate::limits::RateLimiter::new`].
+    pub fn resolve(&self) -> ScopePolicies {
+        ScopePolicies {
+            user: self.user.resolve(),
+            guild: self.guild.resolve(),
+            global: self.global.resolve(),
         }
     }
 }
@@ -110,6 +166,12 @@ pub struct AiConfig {
     /// than anything generated.
     #[serde(default)]
     pub crisis_resources: Vec<CrisisResourceConfig>,
+    /// Request, token, and concurrency limits per scope (user, guild, and
+    /// global), checked before a turn's provider call. Every scope is
+    /// unlimited by default, matching the behaviour before rate limiting
+    /// existed at all.
+    #[serde(default)]
+    pub rate_limits: RateLimitConfig,
 }
 
 /// One crisis resource an operator has configured: a hotline, a text line, a
@@ -282,6 +344,72 @@ mod tests {
             ..BudgetConfig::default()
         };
         assert_eq!(config.resolve().max_cost, Some(Cost::from_dollars(2.0)));
+    }
+
+    #[test]
+    fn test_default_rate_limit_config_resolves_unlimited() {
+        let policies = RateLimitConfig::default().resolve();
+        assert!(policies.user.is_unlimited());
+        assert!(policies.guild.is_unlimited());
+        assert!(policies.global.is_unlimited());
+    }
+
+    #[test]
+    fn test_rate_limit_policy_config_resolve_overrides_only_what_is_set() {
+        let config = RateLimitPolicyConfig {
+            max_requests: Some(20),
+            ..RateLimitPolicyConfig::default()
+        };
+        let resolved = config.resolve();
+
+        assert_eq!(resolved.max_requests, Some(20));
+        assert_eq!(
+            resolved.window,
+            crate::limits::RateLimitPolicy::default().window,
+            "an unset window should keep the default"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_policy_config_window_parses_as_humantime() {
+        let config: RateLimitPolicyConfig = toml::from_str("window = \"1m\"").unwrap();
+        assert_eq!(config.resolve().window, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_loading_a_real_rate_limits_section() {
+        let dir = tempdir();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+            [ai]
+            enabled = true
+
+            [ai.rate_limits.user]
+            max_requests = 20
+            window = "1m"
+            max_tokens = 50000
+            max_concurrent_turns = 2
+
+            [ai.rate_limits.global]
+            max_requests = 200
+            window = "1m"
+            "#,
+        )
+        .unwrap();
+
+        let config = AiConfig::load_from_file(&path).unwrap();
+        let policies = config.rate_limits.resolve();
+
+        assert_eq!(policies.user.max_requests, Some(20));
+        assert_eq!(policies.user.max_tokens, Some(50000));
+        assert_eq!(policies.user.max_concurrent_turns, Some(2));
+        assert_eq!(policies.global.max_requests, Some(200));
+        assert!(
+            policies.guild.is_unlimited(),
+            "an unconfigured scope should stay unlimited"
+        );
     }
 
     #[test]

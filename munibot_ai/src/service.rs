@@ -1051,6 +1051,7 @@ mod tests {
             default_persona: Some(PersonaId::new("companion")),
             prompt_dir: None,
             crisis_resources: Vec::new(),
+            rate_limits: crate::persona::config::RateLimitConfig::default(),
             personas: HashMap::new(),
         };
         config
@@ -1089,6 +1090,7 @@ mod tests {
             default_persona: Some(PersonaId::new("companion")),
             prompt_dir: None,
             crisis_resources: Vec::new(),
+            rate_limits: crate::persona::config::RateLimitConfig::default(),
             personas: HashMap::new(),
         };
         config

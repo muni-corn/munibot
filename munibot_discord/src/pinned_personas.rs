@@ -86,6 +86,7 @@ mod tests {
             default_persona: Some(PersonaId::new("companion")),
             prompt_dir: None,
             crisis_resources: Vec::new(),
+            rate_limits: munibot_ai::persona::RateLimitConfig::default(),
             personas,
         };
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);

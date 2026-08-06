@@ -2,9 +2,9 @@
 //
 // `Ai::new` alone returns a bare service with every optional capability
 // (memory tools, memory store, usage recording, tool auditing, conversation
-// compaction) left off - each is opt-in via its own `with_*` builder,
-// precisely so existing constructor call sites and tests never had to
-// change as those capabilities were added. This module is the one place
+// compaction, rate limiting) left off - each is opt-in via its own `with_*`
+// builder, precisely so existing constructor call sites and tests never had
+// to change as those capabilities were added. This module is the one place
 // that actually opts every one of them in for the real, running server.
 
 use std::sync::Arc;
@@ -13,6 +13,7 @@ use munibot_ai::{
     Ai,
     audit::DieselToolAuditor,
     crisis::{CrisisClassifier, CrisisPersona},
+    limits::{DieselRateLimitStore, RateLimiter},
     memory::{
         CompactionPersona, CompactionSettings, DieselMemoryOptIn, DieselMemoryStore,
         DieselSessionStore, GatedMemoryStore, MemoryStore, SessionStore, Summariser,
@@ -44,9 +45,9 @@ fn default_persona_model(config: &AiConfig) -> Option<ModelRef> {
 /// Builds the AI service, or `None` when `ai.enabled` is `false` in config.
 ///
 /// `pool` backs every diesel-based piece: conversation persistence, the
-/// memory tools and store, usage recording, tool auditing, and (once a
-/// provider for the default persona's model resolves) conversation
-/// compaction.
+/// memory tools and store, usage recording, tool auditing, rate limit
+/// windows, and (once a provider for the default persona's model resolves)
+/// conversation compaction.
 pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc<Ai>>> {
     if !config.enabled {
         info!("ai.enabled is false; skipping ai setup");
@@ -64,10 +65,15 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
         DieselMemoryStore::new(pool.clone()),
         DieselMemoryOptIn::new(pool.clone()),
     ));
+    let rate_limiter = RateLimiter::new(
+        Arc::new(DieselRateLimitStore::new(pool.clone())),
+        config.rate_limits.resolve(),
+    );
     ai = ai
         .with_memory_store(memory_store)
         .with_usage_recorder(Arc::new(DieselUsageRecorder::new(pool.clone())))
-        .with_tool_auditor(Arc::new(DieselToolAuditor::new(pool.clone())));
+        .with_tool_auditor(Arc::new(DieselToolAuditor::new(pool.clone())))
+        .with_rate_limiter(Arc::new(rate_limiter));
 
     let providers = ProviderResolver::new();
     match default_persona_model(config) {

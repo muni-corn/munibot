@@ -195,6 +195,18 @@ contact = "call or text 988 (US)"
 name = "Samaritans"
 contact = "116 123 (UK and Ireland)"
 
+# every scope is unlimited unless configured; checked before the provider
+# call, global first, since it is the last defence against a runaway loop
+[ai.rate_limits.user]
+max_requests = 20
+window = "1m"
+max_tokens = 50000
+max_concurrent_turns = 2
+
+[ai.rate_limits.global]
+max_requests = 200
+window = "1m"
+
 [ai.personas.companion]
 model = "anthropic:claude-opus-5"
 prompt = "companion.md"

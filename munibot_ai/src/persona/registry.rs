@@ -178,6 +178,7 @@ mod tests {
             default_persona: None,
             prompt_dir: None,
             crisis_resources: Vec::new(),
+            rate_limits: crate::persona::config::RateLimitConfig::default(),
             personas: personas
                 .into_iter()
                 .map(|(id, config)| (PersonaId::new(id), config))
