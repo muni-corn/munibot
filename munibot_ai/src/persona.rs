@@ -94,6 +94,40 @@ mod prompt_tests {
     }
 
     #[test]
+    fn test_companion_prompt_distinguishes_same_conversation_recall_from_opt_in_memory() {
+        // milestone 2 phase 13's own requirement: states plainly what it does and
+        // does not remember. remembering what was just said needs no permission;
+        // only carrying something into a *different*, later conversation does
+        let source = include_str!("../prompts/companion.md");
+        assert!(
+            source.contains("earlier in _this_ conversation")
+                || source.contains("this conversation"),
+            "the companion prompt must state that recalling earlier in the same conversation \
+             needs no permission or opt-in"
+        );
+        assert!(
+            source.contains("opted into memory"),
+            "the companion prompt must still state that only opted-in memory survives into a \
+             different, later conversation"
+        );
+    }
+
+    #[test]
+    fn test_companion_prompt_distinguishes_platform_formatting() {
+        // milestone 2 phase 13's own requirement: a much longer horizon than a
+        // discord reply, and the web renders real markdown while discord doesn't
+        let source = include_str!("../prompts/companion.md");
+        assert!(
+            source.contains("renders full markdown"),
+            "the companion prompt must state that the web renders full markdown"
+        );
+        assert!(
+            source.to_lowercase().contains("discord"),
+            "the companion prompt must call out discord's narrower formatting by name"
+        );
+    }
+
+    #[test]
     fn test_writer_prompt_declares_exactly_user_name_and_platform() {
         let template = PromptTemplate::new(include_str!("../prompts/writer.md"));
         let mut variables = template.required_variables();
