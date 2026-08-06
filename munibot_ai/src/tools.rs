@@ -9,6 +9,7 @@
 
 pub mod context;
 pub mod current_time;
+pub mod delegator;
 pub mod exa;
 pub mod registry;
 pub mod selection;
@@ -22,6 +23,7 @@ pub mod web_search;
 
 pub use context::{ConversationId, Platform, ToolCtx};
 pub use current_time::CurrentTimeTool;
+pub use delegator::Delegator;
 pub use exa::{ContentsOptions, ExaBackend, ExaClient, ExaError, ExaResult, TextOptions};
 pub use registry::ToolRegistry;
 pub use selection::{ToolSelection, ToolSelector};

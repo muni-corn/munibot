@@ -37,6 +37,37 @@ impl Default for Budget {
     }
 }
 
+impl Budget {
+    /// The tighter of this budget and `other`, field by field.
+    ///
+    /// `None` means unbounded, so it never wins over a real limit on either
+    /// side - only `None` paired with `None` stays `None`. Used to cap a
+    /// delegated turn's own persona-configured budget by whatever the
+    /// enclosing turn actually has left ([`BudgetTracker::remaining`]),
+    /// without ever widening it past its own configured ceiling either: a
+    /// cheap reviewer persona should stay cheap even when the enclosing
+    /// turn has plenty of budget left to give it.
+    pub fn bounded_by(&self, other: &Budget) -> Budget {
+        fn tighter<T: Ord + Copy>(a: Option<T>, b: Option<T>) -> Option<T> {
+            match (a, b) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            }
+        }
+
+        Budget {
+            max_iterations: tighter(self.max_iterations, other.max_iterations),
+            max_input_tokens: tighter(self.max_input_tokens, other.max_input_tokens),
+            max_output_tokens: tighter(self.max_output_tokens, other.max_output_tokens),
+            max_wall_clock: tighter(self.max_wall_clock, other.max_wall_clock),
+            max_cost: tighter(self.max_cost, other.max_cost),
+            max_tool_retries: tighter(self.max_tool_retries, other.max_tool_retries),
+        }
+    }
+}
+
 /// Accumulates usage, cost, and elapsed time against a [`Budget`] over the
 /// course of one turn.
 ///
@@ -360,6 +391,66 @@ mod tests {
         let tracker = BudgetTracker::new(unlimited());
         let remaining = tracker.remaining();
         assert_eq!(remaining, unlimited());
+    }
+
+    #[test]
+    fn test_bounded_by_takes_the_tighter_of_two_set_limits() {
+        let persona_budget = Budget {
+            max_iterations: Some(20),
+            ..unlimited()
+        };
+        let remaining = Budget {
+            max_iterations: Some(3),
+            ..unlimited()
+        };
+        assert_eq!(
+            persona_budget.bounded_by(&remaining).max_iterations,
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn test_bounded_by_does_not_widen_past_its_own_ceiling() {
+        // a cheap persona should stay cheap even when the enclosing turn has
+        // plenty of budget left to hand it
+        let persona_budget = Budget {
+            max_cost: Some(Cost::from_micros(100)),
+            ..unlimited()
+        };
+        let remaining = Budget {
+            max_cost: Some(Cost::from_dollars(100.0)),
+            ..unlimited()
+        };
+        assert_eq!(
+            persona_budget.bounded_by(&remaining).max_cost,
+            Some(Cost::from_micros(100))
+        );
+    }
+
+    #[test]
+    fn test_bounded_by_an_unbounded_other_keeps_its_own_limit() {
+        let persona_budget = Budget {
+            max_iterations: Some(5),
+            ..unlimited()
+        };
+        assert_eq!(
+            persona_budget.bounded_by(&unlimited()).max_iterations,
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn test_an_unbounded_self_adopts_the_others_limit() {
+        let remaining = Budget {
+            max_iterations: Some(5),
+            ..unlimited()
+        };
+        assert_eq!(unlimited().bounded_by(&remaining).max_iterations, Some(5));
+    }
+
+    #[test]
+    fn test_bounded_by_stays_unlimited_when_both_are() {
+        assert_eq!(unlimited().bounded_by(&unlimited()), unlimited());
     }
 
     #[test]

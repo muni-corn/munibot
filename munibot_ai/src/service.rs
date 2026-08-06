@@ -881,6 +881,62 @@ impl Ai {
     }
 }
 
+/// The system prompt context a delegated turn renders with: no real user,
+/// platform, or memories - a specialist gets a task brief, not a
+/// conversation, and must never see the invoking user's own opted-in
+/// memories (a different persona's private data, from the specialist's own
+/// point of view).
+///
+/// Fine even for a persona whose prompt does not reference these variables
+/// at all (the common case for a specialist role) - unreferenced context
+/// entries are silently ignored, per
+/// [`crate::persona::PromptTemplate::render`].
+fn delegated_prompt_context() -> HashMap<String, String> {
+    HashMap::from([
+        ("user_name".to_string(), "a colleague".to_string()),
+        ("platform".to_string(), "a delegated task".to_string()),
+        ("memories".to_string(), String::new()),
+    ])
+}
+
+#[async_trait::async_trait]
+impl crate::tools::Delegator for Ai {
+    async fn delegate(
+        &self,
+        persona_id: &PersonaId,
+        task: String,
+        ctx: &ToolCtx,
+    ) -> Result<String, AiError> {
+        let persona = self.require_persona(persona_id)?;
+        let provider = self.providers.resolve(&persona.model)?;
+        let budget = persona.budget.bounded_by(&ctx.remaining_budget);
+
+        let system = persona.system_prompt.render(&delegated_prompt_context())?;
+
+        let mut history = History::new();
+        history.push(Message::user(task));
+
+        let delegated_ctx = ToolCtx {
+            remaining_budget: budget.clone(),
+            ..ctx.clone()
+        };
+
+        let turn_request = TurnRequest::new(persona.model.clone(), history, delegated_ctx)
+            .with_system(system)
+            .with_tools(persona.tools.clone())
+            .with_params(persona.params.clone())
+            .with_budget(budget);
+
+        let mut harness = Harness::new(provider, self.tools.clone());
+        if let Some(auditor) = &self.tool_auditor {
+            harness = harness.with_auditor(auditor.clone());
+        }
+
+        let outcome = harness.run_turn(turn_request).await?;
+        Ok(outcome.text.unwrap_or_default())
+    }
+}
+
 /// The reviewed, non-generated reply the crisis response path returns on a
 /// positive signal.
 ///
@@ -916,6 +972,7 @@ mod tests {
     use super::*;
     use crate::{
         audit::ToolCallRecord,
+        harness::Budget,
         limits::{RateLimitStore, SpendCapStore},
         memory::{CompactionPersona, InMemorySessionStore},
         persona::PersonaConfig,
@@ -1136,6 +1193,199 @@ mod tests {
             Arc::new(InMemorySessionStore::new()),
             Arc::new(FixedProviderSource(provider)),
         )
+    }
+
+    /// Builds an `Ai` whose registry has both `companion` and a delegable
+    /// `researcher`, both resolved against the embedded prompts of the same
+    /// names - `researcher.md` genuinely references `{{user_name}}` and
+    /// `{{platform}}` (see its own prompt tests), so this exercises
+    /// `delegated_prompt_context`'s values against a real prompt rather
+    /// than one written not to need them.
+    fn ai_with_researcher(provider: Arc<dyn Provider>) -> Ai {
+        let mut config = AiConfig {
+            enabled: true,
+            default_persona: Some(PersonaId::new("companion")),
+            prompt_dir: None,
+            crisis_resources: Vec::new(),
+            rate_limits: crate::persona::config::RateLimitConfig::default(),
+            spend_caps: crate::persona::config::SpendCapConfig::default(),
+            personas: HashMap::new(),
+        };
+        config
+            .personas
+            .insert(PersonaId::new("companion"), PersonaConfig {
+                model: ModelRef::new("anthropic", "claude-opus-5"),
+                prompt: "companion.md".to_string(),
+                display_name: Some("Companion".to_string()),
+                description: "warm, playful conversation".to_string(),
+                temperature: None,
+                tools: crate::tools::ToolSelection::none(),
+                budget: crate::persona::BudgetConfig::default(),
+                memory: MemoryPolicy::None,
+                sandbox: crate::persona::SandboxPolicy::default(),
+                delegable: false,
+            });
+        config
+            .personas
+            .insert(PersonaId::new("researcher"), PersonaConfig {
+                model: ModelRef::new("anthropic", "claude-opus-5"),
+                prompt: "researcher.md".to_string(),
+                display_name: Some("Researcher".to_string()),
+                description: "multi-step research with citations".to_string(),
+                temperature: None,
+                tools: crate::tools::ToolSelection::none(),
+                budget: crate::persona::BudgetConfig {
+                    max_iterations: Some(5),
+                    ..crate::persona::BudgetConfig::default()
+                },
+                memory: MemoryPolicy::None,
+                sandbox: crate::persona::SandboxPolicy::default(),
+                delegable: true,
+            });
+
+        let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
+        let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
+
+        Ai::from_parts(
+            personas,
+            Arc::new(ToolRegistry::new()),
+            Arc::new(InMemorySessionStore::new()),
+            Arc::new(FixedProviderSource(provider)),
+        )
+    }
+
+    /// A [`ToolCtx`] for delegation tests: depth 0, an unlimited remaining
+    /// budget so a test opts into whatever tighter limit it actually wants
+    /// to exercise via the persona's own configured budget instead.
+    fn delegation_ctx() -> ToolCtx {
+        ToolCtx {
+            user_id: 1,
+            platform: Platform::Web,
+            granted_tier: RiskTier::Safe,
+            guild_id: None,
+            conversation_id: crate::tools::ConversationId(1),
+            cancellation: CancellationToken::new(),
+            delegation_depth: 0,
+            remaining_budget: Budget {
+                max_iterations: None,
+                max_input_tokens: None,
+                max_output_tokens: None,
+                max_wall_clock: None,
+                max_cost: None,
+                max_tool_retries: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_delegate_runs_a_turn_for_the_named_persona() {
+        let provider = Arc::new(MockProvider::new().respond_text("the answer is 42"));
+        let ai = ai_with_researcher(provider);
+
+        let text = crate::tools::Delegator::delegate(
+            &ai,
+            &PersonaId::new("researcher"),
+            "what is the answer?".to_string(),
+            &delegation_ctx(),
+        )
+        .await
+        .expect("should succeed");
+
+        assert_eq!(text, "the answer is 42");
+    }
+
+    #[tokio::test]
+    async fn test_delegate_fails_for_an_unknown_persona() {
+        let provider = Arc::new(MockProvider::new().respond_text("unused"));
+        let ai = ai_with_researcher(provider);
+
+        let result = crate::tools::Delegator::delegate(
+            &ai,
+            &PersonaId::new("nonexistent"),
+            "a task".to_string(),
+            &delegation_ctx(),
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_delegate_sends_only_the_task_never_a_conversation_history() {
+        let provider: Arc<MockProvider> = Arc::new(MockProvider::new().respond_text("done"));
+        let ai = ai_with_researcher(provider.clone());
+
+        crate::tools::Delegator::delegate(
+            &ai,
+            &PersonaId::new("researcher"),
+            "research the history of tea".to_string(),
+            &delegation_ctx(),
+        )
+        .await
+        .expect("should succeed");
+
+        let requests = provider.requests();
+        let request = requests.last().expect("should have sent a request");
+        assert_eq!(
+            request.history.len(),
+            1,
+            "a delegated turn's history should be exactly the task, nothing else"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delegate_bounds_the_persona_budget_by_the_remaining_budget() {
+        // researcher's own configured budget allows 5 iterations; a ctx with
+        // only 1 left should win, so a tool-calling loop truncates after one
+        // round trip rather than running the persona's own full allowance
+        let provider = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![ContentBlock::text("still going")],
+                    crate::types::StopReason::EndTurn,
+                    Usage::default(),
+                )))
+                .respond_text("should never be reached"),
+        );
+        let ai = ai_with_researcher(provider.clone());
+
+        let mut ctx = delegation_ctx();
+        ctx.remaining_budget = Budget {
+            max_iterations: Some(1),
+            ..ctx.remaining_budget
+        };
+
+        crate::tools::Delegator::delegate(
+            &ai,
+            &PersonaId::new("researcher"),
+            "a task".to_string(),
+            &ctx,
+        )
+        .await
+        .expect("should succeed");
+
+        assert_eq!(
+            provider.request_count(),
+            1,
+            "the tighter of the two budgets (the remaining one) should have been used"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delegated_prompt_context_satisfies_a_real_prompts_variables() {
+        // researcher.md genuinely references {{user_name}} and {{platform}} -
+        // this only succeeds at all if delegated_prompt_context supplies both
+        let provider = Arc::new(MockProvider::new().respond_text("ok"));
+        let ai = ai_with_researcher(provider);
+
+        crate::tools::Delegator::delegate(
+            &ai,
+            &PersonaId::new("researcher"),
+            "a task".to_string(),
+            &delegation_ctx(),
+        )
+        .await
+        .expect("rendering the researcher's real prompt should not error");
     }
 
     fn request(persona_id: &str, message: &str) -> AiTurnRequest {
