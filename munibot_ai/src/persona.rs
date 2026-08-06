@@ -15,7 +15,7 @@ pub mod types;
 
 pub use config::{
     AiConfig, BudgetConfig, CrisisResourceConfig, PersonaConfig, RateLimitConfig,
-    RateLimitPolicyConfig,
+    RateLimitPolicyConfig, SpendCapConfig, SpendCapPolicyConfig,
 };
 pub use output_filter::{OutputLimits, filter_output};
 pub use registry::PersonaRegistry;

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     harness::Budget,
-    limits::{RateLimitPolicy, ScopePolicies},
+    limits::{RateLimitPolicy, ScopePolicies, SpendCapPolicies, SpendCapPolicy},
     persona::{MemoryPolicy, PersonaId, SandboxPolicy},
     tools::ToolSelection,
     types::{AiError, Cost, ModelRef},
@@ -105,6 +105,55 @@ impl RateLimitConfig {
     }
 }
 
+/// The TOML-deserializable shape of one scope kind's spend cap, before
+/// [`Self::resolve`] fills in [`SpendCapPolicy::default`] for anything left
+/// unset - the same ergonomic-config-then-resolve shape [`BudgetConfig`]
+/// already uses. `max_usd` rather than raw micros, for the same reason
+/// [`BudgetConfig::max_cost_usd`] is a dollar amount rather than micros too.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct SpendCapPolicyConfig {
+    #[serde(default)]
+    pub max_usd: Option<f64>,
+    #[serde(default)]
+    pub period: Option<String>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub duration: Option<Duration>,
+}
+
+impl SpendCapPolicyConfig {
+    /// Resolves to a real [`SpendCapPolicy`], falling back to
+    /// [`SpendCapPolicy::default`] for `period` and `duration` when unset.
+    pub fn resolve(&self) -> SpendCapPolicy {
+        let default = SpendCapPolicy::default();
+        SpendCapPolicy {
+            limit_micros: self.max_usd.map(|usd| Cost::from_dollars(usd).0),
+            period: self.period.clone().unwrap_or(default.period),
+            duration: self.duration.unwrap_or(default.duration),
+        }
+    }
+}
+
+/// The TOML-deserializable shape of `[ai.spend_caps]`: per-user and global
+/// only, no guild - matching [`SpendCapPolicies`]'s own doc comment for why.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct SpendCapConfig {
+    #[serde(default)]
+    pub user: SpendCapPolicyConfig,
+    #[serde(default)]
+    pub global: SpendCapPolicyConfig,
+}
+
+impl SpendCapConfig {
+    /// Resolves to real [`SpendCapPolicies`], for
+    /// [`crate::limits::SpendCapEnforcer::new`].
+    pub fn resolve(&self) -> SpendCapPolicies {
+        SpendCapPolicies {
+            user: self.user.resolve(),
+            global: self.global.resolve(),
+        }
+    }
+}
+
 /// The TOML-deserializable shape of one persona, before its prompt file has
 /// been read or its model checked against a configured provider.
 ///
@@ -172,6 +221,11 @@ pub struct AiConfig {
     /// existed at all.
     #[serde(default)]
     pub rate_limits: RateLimitConfig,
+    /// Spend caps per user and globally, checked alongside rate limits.
+    /// Uncapped by default, matching the behaviour before spend caps
+    /// existed at all.
+    #[serde(default)]
+    pub spend_caps: SpendCapConfig,
 }
 
 /// One crisis resource an operator has configured: a hotline, a text line, a
@@ -409,6 +463,64 @@ mod tests {
         assert!(
             policies.guild.is_unlimited(),
             "an unconfigured scope should stay unlimited"
+        );
+    }
+
+    #[test]
+    fn test_default_spend_cap_config_resolves_uncapped() {
+        let policies = SpendCapConfig::default().resolve();
+        assert_eq!(policies.user.limit_micros, None);
+        assert_eq!(policies.global.limit_micros, None);
+    }
+
+    #[test]
+    fn test_spend_cap_policy_config_max_usd_converts_to_micros() {
+        let config = SpendCapPolicyConfig {
+            max_usd: Some(5.0),
+            ..SpendCapPolicyConfig::default()
+        };
+        assert_eq!(
+            config.resolve().limit_micros,
+            Some(Cost::from_dollars(5.0).0)
+        );
+    }
+
+    #[test]
+    fn test_spend_cap_policy_config_resolve_falls_back_to_defaults_for_period_and_duration() {
+        let resolved = SpendCapPolicyConfig::default().resolve();
+        assert_eq!(resolved.period, SpendCapPolicy::default().period);
+        assert_eq!(resolved.duration, SpendCapPolicy::default().duration);
+    }
+
+    #[test]
+    fn test_loading_a_real_spend_caps_section() {
+        let dir = tempdir();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+            [ai]
+            enabled = true
+
+            [ai.spend_caps.user]
+            max_usd = 5.0
+            period = "monthly"
+
+            [ai.spend_caps.global]
+            max_usd = 500.0
+            period = "monthly"
+            "#,
+        )
+        .unwrap();
+
+        let config = AiConfig::load_from_file(&path).unwrap();
+        let policies = config.spend_caps.resolve();
+
+        assert_eq!(policies.user.limit_micros, Some(Cost::from_dollars(5.0).0));
+        assert_eq!(policies.user.period, "monthly");
+        assert_eq!(
+            policies.global.limit_micros,
+            Some(Cost::from_dollars(500.0).0)
         );
     }
 

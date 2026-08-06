@@ -207,6 +207,17 @@ max_concurrent_turns = 2
 max_requests = 200
 window = "1m"
 
+# per user and globally only - a guild's own members are already covered
+# individually by their own user-level caps. at 80 percent, warns in the
+# log; at 100 percent, refuses new turns for that scope
+[ai.spend_caps.user]
+max_usd = 5.0
+period = "monthly"
+
+[ai.spend_caps.global]
+max_usd = 500.0
+period = "monthly"
+
 [ai.personas.companion]
 model = "anthropic:claude-opus-5"
 prompt = "companion.md"

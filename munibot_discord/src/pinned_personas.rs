@@ -87,6 +87,7 @@ mod tests {
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: munibot_ai::persona::RateLimitConfig::default(),
+            spend_caps: munibot_ai::persona::SpendCapConfig::default(),
             personas,
         };
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);

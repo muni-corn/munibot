@@ -1052,6 +1052,7 @@ mod tests {
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
+            spend_caps: crate::persona::config::SpendCapConfig::default(),
             personas: HashMap::new(),
         };
         config
@@ -1091,6 +1092,7 @@ mod tests {
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
+            spend_caps: crate::persona::config::SpendCapConfig::default(),
             personas: HashMap::new(),
         };
         config
