@@ -26,6 +26,8 @@ pub fn AccountStatus() -> Element {
                 span { "hi, {name}! ^-^ " }
                 Link { to: Route::Chat {}, "chat" }
                 " · "
+                Link { to: Route::Personas {}, "personas" }
+                " · "
                 Link { to: Route::DashboardIndex {}, "your servers" }
                 " · "
                 Link { to: Route::Memory {}, "memory" }

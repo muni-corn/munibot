@@ -8,6 +8,7 @@ use crate::{
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
         home::Home,
         memory::Memory,
+        personas::Personas,
     },
 };
 
@@ -68,6 +69,8 @@ pub enum Route {
             #[end_layout]
             #[route("/memory")]
             Memory {},
+            #[route("/personas")]
+            Personas {},
         #[end_layout]
     #[end_layout]
 
