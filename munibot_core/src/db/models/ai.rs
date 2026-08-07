@@ -9,8 +9,8 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::db::schema::{
-    ai_conversations, ai_memories, ai_messages, ai_rate_limits, ai_spend_caps, ai_tool_calls,
-    ai_usage, ai_user_settings,
+    ai_attachments, ai_conversations, ai_memories, ai_messages, ai_rate_limits, ai_spend_caps,
+    ai_tool_calls, ai_usage, ai_user_settings,
 };
 
 // ai_conversations
@@ -80,6 +80,59 @@ pub struct NewAiMessage {
     pub role: String,
     pub content: String,
     pub token_count: i32,
+    pub created_at: NaiveDateTime,
+}
+
+// ai_attachments
+
+/// A row in the `ai_attachments` table: one uploaded image's raw bytes and
+/// metadata.
+///
+/// `message_id` is `None` until the message that references it is actually
+/// persisted - an upload always happens before `send_message`, since SSE
+/// (a `GET`) cannot carry a pasted image as a query string. `data` is
+/// selected separately from everything else in practice (see
+/// `operations::ai::get_attachment_data`): loading every attachment's own
+/// bytes just to show a thumbnail list would be wasteful.
+#[derive(Clone, Debug, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = ai_attachments)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiAttachment {
+    pub id: i64,
+    pub conversation_id: i64,
+    pub message_id: Option<i64>,
+    pub media_type: String,
+    pub byte_size: i32,
+    pub sha256: String,
+    pub data: Vec<u8>,
+    pub created_at: NaiveDateTime,
+}
+
+/// [`AiAttachment`] without `data` - metadata only, for listing or showing a
+/// thumbnail without loading every attachment's own bytes into memory at
+/// once.
+#[derive(Clone, Debug, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = ai_attachments)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiAttachmentMeta {
+    pub id: i64,
+    pub conversation_id: i64,
+    pub message_id: Option<i64>,
+    pub media_type: String,
+    pub byte_size: i32,
+    pub sha256: String,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable shape for `ai_attachments`.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = ai_attachments)]
+pub struct NewAiAttachment {
+    pub conversation_id: i64,
+    pub media_type: String,
+    pub byte_size: i32,
+    pub sha256: String,
+    pub data: Vec<u8>,
     pub created_at: NaiveDateTime,
 }
 

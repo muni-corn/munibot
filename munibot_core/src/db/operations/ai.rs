@@ -6,9 +6,14 @@
 //! submodule rather than growing this file further - see that module's own
 //! doc comment.
 
+pub mod attachment;
 pub mod limits;
 pub mod usage;
 
+pub use attachment::{
+    create_attachment, get_attachment, get_attachment_meta, link_attachment_to_message,
+    list_attachments_for_message,
+};
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 pub use limits::{
