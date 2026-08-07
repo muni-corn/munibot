@@ -265,6 +265,20 @@ description = "reviews pasted tests as a specification, before anything is built
 tools = ["tier0"]
 delegable = true
 
+[ai.personas.architecture-reviewer]
+model = "anthropic:claude-opus-5"
+prompt = "architecture-reviewer.md"
+description = "critiques a plan against completeness, ordering, and instruction quality"
+tools = ["tier0"]
+delegable = true
+
+[ai.personas.project-manager]
+model = "anthropic:claude-opus-5"
+prompt = "project-manager.md"
+description = "given a plan and what's done, decides what to work on next"
+tools = ["tier0"]
+delegable = true
+
 [ai.personas.builder]
 model = "anthropic:claude-opus-5"
 prompt = "builder.md"

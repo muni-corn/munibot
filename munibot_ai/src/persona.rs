@@ -546,6 +546,138 @@ mod prompt_tests {
     }
 
     #[test]
+    fn test_architecture_reviewer_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/architecture-reviewer.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_architecture_reviewer_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/architecture-reviewer.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_architecture_reviewer_prompt_keeps_all_seven_review_criteria() {
+        let source = include_str!("../prompts/architecture-reviewer.md");
+        for criterion in [
+            "Completeness",
+            "Correctness",
+            "Atomicity",
+            "Ordering",
+            "Consistency",
+            "Feasibility",
+            "Instruction quality",
+        ] {
+            assert!(
+                source.contains(criterion),
+                "the architecture reviewer prompt must keep the {criterion} review criterion"
+            );
+        }
+    }
+
+    #[test]
+    fn test_architecture_reviewer_prompt_never_reintroduces_the_stray_shell_command() {
+        // docs/plans/ai/overview.md documents this exact defect in the
+        // source municode prompt - a `git config` command spliced into a
+        // sentence - as one to fix during the port, not inherit
+        let source = include_str!("../prompts/architecture-reviewer.md");
+        assert!(
+            !source.contains("git config"),
+            "the architecture reviewer prompt must not carry over municode's stray shell command"
+        );
+    }
+
+    #[test]
+    fn test_architecture_reviewer_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/architecture-reviewer.md");
+        for pipeline_only in [
+            "ApprovePlan",
+            "RequestPlanChanges",
+            "```json",
+            "proposed-plan",
+            "codebase-summary",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the architecture reviewer prompt should not contain pipeline-only text \
+                 {pipeline_only:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_project_manager_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/project-manager.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_project_manager_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/project-manager.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_project_manager_prompt_never_reintroduces_the_starttask_naming_drift() {
+        // docs/plans/ai/overview.md documents this exact defect in the
+        // source municode prompt - StartTask vs StartTaskTests naming drift
+        // - as one to fix during the port; stripping the whole pipeline
+        // action-name vocabulary removes it by construction
+        let source = include_str!("../prompts/project-manager.md");
+        assert!(!source.contains("StartTask"));
+    }
+
+    #[test]
+    fn test_project_manager_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/project-manager.md");
+        for pipeline_only in [
+            "BeginFinalReview",
+            "```json",
+            "completed-tasks",
+            "task-reviews",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the project manager prompt should not contain pipeline-only text \
+                 {pipeline_only:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_software_architect_prompt_has_no_pipeline_output_contract() {
         // the porting rule's whole point: output-contract prose ("return
         // JSON shaped like...") belongs in a future HandoffSchema, not the
