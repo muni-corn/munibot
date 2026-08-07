@@ -306,4 +306,66 @@ mod prompt_tests {
             "the coder prompt must state plainly that it cannot execute or modify code yet"
         );
     }
+
+    #[test]
+    fn test_software_architect_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/software-architect.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_software_architect_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/software-architect.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_software_architect_prompt_keeps_the_planning_principles() {
+        // milestone 3 phase 16's porting rule: role, standards, and judgement
+        // stay in the markdown even after the output contract is stripped
+        let source = include_str!("../prompts/software-architect.md");
+        for principle in ["Atomicity", "Completeness", "Ordering", "Consistency"] {
+            assert!(
+                source.contains(principle),
+                "the software architect prompt must keep the {principle} planning principle"
+            );
+        }
+    }
+
+    #[test]
+    fn test_software_architect_prompt_has_no_pipeline_output_contract() {
+        // the porting rule's whole point: output-contract prose ("return
+        // JSON shaped like...") belongs in a future HandoffSchema, not the
+        // markdown - none of municode's own JSON action-block vocabulary
+        // should have survived the port
+        let source = include_str!("../prompts/software-architect.md");
+        for pipeline_only in [
+            "RequestPlanHelp",
+            "CreatePlan",
+            "```json",
+            "codebase-summary",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the software architect prompt should not contain pipeline-only text \
+                 {pipeline_only:?}"
+            );
+        }
+    }
 }
