@@ -50,6 +50,13 @@ pub enum ChatEvent {
         /// full is the entire point of a person explicitly inspecting it.
         result: String,
     },
+    /// A `delegate` call has begun - carries who was brought in and why,
+    /// rather than a bare tool name, so the chat page can show "munibot
+    /// asked the code reviewer to look at this" instead of a generic tool
+    /// activity line. Delegation must never be invisible.
+    DelegationStarted { persona: String, task: String },
+    /// A `delegate` call has finished.
+    DelegationFinished { persona: String, ok: bool },
     /// One provider round trip has finished.
     IterationComplete { iteration: usize, usage: ChatUsage },
     /// The model produced a structured handoff payload.
@@ -119,6 +126,12 @@ impl From<munibot_ai::harness::HarnessEvent> for ChatEvent {
                 ok,
                 result,
             },
+            HarnessEvent::DelegationStarted { persona, task } => {
+                Self::DelegationStarted { persona, task }
+            }
+            HarnessEvent::DelegationFinished { persona, ok } => {
+                Self::DelegationFinished { persona, ok }
+            }
             HarnessEvent::IterationComplete { iteration, usage } => Self::IterationComplete {
                 iteration,
                 usage: usage.into(),
@@ -189,6 +202,32 @@ mod tests {
             duration_ms: 250,
             ok: true,
             result: "three results found".to_string(),
+        });
+    }
+
+    #[test]
+    fn test_delegation_started_maps_persona_and_task() {
+        let event: ChatEvent = HarnessEvent::DelegationStarted {
+            persona: "researcher".to_string(),
+            task: "look into the history of tea".to_string(),
+        }
+        .into();
+        assert_eq!(event, ChatEvent::DelegationStarted {
+            persona: "researcher".to_string(),
+            task: "look into the history of tea".to_string(),
+        });
+    }
+
+    #[test]
+    fn test_delegation_finished_maps_persona_and_outcome() {
+        let event: ChatEvent = HarnessEvent::DelegationFinished {
+            persona: "researcher".to_string(),
+            ok: true,
+        }
+        .into();
+        assert_eq!(event, ChatEvent::DelegationFinished {
+            persona: "researcher".to_string(),
+            ok: true,
         });
     }
 

@@ -694,14 +694,37 @@ impl Harness {
         events: ToolEventSink<'_>,
     ) -> crate::tools::ToolOutcome {
         let (tool, arguments) = &calls[index];
+        // the delegate tool's own arguments are otherwise opaque here - see
+        // crate::tools::delegate::NAME's own doc comment for why this reads
+        // them directly rather than deserializing into its private args type
+        let is_delegation = tool.name() == crate::tools::delegate::NAME;
+        let delegation_persona = || {
+            arguments
+                .get("persona")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("?")
+                .to_string()
+        };
 
         // sent before any `.await` on the call itself, so a batch of parallel
         // calls all announce themselves as soon as this future is first
         // polled, rather than one at a time as each happens to finish
         if let Some(events) = events {
-            let _ = events.send(HarnessEvent::ToolStarted {
-                name: tool.name().to_string(),
-            });
+            let event = if is_delegation {
+                HarnessEvent::DelegationStarted {
+                    persona: delegation_persona(),
+                    task: arguments
+                        .get("task")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                }
+            } else {
+                HarnessEvent::ToolStarted {
+                    name: tool.name().to_string(),
+                }
+            };
+            let _ = events.send(event);
         }
 
         let started = std::time::Instant::now();
@@ -714,12 +737,21 @@ impl Harness {
         let duration = started.elapsed();
 
         if let Some(events) = events {
-            let _ = events.send(HarnessEvent::ToolFinished {
-                name: tool.name().to_string(),
-                duration,
-                ok: matches!(outcome, crate::tools::ToolOutcome::Ok(_)),
-                result: crate::audit::outcome_text(&outcome),
-            });
+            let ok = matches!(outcome, crate::tools::ToolOutcome::Ok(_));
+            let event = if is_delegation {
+                HarnessEvent::DelegationFinished {
+                    persona: delegation_persona(),
+                    ok,
+                }
+            } else {
+                HarnessEvent::ToolFinished {
+                    name: tool.name().to_string(),
+                    duration,
+                    ok,
+                    result: crate::audit::outcome_text(&outcome),
+                }
+            };
+            let _ = events.send(event);
         }
 
         if let Some(auditor) = &self.auditor {
@@ -2384,6 +2416,94 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, HarnessEvent::TurnFinished { .. })),
             "a handoff ends the turn instead of a normal TurnFinished"
+        );
+    }
+
+    /// Always succeeds with a fixed reply - never a real turn, no provider,
+    /// no network.
+    struct FakeDelegator;
+
+    #[async_trait::async_trait]
+    impl crate::tools::Delegator for FakeDelegator {
+        async fn delegate(
+            &self,
+            _persona: &crate::persona::PersonaId,
+            _task: String,
+            _ctx: &ToolCtx,
+        ) -> Result<String, AiError> {
+            Ok("the specialist's answer".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_delegate_call_emits_delegation_events_not_generic_tool_events() {
+        use crate::tools::{DelegablePersona, DelegateTool, DelegatorCell};
+
+        let delegator = std::sync::Arc::new(FakeDelegator);
+        let cell = std::sync::Arc::new(DelegatorCell::new());
+        cell.set(
+            std::sync::Arc::downgrade(&delegator) as std::sync::Weak<dyn crate::tools::Delegator>
+        );
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(DelegateTool::new(
+            cell,
+            vec![DelegablePersona {
+                id: crate::persona::PersonaId::new("researcher"),
+                description: "research".to_string(),
+            }],
+            2,
+        )));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![ContentBlock::tool_use(
+                        "c1",
+                        "delegate",
+                        serde_json::json!({"persona": "researcher", "task": "look into tea"}),
+                    )],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("the researcher found some things"),
+        );
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["delegate"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+
+        let harness = Arc::new(Harness::new(provider, Arc::new(registry)));
+        let events = collect_streamed(harness, turn_request).await;
+
+        let started = events.iter().find_map(|event| match event {
+            HarnessEvent::DelegationStarted { persona, task } => {
+                Some((persona.clone(), task.clone()))
+            }
+            _ => None,
+        });
+        assert_eq!(
+            started,
+            Some(("researcher".to_string(), "look into tea".to_string())),
+            "should have yielded a DelegationStarted event carrying the persona and task"
+        );
+
+        let finished = events.iter().find_map(|event| match event {
+            HarnessEvent::DelegationFinished { persona, ok } => Some((persona.clone(), *ok)),
+            _ => None,
+        });
+        assert_eq!(
+            finished,
+            Some(("researcher".to_string(), true)),
+            "should have yielded a DelegationFinished event"
+        );
+
+        assert!(
+            !events.iter().any(|event| matches!(
+                event,
+                HarnessEvent::ToolStarted { .. } | HarnessEvent::ToolFinished { .. }
+            )),
+            "a delegate call should never also emit the generic tool events"
         );
     }
 

@@ -34,6 +34,15 @@ pub enum HarnessEvent {
         /// show it without waiting for the turn to end.
         result: String,
     },
+    /// A `delegate` call has begun - emitted instead of the generic
+    /// [`Self::ToolStarted`] for that one tool specifically, since
+    /// delegation must never be invisible (that was the entire objection to
+    /// automatic persona routing) and a bare tool name says nothing about
+    /// who was brought in or why.
+    DelegationStarted { persona: String, task: String },
+    /// A `delegate` call has finished - emitted instead of the generic
+    /// [`Self::ToolFinished`], for the same reason.
+    DelegationFinished { persona: String, ok: bool },
     /// One provider round trip has finished.
     IterationComplete { iteration: usize, usage: Usage },
     /// The model produced a structured handoff payload.
@@ -82,6 +91,36 @@ mod tests {
                 assert_eq!(result, "three results found");
             }
             other => panic!("expected ToolFinished, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_delegation_started_carries_persona_and_task() {
+        let event = HarnessEvent::DelegationStarted {
+            persona: "researcher".to_string(),
+            task: "look into the history of tea".to_string(),
+        };
+        match event {
+            HarnessEvent::DelegationStarted { persona, task } => {
+                assert_eq!(persona, "researcher");
+                assert_eq!(task, "look into the history of tea");
+            }
+            other => panic!("expected DelegationStarted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_delegation_finished_carries_persona_and_outcome() {
+        let event = HarnessEvent::DelegationFinished {
+            persona: "researcher".to_string(),
+            ok: true,
+        };
+        match event {
+            HarnessEvent::DelegationFinished { persona, ok } => {
+                assert_eq!(persona, "researcher");
+                assert!(ok);
+            }
+            other => panic!("expected DelegationFinished, got {other:?}"),
         }
     }
 

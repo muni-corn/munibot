@@ -10,6 +10,15 @@ use crate::{
     types::{AiError, ToolSchema},
 };
 
+/// The name every layer that needs to recognize a delegate call by name
+/// (the harness, deciding whether to emit
+/// [`crate::harness::HarnessEvent::DelegationStarted`] instead of the
+/// generic `ToolStarted`, and reading `persona`/`task` straight out of the
+/// raw argument `Value` to build it - a tool's own argument shape is
+/// otherwise opaque above it) shares with [`Tool::name`], so the two can
+/// never drift apart into two different strings.
+pub const NAME: &str = "delegate";
+
 /// One persona the `delegate` tool may bring in - just enough to build the
 /// tool's own input schema (so the model can only ever name a real,
 /// delegable persona) and to check a requested id against at invocation
@@ -62,7 +71,7 @@ impl DelegateTool {
 #[async_trait]
 impl Tool for DelegateTool {
     fn name(&self) -> &str {
-        "delegate"
+        NAME
     }
 
     fn description(&self) -> &str {
