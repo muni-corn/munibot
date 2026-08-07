@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use munibot_ai::{
     memory::{ConversationScope, DieselSessionStore, SessionStore},
     tools::Platform,
-    types::{ContentBlock, Message, Role},
+    types::{ContentBlock, ImageSource, Message, Role},
 };
 use munibot_core::db::{DbPool, establish_pool};
 
@@ -201,6 +201,76 @@ async fn test_clear_empties_history_but_keeps_the_conversation() {
         "a reset conversation keeps its id, so the same scope still resolves to it"
     );
     assert_eq!(reloaded.summary, None);
+}
+
+#[tokio::test]
+async fn test_history_reconstructs_a_linked_attachment_as_an_image_block() {
+    let Some(pool) = pool().await else { return };
+    let store = DieselSessionStore::new(pool.clone());
+    let scope = unique_scope();
+    let conversation = store.load_or_create(&scope, "companion").await.unwrap();
+
+    store
+        .append(conversation.id, Message::user("what's in this?"))
+        .await
+        .unwrap();
+
+    // the store's own append doesn't hand back a row id, so the message is
+    // looked up the same way any other reader of the raw table would
+    let rows =
+        munibot_core::db::operations::ai::get_messages(&pool, conversation.id.0 as i64, None)
+            .await
+            .unwrap();
+    let message_id = rows[0].id;
+
+    let attachment = munibot_core::db::operations::ai::create_attachment(
+        &pool,
+        munibot_core::db::models::NewAiAttachment {
+            conversation_id: conversation.id.0 as i64,
+            media_type: "image/png".to_string(),
+            byte_size: 4,
+            sha256: "a".repeat(64),
+            data: vec![1, 2, 3, 4],
+            created_at: chrono::Utc::now().naive_utc(),
+        },
+    )
+    .await
+    .unwrap();
+    munibot_core::db::operations::ai::link_attachment_to_message(&pool, attachment.id, message_id)
+        .await
+        .unwrap();
+
+    let history = store.history(conversation.id, None).await.unwrap();
+    let message = history.iter().next().expect("should have one message");
+
+    assert_eq!(
+        message.text(),
+        "what's in this?",
+        "the text block should still be there alongside the reconstructed image"
+    );
+
+    let image_block = message
+        .content
+        .iter()
+        .find(|block| block.is_image())
+        .expect("the linked attachment should have become an image block");
+    match image_block {
+        ContentBlock::Image { image } => {
+            assert_eq!(image.media_type, "image/png");
+            match &image.source {
+                ImageSource::Base64 { data } => {
+                    use base64::{Engine, engine::general_purpose::STANDARD};
+                    assert_eq!(
+                        STANDARD.decode(data).unwrap(),
+                        vec![1, 2, 3, 4],
+                        "the base64 should decode back to the attachment's original bytes"
+                    );
+                }
+                other => panic!("expected a base64 source, got {other:?}"),
+            }
+        }
+        other => panic!("expected an image block, got {other:?}"),
+    }
 }
 
 #[tokio::test]

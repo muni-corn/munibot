@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use munibot_core::db::{DbPool, models::AiConversation, operations::ai};
 
@@ -44,6 +45,55 @@ impl DieselSessionStore {
             pool,
             owner_user_id: Some(user_id),
         }
+    }
+
+    /// Reconstructs every attachment linked to `message_id` as base64
+    /// image content blocks, for appending to that message's own content
+    /// before it ever reaches a provider request - see
+    /// `docs/plans/ai/milestone-3-specialists.md`'s own note that images
+    /// are encoded only at this point, never stored that way.
+    ///
+    /// Best-effort per attachment: one that fails to load (deleted between
+    /// listing and reading, or some other database hiccup) is logged and
+    /// skipped rather than failing the whole history load, the same
+    /// reasoning [`Self::history`] itself already applies to a message
+    /// that fails to decode.
+    async fn image_blocks_for_message(&self, message_id: i64) -> Vec<ContentBlock> {
+        let attachments = match ai::list_attachments_for_message(&self.pool, message_id).await {
+            Ok(attachments) => attachments,
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    message_id,
+                    "couldn't list attachments for a message; continuing without them"
+                );
+                return Vec::new();
+            }
+        };
+
+        let mut blocks = Vec::with_capacity(attachments.len());
+        for attachment in attachments {
+            match ai::get_attachment(&self.pool, attachment.id).await {
+                Ok(Some(attachment)) => {
+                    let data = STANDARD.encode(&attachment.data);
+                    blocks.push(ContentBlock::image_base64(attachment.media_type, data));
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        attachment_id = attachment.id,
+                        "an attachment listed for a message no longer exists; skipping it"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        attachment_id = attachment.id,
+                        "couldn't load an attachment's bytes; skipping it"
+                    );
+                }
+            }
+        }
+        blocks
     }
 }
 
@@ -148,12 +198,16 @@ impl SessionStore for DieselSessionStore {
                 tracing::warn!(role = %row.role, seq = row.seq, "skipping a message with an unrecognised role");
                 continue;
             };
-            match serde_json::from_str::<Vec<ContentBlock>>(&row.content) {
-                Ok(content) => messages.push(Message::new(role, content)),
+            let mut content = match serde_json::from_str::<Vec<ContentBlock>>(&row.content) {
+                Ok(content) => content,
                 Err(error) => {
                     tracing::warn!(%error, seq = row.seq, "skipping a message that failed to decode");
+                    continue;
                 }
-            }
+            };
+
+            content.extend(self.image_blocks_for_message(row.id).await);
+            messages.push(Message::new(role, content));
         }
 
         Ok(History::from(messages))
