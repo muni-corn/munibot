@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::chat::AttachmentSummary;
+
 /// Who sent one message in a conversation transcript.
 ///
 /// Mirrors `munibot_ai::types::Role`, since that type lives in a server-only
@@ -39,12 +41,17 @@ pub struct ChatMessage {
     pub role: ChatRole,
     pub content: String,
     pub created_at: String,
+    /// Every image attached to this message, if any - references only,
+    /// fetched directly by the browser from `/attachments/{id}` rather than
+    /// carried in `content` itself. Never any for a message stored before
+    /// attachments existed at all, the same as any other message with none.
+    pub attachments: Vec<AttachmentSummary>,
 }
 
 #[cfg(feature = "server")]
 impl ChatMessage {
-    /// Builds a `ChatMessage` from a stored row and its already-parsed
-    /// content blocks.
+    /// Builds a `ChatMessage` from a stored row, its already-parsed content
+    /// blocks, and whatever attachments were linked to it.
     ///
     /// Takes the parsed blocks rather than the row's raw JSON `content`
     /// column directly, since parsing can fail and this constructor has no
@@ -53,6 +60,7 @@ impl ChatMessage {
     pub fn from_row(
         row: munibot_core::db::models::AiMessage,
         blocks: &[munibot_ai::types::ContentBlock],
+        attachments: Vec<AttachmentSummary>,
     ) -> Self {
         use chrono::DateTime;
 
@@ -76,6 +84,7 @@ impl ChatMessage {
                 chrono::Utc,
             )
             .to_rfc3339(),
+            attachments,
         }
     }
 }
@@ -104,7 +113,7 @@ mod tests {
     #[test]
     fn test_text_blocks_are_joined_into_plain_content() {
         let blocks = vec![ContentBlock::text("hello "), ContentBlock::text("there")];
-        let message = ChatMessage::from_row(row("user"), &blocks);
+        let message = ChatMessage::from_row(row("user"), &blocks, Vec::new());
         assert_eq!(message.content, "hello there");
         assert_eq!(message.role, ChatRole::User);
     }
@@ -115,7 +124,7 @@ mod tests {
             ContentBlock::text("checking..."),
             ContentBlock::tool_use("c1", "current_time", serde_json::json!({})),
         ];
-        let message = ChatMessage::from_row(row("assistant"), &blocks);
+        let message = ChatMessage::from_row(row("assistant"), &blocks, Vec::new());
         assert_eq!(
             message.content, "checking...",
             "a tool call in the same message shouldn't leak into the rendered text"
@@ -125,14 +134,20 @@ mod tests {
     #[test]
     fn test_every_role_maps_to_its_wire_counterpart() {
         assert_eq!(
-            ChatMessage::from_row(row("system"), &[]).role,
+            ChatMessage::from_row(row("system"), &[], Vec::new()).role,
             ChatRole::System
         );
-        assert_eq!(ChatMessage::from_row(row("user"), &[]).role, ChatRole::User);
         assert_eq!(
-            ChatMessage::from_row(row("assistant"), &[]).role,
+            ChatMessage::from_row(row("user"), &[], Vec::new()).role,
+            ChatRole::User
+        );
+        assert_eq!(
+            ChatMessage::from_row(row("assistant"), &[], Vec::new()).role,
             ChatRole::Assistant
         );
-        assert_eq!(ChatMessage::from_row(row("tool"), &[]).role, ChatRole::Tool);
+        assert_eq!(
+            ChatMessage::from_row(row("tool"), &[], Vec::new()).role,
+            ChatRole::Tool
+        );
     }
 }

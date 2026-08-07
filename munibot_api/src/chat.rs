@@ -8,6 +8,7 @@
 //! `munibot_ai` and `munibot_core` are both server-only dependencies of this
 //! crate.
 
+mod attachment;
 mod conversation;
 mod error;
 mod event;
@@ -16,6 +17,7 @@ mod message;
 mod persona;
 mod usage;
 
+pub use attachment::{ALLOWED_MEDIA_TYPES, AttachmentSummary, MAX_ATTACHMENT_BYTES};
 pub use conversation::ConversationSummary;
 pub use error::{ChatError, ChatResult};
 pub use event::{ChatEvent, ChatFailureKind};
