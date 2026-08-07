@@ -558,16 +558,8 @@ impl Harness {
             .iter()
             .map(|(_, _, tool, arguments)| (Arc::clone(tool), arguments.clone()))
             .collect();
-        // recomputed fresh from the live tracker on every dispatch, rather than
-        // whatever was baked into request.ctx at turn start: a tool call late in
-        // a long turn (most importantly delegate, see harness commit 110's own
-        // plan entry) must see what is actually left, not a fresh allowance
-        let dispatch_ctx = ToolCtx {
-            remaining_budget: tracker.remaining(),
-            ..request.ctx.clone()
-        };
         let outcomes = self
-            .dispatch_calls(&to_dispatch, &dispatch_ctx, events)
+            .dispatch_calls(&to_dispatch, &request.ctx, tracker, events)
             .await;
 
         for ((index, call_id, ..), outcome) in dispatchable.into_iter().zip(outcomes) {
@@ -630,6 +622,7 @@ impl Harness {
         &self,
         calls: &[(Arc<dyn crate::tools::Tool>, serde_json::Value)],
         ctx: &ToolCtx,
+        tracker: &BudgetTracker,
         events: ToolEventSink<'_>,
     ) -> Vec<crate::tools::ToolOutcome> {
         let mut parallel_indices = Vec::new();
@@ -643,17 +636,31 @@ impl Harness {
             }
         }
 
+        // one snapshot for the whole parallel batch: truly concurrent calls
+        // cannot observe each other's spend regardless of how this is
+        // computed, so there is nothing more precise to give them
+        let parallel_ctx = ctx_for_dispatch(tracker, ctx);
         // each parallel call announces itself as soon as `join_all` polls it - not
         // once every call in the batch has finished - so `events` must be captured
         // by every future in the batch, not sent once up front by this function
         let parallel_futures = parallel_indices
             .iter()
-            .map(|&index| self.invoke_and_audit(calls, index, ctx, events));
+            .map(|&index| self.invoke_and_audit(calls, index, &parallel_ctx, events));
         let parallel_outcomes = futures::future::join_all(parallel_futures).await;
 
+        // recomputed fresh before *every* serial call, not once for the whole
+        // batch: is_serial's entire point is that these run one at a time, so
+        // each one must see what the one before it in this same batch actually
+        // spent (via ctx.delegation_spend, updated synchronously before the
+        // previous await returns) - not the same stale snapshot every sibling
+        // in a naively-shared batch ctx would otherwise see
         let mut serial_outcomes = Vec::with_capacity(serial_indices.len());
         for &index in &serial_indices {
-            serial_outcomes.push(self.invoke_and_audit(calls, index, ctx, events).await);
+            let serial_ctx = ctx_for_dispatch(tracker, ctx);
+            serial_outcomes.push(
+                self.invoke_and_audit(calls, index, &serial_ctx, events)
+                    .await,
+            );
         }
 
         let mut outcomes: Vec<Option<crate::tools::ToolOutcome>> =
@@ -769,6 +776,29 @@ impl Harness {
     }
 }
 
+/// The ctx one dispatch should actually see: `tracker`'s own live remaining
+/// budget, its cost ceiling further reduced by whatever
+/// [`ToolCtx::delegation_spend`] already holds.
+///
+/// Recomputed fresh by [`Harness::dispatch_calls`] before every individual
+/// serial call (not once for a whole batch) - see that method's own doc
+/// comment for why a stale, once-per-batch snapshot would defeat the entire
+/// point of a serial dispatch order for a cost-sensitive tool like
+/// `delegate`.
+fn ctx_for_dispatch(tracker: &BudgetTracker, ctx: &ToolCtx) -> ToolCtx {
+    let mut remaining_budget = tracker.remaining();
+    if let Some(max_cost) = remaining_budget.max_cost {
+        let already_spent = ctx
+            .delegation_spend
+            .load(std::sync::atomic::Ordering::SeqCst);
+        remaining_budget.max_cost = Some(crate::types::Cost((max_cost.0 - already_spent).max(0)));
+    }
+    ToolCtx {
+        remaining_budget,
+        ..ctx.clone()
+    }
+}
+
 /// Races `future` against `cancellation`, resolving to `on_cancel` if the token
 /// fires first.
 ///
@@ -811,6 +841,7 @@ mod tests {
             cancellation: tokio_util::sync::CancellationToken::new(),
             delegation_depth: 0,
             remaining_budget: crate::harness::Budget::default(),
+            delegation_spend: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
         }
     }
 
@@ -1008,6 +1039,108 @@ mod tests {
                 .push(ctx.remaining_budget.clone());
             crate::tools::ToolOutcome::ok("captured")
         }
+    }
+
+    /// A serial tool standing in for `delegate` without needing a real
+    /// `Delegator`: on every call, records the cost ceiling it was invoked
+    /// with, then reports `spend_per_call` micros into
+    /// `ctx.delegation_spend` - exactly what `Ai::delegate` itself does
+    /// after a real nested turn finishes.
+    struct SpendingSerialTool {
+        spend_per_call: i64,
+        observed_max_cost: std::sync::Arc<std::sync::Mutex<Vec<Option<i64>>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::tools::Tool for SpendingSerialTool {
+        fn name(&self) -> &str {
+            "spend"
+        }
+
+        fn description(&self) -> &str {
+            "spends a fixed amount every time it's called"
+        }
+
+        fn tier(&self) -> RiskTier {
+            RiskTier::Safe
+        }
+
+        fn is_serial(&self) -> bool {
+            true
+        }
+
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        async fn invoke(
+            &self,
+            _input: serde_json::Value,
+            ctx: &ToolCtx,
+        ) -> crate::tools::ToolOutcome {
+            self.observed_max_cost
+                .lock()
+                .unwrap()
+                .push(ctx.remaining_budget.max_cost.map(|cost| cost.0));
+            ctx.delegation_spend
+                .fetch_add(self.spend_per_call, std::sync::atomic::Ordering::SeqCst);
+            crate::tools::ToolOutcome::ok("spent")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sequential_serial_calls_in_one_batch_see_each_others_delegation_spend() {
+        // two calls to a cost-tracking serial tool, batched into the same
+        // iteration - is_serial's entire point is that these run one at a
+        // time, so the second must see a smaller remaining budget than the
+        // first, reflecting exactly what the first one just spent
+        let observed_max_cost = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(SpendingSerialTool {
+            spend_per_call: 300_000,
+            observed_max_cost: observed_max_cost.clone(),
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond(Ok(crate::types::CompletionResponse::new(
+                    vec![
+                        ContentBlock::tool_use("c1", "spend", serde_json::json!({})),
+                        ContentBlock::tool_use("c2", "spend", serde_json::json!({})),
+                    ],
+                    crate::types::StopReason::ToolUse,
+                    Usage::default(),
+                )))
+                .respond_text("done"),
+        );
+
+        let mut turn_request = request();
+        turn_request.tools = ToolSelection::named(["spend"]);
+        turn_request.ctx = ctx(RiskTier::Safe);
+        turn_request.budget = crate::harness::Budget {
+            max_cost: Some(crate::types::Cost::from_micros(1_000_000)),
+            ..Budget::default()
+        };
+
+        let harness = Harness::new(provider, Arc::new(registry));
+        harness
+            .run_turn(turn_request)
+            .await
+            .expect("should succeed");
+
+        let observed = observed_max_cost.lock().unwrap();
+        assert_eq!(observed.len(), 2, "both calls should have run");
+        assert_eq!(
+            observed[0],
+            Some(1_000_000),
+            "the first call should see the full ceiling - nothing spent yet"
+        );
+        assert_eq!(
+            observed[1],
+            Some(700_000),
+            "the second call should see the ceiling reduced by exactly what the first call just \
+             spent, not the same stale allowance"
+        );
     }
 
     /// Requires a string `query` argument; echoes it back on success.

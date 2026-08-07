@@ -1,3 +1,5 @@
+use std::sync::{Arc, atomic::AtomicI64};
+
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -96,6 +98,18 @@ pub struct ToolCtx {
     /// specialist persona's full configured budget regardless of how much
     /// of the enclosing turn has already run.
     pub remaining_budget: Budget,
+    /// Total cost, in micros, every delegation *this whole top-level turn*
+    /// has spent so far - shared (via the `Arc`) across every dispatch and
+    /// every nested turn, and updated by each one as it finishes.
+    ///
+    /// Exists so several sequential delegations in one turn cannot each
+    /// spend up to `remaining_budget`'s cost ceiling independently, which
+    /// would multiply real spend by however many delegations happened
+    /// rather than actually bounding it: the harness subtracts this from
+    /// `remaining_budget.max_cost` before every dispatch (see
+    /// `Harness::handle_tool_calls`), so a delegation late in a batch sees
+    /// only what earlier ones in the same turn actually left.
+    pub delegation_spend: Arc<AtomicI64>,
 }
 
 impl ToolCtx {
@@ -141,6 +155,7 @@ mod tests {
             cancellation: CancellationToken::new(),
             delegation_depth: 0,
             remaining_budget: Budget::default(),
+            delegation_spend: Arc::new(AtomicI64::new(0)),
         }
     }
 

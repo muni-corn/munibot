@@ -118,6 +118,7 @@ mod tests {
             cancellation: tokio_util::sync::CancellationToken::new(),
             delegation_depth: 0,
             remaining_budget: crate::harness::Budget::default(),
+            delegation_spend: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
         }
     }
 

@@ -801,6 +801,9 @@ impl Ai {
             // nothing has been spent yet at turn start, so the persona's
             // own configured budget is the remaining budget
             remaining_budget: persona.budget.clone(),
+            // a fresh counter for this whole top-level turn - see its own
+            // doc comment on ToolCtx
+            delegation_spend: Arc::new(std::sync::atomic::AtomicI64::new(0)),
         };
 
         let mut turn_request = TurnRequest::new(persona.model.clone(), history, ctx)
@@ -932,7 +935,15 @@ impl crate::tools::Delegator for Ai {
             harness = harness.with_auditor(auditor.clone());
         }
 
-        let outcome = harness.run_turn(turn_request).await?;
+        let (result, usage) = harness.run_turn_recording_usage(turn_request).await;
+        // recorded on failure too, the same reasoning as elsewhere in this file:
+        // a delegated turn that errored on iteration nine still spent the first
+        // eight - and this is what lets a sibling delegation later in the same
+        // batch see a genuinely smaller remaining_budget, not a fresh one
+        ctx.delegation_spend
+            .fetch_add(usage.cost.0, std::sync::atomic::Ordering::SeqCst);
+
+        let outcome = result?;
         Ok(outcome.text.unwrap_or_default())
     }
 }
@@ -1277,6 +1288,7 @@ mod tests {
                 max_cost: None,
                 max_tool_retries: None,
             },
+            delegation_spend: Arc::new(std::sync::atomic::AtomicI64::new(0)),
         }
     }
 
