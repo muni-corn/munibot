@@ -412,6 +412,140 @@ mod prompt_tests {
     }
 
     #[test]
+    fn test_code_reviewer_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/code-reviewer.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_code_reviewer_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/code-reviewer.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_code_reviewer_prompt_reviews_pasted_code_as_readily_as_a_diff() {
+        // milestone 3 phase 16's own requirement for this persona. checked as
+        // short substrings rather than one long phrase, since the prompt's
+        // own prose wraps across lines and a raw file read keeps the
+        // literal newline
+        let source = include_str!("../prompts/code-reviewer.md");
+        assert!(source.contains("pasted snippet"));
+        assert!(source.contains("no repository behind it"));
+    }
+
+    #[test]
+    fn test_code_reviewer_prompt_calibrates_severity() {
+        let source = include_str!("../prompts/code-reviewer.md");
+        for severity in ["Critical", "Major", "Minor", "Nit"] {
+            assert!(
+                source.contains(severity),
+                "the code reviewer prompt must keep the {severity} severity level"
+            );
+        }
+    }
+
+    #[test]
+    fn test_code_reviewer_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/code-reviewer.md");
+        for pipeline_only in [
+            "ApproveCode",
+            "RequestCodeChanges",
+            "```json",
+            "task-spec",
+            "codebase-summary",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the code reviewer prompt should not contain pipeline-only text {pipeline_only:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_test_reviewer_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/test-reviewer.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_test_reviewer_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/test-reviewer.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_test_reviewer_prompt_reviews_pasted_tests_as_readily_as_a_diff() {
+        // milestone 3 phase 16's own requirement for this persona
+        let source = include_str!("../prompts/test-reviewer.md");
+        assert!(
+            source.contains("no filesystem"),
+            "the test reviewer prompt must state it has no filesystem to go looking for more \
+             context, reviewing exactly what it's shown"
+        );
+    }
+
+    #[test]
+    fn test_test_reviewer_prompt_keeps_the_precision_judgement() {
+        // the single most important judgement call in this role: would a
+        // correct implementation pass, would a subtly wrong one fail
+        let source = include_str!("../prompts/test-reviewer.md");
+        assert!(
+            source.contains("Precision"),
+            "the test reviewer prompt must keep the precision judgement criterion"
+        );
+    }
+
+    #[test]
+    fn test_test_reviewer_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/test-reviewer.md");
+        for pipeline_only in [
+            "ApproveTests",
+            "RequestTestChanges",
+            "```json",
+            "start-task-tests",
+            "codebase-summary",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the test reviewer prompt should not contain pipeline-only text {pipeline_only:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_software_architect_prompt_has_no_pipeline_output_contract() {
         // the porting rule's whole point: output-contract prose ("return
         // JSON shaped like...") belongs in a future HandoffSchema, not the

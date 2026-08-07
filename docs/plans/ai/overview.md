@@ -258,6 +258,13 @@ description = "reviews a diff or pasted code against the project's standards"
 tools = ["tier0"]
 delegable = true
 
+[ai.personas.test-reviewer]
+model = "anthropic:claude-opus-5"
+prompt = "test-reviewer.md"
+description = "reviews pasted tests as a specification, before anything is built against them"
+tools = ["tier0"]
+delegable = true
+
 [ai.personas.builder]
 model = "anthropic:claude-opus-5"
 prompt = "builder.md"
