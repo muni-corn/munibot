@@ -161,7 +161,11 @@ impl SpendCapConfig {
 /// resolved [`crate::persona::Persona`].
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PersonaConfig {
-    pub model: ModelRef,
+    /// Falls back to [`AiConfig::default_model`] when unset - an operator
+    /// who already has one provider configured shouldn't have to repeat the
+    /// same model reference for every persona, built-in or their own.
+    #[serde(default)]
+    pub model: Option<ModelRef>,
     /// A filename resolved against [`AiConfig::prompt_dir`], or an embedded
     /// default when unset.
     pub prompt: String,
@@ -210,6 +214,12 @@ pub struct AiConfig {
     pub enabled: bool,
     #[serde(default)]
     pub default_persona: Option<PersonaId>,
+    /// The model any persona - built-in or an operator's own - falls back
+    /// to when it doesn't name one itself. Set this once and the whole
+    /// embedded roster (see [`crate::persona::registry::embedded_personas`])
+    /// works with no per-persona model configuration at all.
+    #[serde(default)]
+    pub default_model: Option<ModelRef>,
     #[serde(default)]
     pub prompt_dir: Option<PathBuf>,
     #[serde(default)]
@@ -264,6 +274,7 @@ impl Default for AiConfig {
         Self {
             enabled: false,
             default_persona: None,
+            default_model: None,
             prompt_dir: None,
             personas: HashMap::new(),
             crisis_resources: Vec::new(),
@@ -417,7 +428,10 @@ mod tests {
         assert_eq!(config.personas.len(), 2);
 
         let companion = &config.personas[&PersonaId::new("companion")];
-        assert_eq!(companion.model, ModelRef::new("anthropic", "claude-opus-5"));
+        assert_eq!(
+            companion.model,
+            Some(ModelRef::new("anthropic", "claude-opus-5"))
+        );
         assert_eq!(companion.prompt, "companion.md");
 
         let researcher = &config.personas[&PersonaId::new("researcher")];
@@ -605,12 +619,48 @@ mod tests {
     }
 
     #[test]
-    fn test_persona_config_requires_model_and_prompt() {
+    fn test_persona_config_requires_prompt() {
         let result: Result<PersonaConfig, _> =
             toml::from_str("description = \"missing required fields\"");
-        assert!(
-            result.is_err(),
-            "model and prompt should be required, not defaulted"
+        assert!(result.is_err(), "prompt should be required, not defaulted");
+    }
+
+    #[test]
+    fn test_persona_config_model_is_optional() {
+        // falls back to AiConfig::default_model - see PersonaRegistry::resolve_one
+        let config: PersonaConfig = toml::from_str("prompt = \"x.md\"").unwrap();
+        assert_eq!(config.model, None);
+    }
+
+    #[test]
+    fn test_persona_config_model_is_read_from_toml_when_present() {
+        let config: PersonaConfig =
+            toml::from_str("model = \"anthropic:claude-opus-5\"\nprompt = \"x.md\"").unwrap();
+        assert_eq!(
+            config.model,
+            Some(ModelRef::new("anthropic", "claude-opus-5"))
+        );
+    }
+
+    #[test]
+    fn test_default_ai_config_has_no_default_model() {
+        assert_eq!(AiConfig::default().default_model, None);
+    }
+
+    #[test]
+    fn test_default_model_is_read_from_the_ai_section() {
+        let dir = tempdir();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[ai]\nenabled = true\ndefault_model = \"anthropic:claude-opus-5\"\n",
+        )
+        .unwrap();
+
+        let config = AiConfig::load_from_file(&path).unwrap();
+        assert_eq!(
+            config.default_model,
+            Some(ModelRef::new("anthropic", "claude-opus-5"))
         );
     }
 

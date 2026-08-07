@@ -29,18 +29,29 @@ use munibot_ai::{
 use munibot_core::db::DbPool;
 use tracing::{info, warn};
 
-/// The model the default persona is configured with, if one is set.
+/// The model the default persona is configured with, if one resolves to one.
 ///
 /// Both conversation compaction and crisis classification fall back to this
 /// rather than adding their own config knobs for it: an operator who already
 /// trusts a model for real conversation has no reason to want a different
 /// one just to summarise it or screen it.
+///
+/// Mirrors `PersonaRegistry::load`'s own two fallbacks, since this runs
+/// against the raw `AiConfig` rather than the resolved registry: `companion`
+/// when `default_persona` isn't set at all, and `ai.default_model` when the
+/// resolved persona (explicitly configured or an embedded default) doesn't
+/// name its own model.
 fn default_persona_model(config: &AiConfig) -> Option<ModelRef> {
-    config
+    let default_persona = config
         .default_persona
-        .as_ref()
-        .and_then(|id| config.personas.get(id))
-        .map(|persona| persona.model.clone())
+        .clone()
+        .unwrap_or_else(|| munibot_ai::persona::PersonaId::new("companion"));
+
+    config
+        .personas
+        .get(&default_persona)
+        .and_then(|persona| persona.model.clone())
+        .or_else(|| config.default_model.clone())
 }
 
 /// Every persona configured with `delegable = true`, for the `delegate`

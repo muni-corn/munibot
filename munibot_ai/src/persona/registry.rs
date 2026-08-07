@@ -6,8 +6,8 @@ use crate::{
     types::{AiError, ModelParams},
 };
 
-/// The four personas built into the binary, embedded so a container deployment
-/// or a config-less `EXA_API_KEY`-free development boot both have a working
+/// Every prompt built into the binary, embedded so a container deployment or
+/// a config-less, `EXA_API_KEY`-free development boot both have a working
 /// default without any extra files.
 ///
 /// This is deliberately a short, hardcoded list rather than a directory scan:
@@ -19,8 +19,167 @@ fn embedded_prompt(filename: &str) -> Option<&'static str> {
         "writer.md" => Some(include_str!("../../prompts/writer.md")),
         "researcher.md" => Some(include_str!("../../prompts/researcher.md")),
         "coder.md" => Some(include_str!("../../prompts/coder.md")),
+        "software-architect.md" => Some(include_str!("../../prompts/software-architect.md")),
+        "issue-analyst.md" => Some(include_str!("../../prompts/issue-analyst.md")),
+        "code-reviewer.md" => Some(include_str!("../../prompts/code-reviewer.md")),
+        "test-reviewer.md" => Some(include_str!("../../prompts/test-reviewer.md")),
+        "architecture-reviewer.md" => Some(include_str!("../../prompts/architecture-reviewer.md")),
+        "project-manager.md" => Some(include_str!("../../prompts/project-manager.md")),
         _ => None,
     }
+}
+
+/// The full built-in persona roster - every embedded prompt above, paired
+/// with a sensible model-less [`PersonaConfig`] (see
+/// [`AiConfig::default_model`]), tool selection, and delegation policy.
+///
+/// [`PersonaRegistry::load`] merges this underneath whatever an operator
+/// configures: an id an operator's own config also defines is replaced by
+/// their entry entirely (no field-by-field merge - simplest to reason
+/// about), and anything they don't mention falls back to this roster
+/// unchanged. This is what lets `[ai] enabled = true` plus a single
+/// `default_model` produce a fully working companion and engineering team
+/// with no per-persona configuration at all.
+fn embedded_personas() -> HashMap<PersonaId, PersonaConfig> {
+    use crate::{
+        persona::{BudgetConfig, MemoryPolicy},
+        tools::ToolSelection,
+    };
+
+    /// A persona config with every field at its own sensible default,
+    /// before the handful of overrides each embedded persona actually needs.
+    fn base(
+        prompt: &str,
+        description: &str,
+        tools: ToolSelection,
+        delegable: bool,
+    ) -> PersonaConfig {
+        PersonaConfig {
+            model: None,
+            prompt: prompt.to_string(),
+            display_name: None,
+            description: description.to_string(),
+            temperature: None,
+            tools,
+            budget: BudgetConfig::default(),
+            memory: MemoryPolicy::None,
+            sandbox: crate::persona::SandboxPolicy::default(),
+            delegable,
+        }
+    }
+
+    fn budget(max_iterations: usize, max_cost_usd: f64) -> BudgetConfig {
+        BudgetConfig {
+            max_iterations: Some(max_iterations),
+            max_cost_usd: Some(max_cost_usd),
+            ..BudgetConfig::default()
+        }
+    }
+
+    HashMap::from([
+        (PersonaId::new("companion"), PersonaConfig {
+            temperature: Some(1.0),
+            memory: MemoryPolicy::User,
+            ..base(
+                "companion.md",
+                "warm, playful conversation and emotional support",
+                ToolSelection::named(["tier0", "web_search", "web_fetch", "delegate"]),
+                false,
+            )
+        }),
+        (PersonaId::new("researcher"), PersonaConfig {
+            budget: budget(30, 2.0),
+            ..base(
+                "researcher.md",
+                "multi-step research with citations",
+                ToolSelection::named(["tier0", "tier1"]),
+                true,
+            )
+        }),
+        (
+            PersonaId::new("coder"),
+            base(
+                "coder.md",
+                "explains, reviews, and debugs pasted code in chat",
+                ToolSelection::none(),
+                false,
+            ),
+        ),
+        (
+            PersonaId::new("writer"),
+            base(
+                "writer.md",
+                "creative and long-form writing help",
+                ToolSelection::none(),
+                false,
+            ),
+        ),
+        (PersonaId::new("software-architect"), PersonaConfig {
+            budget: budget(15, 1.0),
+            ..base(
+                "software-architect.md",
+                "turns a request into a detailed, buildable plan",
+                ToolSelection::named(["tier0"]),
+                true,
+            )
+        }),
+        (
+            PersonaId::new("issue-analyst"),
+            base(
+                "issue-analyst.md",
+                "triages an issue and works out what it needs before anyone builds it",
+                ToolSelection::named(["tier0", "tier1"]),
+                true,
+            ),
+        ),
+        (
+            PersonaId::new("code-reviewer"),
+            base(
+                "code-reviewer.md",
+                "reviews a diff or pasted code against the project's standards",
+                ToolSelection::named(["tier0"]),
+                true,
+            ),
+        ),
+        (
+            PersonaId::new("test-reviewer"),
+            base(
+                "test-reviewer.md",
+                "reviews pasted tests as a specification, before anything is built against them",
+                ToolSelection::named(["tier0"]),
+                true,
+            ),
+        ),
+        (
+            PersonaId::new("architecture-reviewer"),
+            base(
+                "architecture-reviewer.md",
+                "critiques a plan against completeness, ordering, and instruction quality",
+                ToolSelection::named(["tier0"]),
+                true,
+            ),
+        ),
+        (
+            PersonaId::new("project-manager"),
+            base(
+                "project-manager.md",
+                "given a plan and what's done, decides what to work on next",
+                ToolSelection::named(["tier0"]),
+                true,
+            ),
+        ),
+    ])
+}
+
+/// `config.personas`, with every embedded default (see
+/// [`embedded_personas`]) an operator didn't already define for themselves
+/// filled in underneath it.
+fn merged_personas(config: &AiConfig) -> HashMap<PersonaId, PersonaConfig> {
+    let mut merged = embedded_personas();
+    for (id, persona_config) in &config.personas {
+        merged.insert(id.clone(), persona_config.clone());
+    }
+    merged
 }
 
 /// Every configured persona, resolved and ready to run.
@@ -48,16 +207,47 @@ impl PersonaRegistry {
         let mut personas = HashMap::new();
         let mut problems = Vec::new();
 
-        for (id, persona_config) in &config.personas {
-            match Self::resolve_one(id, persona_config, config.prompt_dir.as_deref(), providers) {
+        for (id, persona_config) in &merged_personas(config) {
+            let result = Self::resolve_one(
+                id,
+                persona_config,
+                config.prompt_dir.as_deref(),
+                config.default_model.as_ref(),
+                providers,
+            );
+            match result {
                 Ok(persona) => {
                     personas.insert(id.clone(), persona);
                 }
-                Err(error) => problems.push(format!("persona {id}: {error}")),
+                // an operator explicitly configured this one, so a failure here is a
+                // real problem with their config, not something to quietly paper over
+                Err(error) if config.personas.contains_key(id) => {
+                    problems.push(format!("persona {id}: {error}"));
+                }
+                // this id was never mentioned in config at all - it only exists
+                // because embedded_personas() supplies it, and an operator who set
+                // no default_model (or no credentials for the provider it needs)
+                // never asked for it to work at all. skip it rather than failing
+                // startup over a convenience nobody opted into.
+                Err(error) => {
+                    tracing::warn!(
+                        persona = %id,
+                        %error,
+                        "an embedded default persona couldn't be resolved; skipping it"
+                    );
+                }
             }
         }
 
-        if let Some(default_id) = &config.default_persona
+        // falls back to the embedded companion when nothing was configured
+        // and companion actually resolved - "no configuration at all" should
+        // still produce someone to talk to, not silently no default
+        let default_persona = config.default_persona.clone().or_else(|| {
+            let companion = PersonaId::new("companion");
+            personas.contains_key(&companion).then_some(companion)
+        });
+
+        if let Some(default_id) = &default_persona
             && !personas.contains_key(default_id)
         {
             problems.push(format!(
@@ -71,7 +261,7 @@ impl PersonaRegistry {
 
         Ok(Self {
             personas,
-            default_persona: config.default_persona.clone(),
+            default_persona,
         })
     }
 
@@ -79,16 +269,26 @@ impl PersonaRegistry {
         id: &PersonaId,
         config: &PersonaConfig,
         prompt_dir: Option<&Path>,
+        default_model: Option<&crate::types::ModelRef>,
         providers: &ProviderRegistry,
     ) -> Result<Persona, AiError> {
-        providers.check(&config.model)?;
+        let model = config
+            .model
+            .clone()
+            .or_else(|| default_model.cloned())
+            .ok_or_else(|| {
+                AiError::Config(
+                    "has no model configured, and ai.default_model isn't set either".to_string(),
+                )
+            })?;
+        providers.check(&model)?;
         let prompt_source = Self::resolve_prompt(&config.prompt, prompt_dir)?;
 
         Ok(Persona {
             id: id.clone(),
             display_name: config.display_name.clone().unwrap_or_else(|| id.0.clone()),
             description: config.description.clone(),
-            model: config.model.clone(),
+            model,
             params: ModelParams {
                 temperature: config.temperature,
                 ..ModelParams::default()
@@ -161,7 +361,7 @@ mod tests {
     fn persona_config(model: &str, prompt: &str) -> PersonaConfig {
         let (provider, model_name) = model.split_once(':').unwrap();
         PersonaConfig {
-            model: ModelRef::new(provider, model_name),
+            model: Some(ModelRef::new(provider, model_name)),
             prompt: prompt.to_string(),
             display_name: None,
             description: "a test persona".to_string(),
@@ -178,6 +378,7 @@ mod tests {
         AiConfig {
             enabled: true,
             default_persona: None,
+            default_model: None,
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
@@ -295,11 +496,29 @@ mod tests {
     }
 
     #[test]
-    fn test_no_default_persona_configured_yields_none() {
+    fn test_no_default_persona_configured_falls_back_to_companion() {
+        // "no configuration at all" should still produce someone to talk
+        // to - see PersonaRegistry::load's own doc comment on this fallback
         let config = ai_config(vec![(
             "companion",
             persona_config("anthropic:claude-opus-5", "companion.md"),
         )]);
+        let providers = providers_with(&["anthropic"]);
+
+        let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
+        assert_eq!(
+            registry.default_persona().map(|persona| &persona.id),
+            Some(&PersonaId::new("companion"))
+        );
+    }
+
+    #[test]
+    fn test_no_default_persona_and_no_companion_yields_none() {
+        // the fallback only ever applies when companion actually resolved -
+        // with no persona configured and no default_model to resolve the
+        // embedded companion either, there is genuinely nothing to fall
+        // back to
+        let config = ai_config(vec![]);
         let providers = providers_with(&["anthropic"]);
 
         let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
@@ -520,5 +739,104 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_an_empty_config_with_no_default_model_resolves_no_personas_but_does_not_error() {
+        // every embedded default persona has no model of its own - with no
+        // default_model to fall back to, none of them can resolve, but that
+        // is a convenience nobody opted into, not a config error
+        let config = ai_config(vec![]);
+        let providers = providers_with(&["anthropic"]);
+
+        let registry = PersonaRegistry::load(&config, &providers)
+            .expect("an unresolvable embedded default should never fail startup");
+        assert_eq!(registry.ids().count(), 0);
+    }
+
+    #[test]
+    fn test_a_default_model_alone_resolves_the_whole_embedded_roster() {
+        // "no configuration at all" beyond enabling ai and naming a model -
+        // every embedded persona (companion and the engineering team alike)
+        // should resolve using it
+        let mut config = ai_config(vec![]);
+        config.default_model = Some(ModelRef::new("anthropic", "claude-opus-5"));
+        let providers = providers_with(&["anthropic"]);
+
+        let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
+
+        for id in [
+            "companion",
+            "researcher",
+            "coder",
+            "writer",
+            "software-architect",
+            "issue-analyst",
+            "code-reviewer",
+            "test-reviewer",
+            "architecture-reviewer",
+            "project-manager",
+        ] {
+            assert!(
+                registry.get(&PersonaId::new(id)).is_some(),
+                "{id} should have resolved from the embedded roster using default_model"
+            );
+        }
+    }
+
+    #[test]
+    fn test_an_operators_own_persona_entirely_overrides_the_embedded_default() {
+        let mut config = ai_config(vec![("companion", PersonaConfig {
+            description: "a totally different companion".to_string(),
+            delegable: true,
+            ..persona_config("anthropic:claude-opus-5", "companion.md")
+        })]);
+        config.default_model = Some(ModelRef::new("anthropic", "claude-opus-5"));
+        let providers = providers_with(&["anthropic"]);
+
+        let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
+
+        let companion = registry.get(&PersonaId::new("companion")).unwrap();
+        assert_eq!(companion.description, "a totally different companion");
+        assert!(
+            companion.delegable,
+            "the operator's own entry should win entirely, not merge field by field with the \
+             embedded default (which is not delegable)"
+        );
+    }
+
+    #[test]
+    fn test_embedded_personas_are_delegable_except_companion_coder_and_writer() {
+        let personas = super::embedded_personas();
+        for id in ["companion", "coder", "writer"] {
+            assert!(
+                !personas[&PersonaId::new(id)].delegable,
+                "{id} should not be delegable by default"
+            );
+        }
+        for id in [
+            "researcher",
+            "software-architect",
+            "issue-analyst",
+            "code-reviewer",
+            "test-reviewer",
+            "architecture-reviewer",
+            "project-manager",
+        ] {
+            assert!(
+                personas[&PersonaId::new(id)].delegable,
+                "{id} should be delegable by default"
+            );
+        }
+    }
+
+    #[test]
+    fn test_embedded_personas_all_defer_to_default_model() {
+        for (id, config) in super::embedded_personas() {
+            assert!(
+                config.model.is_none(),
+                "{id} should have no model of its own, deferring to ai.default_model"
+            );
+        }
     }
 }

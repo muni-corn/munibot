@@ -82,7 +82,7 @@ fn persona_config(
 ) -> PersonaConfig {
     let (provider, model_name) = model.split_once(':').unwrap();
     PersonaConfig {
-        model: ModelRef::new(provider, model_name),
+        model: Some(ModelRef::new(provider, model_name)),
         prompt: prompt.to_string(),
         display_name: None,
         description: "a test persona".to_string(),

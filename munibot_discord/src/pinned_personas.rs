@@ -71,7 +71,7 @@ mod tests {
     fn ai_with_default_companion() -> Ai {
         let mut personas = HashMap::new();
         personas.insert(PersonaId::new("companion"), PersonaConfig {
-            model: ModelRef::new("anthropic", "claude-opus-5"),
+            model: Some(ModelRef::new("anthropic", "claude-opus-5")),
             prompt: "companion.md".to_string(),
             display_name: None,
             description: String::new(),
@@ -85,6 +85,7 @@ mod tests {
         let config = AiConfig {
             enabled: true,
             default_persona: Some(PersonaId::new("companion")),
+            default_model: None,
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: munibot_ai::persona::RateLimitConfig::default(),

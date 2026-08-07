@@ -176,11 +176,31 @@ pub struct Persona {
 ```
 
 Personas are declared in TOML, with prompts in separate markdown files so they can be edited without
-recompiling and without TOML escaping:
+recompiling and without TOML escaping. The companion and the whole engineering team ship as an
+**embedded default roster** (`PersonaRegistry::embedded_personas`) - the minimum an operator ever
+has to write is:
+
+```toml
+[ai]
+enabled = true
+default_model = "anthropic:claude-opus-5"
+```
+
+That alone resolves every embedded persona - companion, researcher, coder, writer, and the six
+engineering-team roles - against the same model, with `default_persona` falling back to `companion`
+automatically. `[ai.personas.<id>]` is only for **overriding** one: an operator's own entry for an id
+replaces the embedded default entirely (not a field-by-field merge), and any id they never mention
+keeps the embedded one unchanged. A persona whose model can't be resolved - no `default_model` set
+and no explicit override - is skipped rather than failing startup, since it was never something the
+operator explicitly asked to work.
+
+The full example below shows every knob available, overriding personas that want something
+different from the shared default:
 
 ```toml
 [ai]
 default_persona = "companion"
+default_model = "anthropic:claude-opus-5"
 prompt_dir = "/etc/muni_bot/prompts" # optional; defaults to embedded prompts
 max_delegation_depth = 2
 
@@ -219,7 +239,6 @@ max_usd = 500.0
 period = "monthly"
 
 [ai.personas.companion]
-model = "anthropic:claude-opus-5"
 prompt = "companion.md"
 description = "warm, playful conversation and emotional support"
 temperature = 1.0
@@ -229,7 +248,9 @@ tools = ["tier0", "web_search", "web_fetch", "delegate"]
 memory = "user"
 
 [ai.personas.researcher]
-model = "anthropic:claude-opus-5"
+# a per-persona model override - anything left unset here still falls back
+# to ai.default_model, this is the exception, not the pattern
+model = "anthropic:claude-sonnet-5"
 prompt = "researcher.md"
 description = "multi-step research with citations"
 tools = ["tier0", "tier1"]
@@ -237,7 +258,6 @@ delegable = true
 budget = { max_iterations = 30, max_cost_usd = 2.0 }
 
 [ai.personas.software-architect]
-model = "anthropic:claude-opus-5"
 prompt = "software-architect.md"
 description = "turns a request into a detailed, buildable plan"
 tools = ["tier0"]
@@ -245,42 +265,36 @@ delegable = true
 budget = { max_iterations = 15, max_cost_usd = 1.0 }
 
 [ai.personas.issue-analyst]
-model = "anthropic:claude-opus-5"
 prompt = "issue-analyst.md"
 description = "triages an issue and works out what it needs before anyone builds it"
 tools = ["tier0", "tier1"]
 delegable = true
 
 [ai.personas.code-reviewer]
-model = "anthropic:claude-opus-5"
 prompt = "code-reviewer.md"
 description = "reviews a diff or pasted code against the project's standards"
 tools = ["tier0"]
 delegable = true
 
 [ai.personas.test-reviewer]
-model = "anthropic:claude-opus-5"
 prompt = "test-reviewer.md"
 description = "reviews pasted tests as a specification, before anything is built against them"
 tools = ["tier0"]
 delegable = true
 
 [ai.personas.architecture-reviewer]
-model = "anthropic:claude-opus-5"
 prompt = "architecture-reviewer.md"
 description = "critiques a plan against completeness, ordering, and instruction quality"
 tools = ["tier0"]
 delegable = true
 
 [ai.personas.project-manager]
-model = "anthropic:claude-opus-5"
 prompt = "project-manager.md"
 description = "given a plan and what's done, decides what to work on next"
 tools = ["tier0"]
 delegable = true
 
 [ai.personas.builder]
-model = "anthropic:claude-opus-5"
 prompt = "builder.md"
 description = "implements one subtask in a checked-out repository"
 tools = ["tier0", "tier3"]
@@ -293,7 +307,9 @@ so. A delegated turn always inherits the invoking human's granted tier, so marki
 does not let a chat user reach `tier3` tools they were never authorized for.
 
 Default prompts ship embedded via `include_str!` so nix builds and container deployments work with no
-extra files, and `prompt_dir` overrides them for live iteration.
+extra files, and `prompt_dir` overrides them for live iteration. The persona configuration itself -
+not just the prompt text - ships embedded too (`PersonaRegistry::embedded_personas`), which is what
+makes the minimal `default_model`-only config at the top of this section work at all.
 
 ## Tool risk tiers
 

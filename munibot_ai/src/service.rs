@@ -1131,6 +1131,7 @@ mod tests {
         let mut config = AiConfig {
             enabled: true,
             default_persona: Some(PersonaId::new("companion")),
+            default_model: None,
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
@@ -1141,7 +1142,7 @@ mod tests {
         config
             .personas
             .insert(PersonaId::new("companion"), PersonaConfig {
-                model: ModelRef::new("anthropic", "claude-opus-5"),
+                model: Some(ModelRef::new("anthropic", "claude-opus-5")),
                 prompt: "companion.md".to_string(),
                 display_name: Some("Companion".to_string()),
                 description: "warm, playful conversation".to_string(),
@@ -1173,6 +1174,7 @@ mod tests {
         let mut config = AiConfig {
             enabled: true,
             default_persona: Some(PersonaId::new("companion")),
+            default_model: None,
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
@@ -1183,7 +1185,7 @@ mod tests {
         config
             .personas
             .insert(PersonaId::new("companion"), PersonaConfig {
-                model: ModelRef::new("anthropic", "claude-opus-5"),
+                model: Some(ModelRef::new("anthropic", "claude-opus-5")),
                 prompt: "companion.md".to_string(),
                 display_name: Some("Companion".to_string()),
                 description: "warm, playful conversation".to_string(),
@@ -1218,6 +1220,7 @@ mod tests {
         let mut config = AiConfig {
             enabled: true,
             default_persona: Some(PersonaId::new("companion")),
+            default_model: None,
             prompt_dir: None,
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
@@ -1228,7 +1231,7 @@ mod tests {
         config
             .personas
             .insert(PersonaId::new("companion"), PersonaConfig {
-                model: ModelRef::new("anthropic", "claude-opus-5"),
+                model: Some(ModelRef::new("anthropic", "claude-opus-5")),
                 prompt: "companion.md".to_string(),
                 display_name: Some("Companion".to_string()),
                 description: "warm, playful conversation".to_string(),
@@ -1242,7 +1245,7 @@ mod tests {
         config
             .personas
             .insert(PersonaId::new("researcher"), PersonaConfig {
-                model: ModelRef::new("anthropic", "claude-opus-5"),
+                model: Some(ModelRef::new("anthropic", "claude-opus-5")),
                 prompt: "researcher.md".to_string(),
                 display_name: Some("Researcher".to_string()),
                 description: "multi-step research with citations".to_string(),
