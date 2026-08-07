@@ -1,3 +1,4 @@
+pub mod attachment;
 pub mod conversation;
 pub mod memory;
 pub mod message;

@@ -44,8 +44,9 @@ pub fn Composer(conversation_id: i64, disabled: bool, on_sent: EventHandler<i64>
         spawn(async move {
             // the draft is left in place on failure, so nothing typed is ever
             // lost -- structural, ChatError-aware retry handling arrives in a
-            // later commit
-            if let Ok(message_id) = send_message(conversation_id, text).await {
+            // later commit. attaching images is a later commit too, so this
+            // is always empty for now.
+            if let Ok(message_id) = send_message(conversation_id, text, Vec::new()).await {
                 drafts.0.write().remove(&conversation_id);
                 on_sent.call(message_id);
             }

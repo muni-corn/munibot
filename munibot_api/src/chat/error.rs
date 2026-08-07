@@ -35,6 +35,20 @@ pub enum ChatError {
     #[error("the companion isn't turned on right now")]
     AiDisabled,
 
+    /// An upload was rejected for a reason the person can actually fix --
+    /// wrong media type, too big, or malformed base64. Carries the specific
+    /// reason rather than folding into `ServerFnError` since the composer
+    /// needs to show it verbatim, not a generic "something went wrong".
+    #[error("{0}")]
+    AttachmentRejected(String),
+
+    /// The referenced attachment doesn't exist, or exists but isn't owned
+    /// by the signed-in user's own conversation. Kept distinct from
+    /// [`Self::AttachmentRejected`]: this is "you can't do that", not "here's
+    /// how to fix your upload".
+    #[error("that attachment doesn't exist")]
+    AttachmentNotFound,
+
     /// Wraps a generic server function error so `ChatResult` propagates
     /// cleanly.
     #[error(transparent)]
@@ -50,6 +64,8 @@ impl AsStatusCode for ChatError {
             // owned by someone else is not confirmed to the caller
             Self::NotYourConversation | Self::ConversationNotFound => StatusCode::NOT_FOUND,
             Self::AiDisabled => StatusCode::SERVICE_UNAVAILABLE,
+            Self::AttachmentRejected(_) => StatusCode::BAD_REQUEST,
+            Self::AttachmentNotFound => StatusCode::NOT_FOUND,
             Self::ServerFnError(e) => e.as_status_code(),
         }
     }
@@ -129,6 +145,21 @@ mod tests {
         assert_eq!(
             ChatError::AiDisabled.as_status_code(),
             StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn test_attachment_rejected_is_bad_request_and_keeps_its_reason() {
+        let err = ChatError::AttachmentRejected("that's not a supported image type".to_string());
+        assert_eq!(err.as_status_code(), StatusCode::BAD_REQUEST);
+        assert_eq!(err.to_string(), "that's not a supported image type");
+    }
+
+    #[test]
+    fn test_attachment_not_found_is_not_found() {
+        assert_eq!(
+            ChatError::AttachmentNotFound.as_status_code(),
+            StatusCode::NOT_FOUND
         );
     }
 

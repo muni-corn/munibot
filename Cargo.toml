@@ -74,6 +74,8 @@ schemars = "1.2"
 tokio-util = "0.7"
 http = "1.4"
 html2text = "0.17"
+base64 = "0.23"
+sha2 = "0.11"
 twitch_oauth2 = "0.15"
 url = "2.4"
 uuid = { version = "1.24.0", features = ["v4"] }

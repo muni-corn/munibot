@@ -150,18 +150,23 @@ pub async fn get_conversation_messages(
 
     let rows = ai::get_messages_page(&pool, conversation_id, before_seq, limit).await?;
 
-    rows.into_iter()
-        .map(|row| {
-            let blocks: Vec<munibot_ai::types::ContentBlock> = serde_json::from_str(&row.content)
-                .map_err(|e| {
+    let mut messages = Vec::with_capacity(rows.len());
+    for row in rows {
+        let blocks: Vec<munibot_ai::types::ContentBlock> = serde_json::from_str(&row.content)
+            .map_err(|e| {
                 ChatError::from(anyhow::anyhow!(
                     "message {} has unparsable content :< {e}",
                     row.id
                 ))
             })?;
-            Ok(ChatMessage::from_row(row, &blocks))
-        })
-        .collect()
+        let attachments = ai::list_attachments_for_message(&pool, row.id)
+            .await?
+            .into_iter()
+            .map(crate::chat::AttachmentSummary::from)
+            .collect();
+        messages.push(ChatMessage::from_row(row, &blocks, attachments));
+    }
+    Ok(messages)
 }
 
 /// Renames a conversation, returning it as saved.
