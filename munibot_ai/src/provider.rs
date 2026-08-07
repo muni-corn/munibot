@@ -16,12 +16,14 @@ use futures::stream::{self, BoxStream};
 
 use crate::types::{AiError, CompletionRequest, CompletionResponse, ContentBlock, StreamEvent};
 
+pub mod capabilities;
 pub mod mock;
 pub mod pricing;
 pub mod registry;
 pub mod retry;
 pub mod rig;
 
+pub use capabilities::{Capabilities, supports_vision};
 pub use mock::MockProvider;
 pub use pricing::{Pricing, estimate_cost};
 pub use registry::ProviderRegistry;

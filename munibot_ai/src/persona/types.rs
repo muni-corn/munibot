@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     harness::{Budget, HandoffSchema},
     persona::PromptTemplate,
+    provider,
     tools::ToolSelection,
-    types::{ModelParams, ModelRef},
+    types::{History, ModelParams, ModelRef},
 };
 
 /// A persona's stable identifier, used in configuration, commands, and
@@ -77,6 +78,37 @@ pub struct Persona {
     /// by remembering to exclude it in every tool schema that lists
     /// candidates.
     pub delegable: bool,
+}
+
+impl Persona {
+    /// Checks whether every image already in `history` is something this
+    /// persona's model can actually see, returning the explanation to show
+    /// the user if it can't rather than answering as though it had looked.
+    ///
+    /// Checks the whole history, not just the newest message: a
+    /// conversation is bound to one persona for its entire lifetime (see
+    /// `send_message`'s own doc comment in `munibot_api`), so any earlier
+    /// image already in it could only have arrived by passing this exact
+    /// check already - checking everything costs nothing today and stays
+    /// correct if persona-switching mid-conversation is ever added.
+    pub fn ensure_can_see(&self, history: &History) -> Option<String> {
+        if provider::supports_vision(&self.model) {
+            return None;
+        }
+
+        let has_image = history
+            .messages()
+            .iter()
+            .any(|message| message.content.iter().any(|block| block.is_image()));
+
+        has_image.then(|| {
+            format!(
+                "{} can't see images right now -- {} isn't able to look at pictures. try \
+                 describing what's in it instead, or ask a specialist who can see it.",
+                self.display_name, self.model
+            )
+        })
+    }
 }
 
 #[cfg(test)]
@@ -157,5 +189,52 @@ mod tests {
         // remembering to exclude them everywhere a persona list is built
         let persona = persona();
         assert!(!persona.delegable);
+    }
+
+    #[test]
+    fn test_ensure_can_see_allows_a_vision_model_with_an_image() {
+        // claude-opus-5 is a known vision model in the embedded capabilities
+        // table, so an attached image should never be refused
+        let persona = persona();
+        let mut history = History::new();
+        history.push(crate::types::Message::user("what's in this?"));
+        history.push(crate::types::Message::new(crate::types::Role::User, vec![
+            crate::types::ContentBlock::image_base64("image/png", "iVBORw0KGgo="),
+        ]));
+
+        assert!(persona.ensure_can_see(&history).is_none());
+    }
+
+    #[test]
+    fn test_ensure_can_see_refuses_an_image_for_a_model_missing_from_the_table() {
+        let mut blind_persona = persona();
+        blind_persona.model = ModelRef::new("anthropic", "some-legacy-text-only-model");
+
+        let mut history = History::new();
+        history.push(crate::types::Message::new(crate::types::Role::User, vec![
+            crate::types::ContentBlock::image_base64("image/png", "iVBORw0KGgo="),
+        ]));
+
+        let refusal = blind_persona
+            .ensure_can_see(&history)
+            .expect("a model missing from the capabilities table can't see");
+        assert!(
+            refusal.contains(&blind_persona.display_name),
+            "the refusal should name the persona"
+        );
+    }
+
+    #[test]
+    fn test_ensure_can_see_allows_text_only_history_for_any_model() {
+        let mut blind_persona = persona();
+        blind_persona.model = ModelRef::new("anthropic", "some-legacy-text-only-model");
+
+        let mut history = History::new();
+        history.push(crate::types::Message::user("hello!"));
+
+        assert!(
+            blind_persona.ensure_can_see(&history).is_none(),
+            "no image was ever sent, so there's nothing to refuse"
+        );
     }
 }

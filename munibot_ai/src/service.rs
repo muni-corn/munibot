@@ -113,13 +113,20 @@ struct PreparedTurn {
 }
 
 /// What [`Ai::prepare`] produces: either a normal turn ready to run through
-/// the harness, or a reviewed crisis response that bypasses the harness (and
-/// the model) entirely.
+/// the harness, or an early-exit response (a reviewed crisis response, or a
+/// vision refusal) that bypasses the harness (and the model) entirely.
 enum Preparation {
     Turn(Box<PreparedTurn>),
     /// A crisis signal crossed the threshold: the exchange is already
     /// stored, and `outcome` is ready to return or stream as-is.
     CrisisResponse {
+        persona_label: String,
+        outcome: TurnOutcome,
+    },
+    /// This turn's history contains an image the persona's model can't see.
+    /// The refusal explaining that is already stored, the same as a crisis
+    /// response, and `outcome` is ready to return or stream as-is.
+    VisionUnsupported {
         persona_label: String,
         outcome: TurnOutcome,
     },
@@ -397,7 +404,8 @@ impl Ai {
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = match self.prepare(&req).await? {
             // already stored by `prepare` itself; nothing left to do but hand it back
-            Preparation::CrisisResponse { outcome, .. } => return Ok(outcome),
+            Preparation::CrisisResponse { outcome, .. }
+            | Preparation::VisionUnsupported { outcome, .. } => return Ok(outcome),
             Preparation::Turn(prepared) => *prepared,
         };
         let conversation_id = prepared.conversation_id;
@@ -467,16 +475,21 @@ impl Ai {
     /// instead; this replaces it with the persona's display name, which is
     /// what an adapter actually wants to show a user.
     ///
-    /// A crisis response synthesizes the same event shape a normal turn
-    /// produces (`TurnStarted`, one `TextDelta`, `TurnFinished`) rather than
-    /// a special case, so a consumer built against a normal turn's stream -
-    /// the chat page, in particular - needs no separate handling for it.
+    /// A crisis response, or a vision refusal, synthesizes the same event
+    /// shape a normal turn produces (`TurnStarted`, one `TextDelta`,
+    /// `TurnFinished`) rather than a special case, so a consumer built
+    /// against a normal turn's stream - the chat page, in particular -
+    /// needs no separate handling for either.
     pub async fn turn_streamed(
         &self,
         req: AiTurnRequest,
     ) -> Result<BoxStream<'static, HarnessEvent>, AiError> {
         let prepared = match self.prepare(&req).await? {
             Preparation::CrisisResponse {
+                persona_label,
+                outcome,
+            }
+            | Preparation::VisionUnsupported {
                 persona_label,
                 outcome,
             } => {
@@ -786,6 +799,21 @@ impl Ai {
             }
         };
 
+        // checked after history is assembled (so an image reconstructed
+        // from a linked attachment is actually visible here), but before
+        // the provider is ever touched - refusing must never look like the
+        // model quietly answered without looking
+        if let Some(refusal) = persona.ensure_can_see(&history) {
+            self.sessions
+                .append(conversation.id, Message::assistant(refusal.clone()))
+                .await?;
+
+            return Ok(Preparation::VisionUnsupported {
+                persona_label: persona.display_name.clone(),
+                outcome: TurnOutcome::text(refusal, Usage::default(), Cost::ZERO, 0),
+            });
+        }
+
         let system = self.render_system_prompt(persona, req).await?;
 
         let ctx = ToolCtx {
@@ -989,7 +1017,7 @@ mod tests {
         persona::PersonaConfig,
         provider::MockProvider,
         tools::Platform,
-        types::{ContentBlock, ModelRef},
+        types::{ContentBlock, ModelRef, Role},
     };
 
     /// A [`ProviderSource`] that always returns the same fixed provider,
@@ -1204,6 +1232,49 @@ mod tests {
     fn ai_with(memory: MemoryPolicy, provider: Arc<dyn Provider>) -> Ai {
         Ai::from_parts(
             personas_with_memory(memory),
+            Arc::new(ToolRegistry::new()),
+            Arc::new(InMemorySessionStore::new()),
+            Arc::new(FixedProviderSource(provider)),
+        )
+    }
+
+    /// Builds an `Ai` whose `companion` persona uses a model absent from
+    /// the embedded capabilities table - so, per
+    /// [`crate::provider::supports_vision`]'s own fallback, one that can't
+    /// see images - for exercising [`Persona::ensure_can_see`]'s refusal
+    /// path end to end.
+    fn ai_with_non_vision_model(memory: MemoryPolicy, provider: Arc<dyn Provider>) -> Ai {
+        let mut config = AiConfig {
+            enabled: true,
+            default_persona: Some(PersonaId::new("companion")),
+            default_model: None,
+            prompt_dir: None,
+            crisis_resources: Vec::new(),
+            rate_limits: crate::persona::config::RateLimitConfig::default(),
+            spend_caps: crate::persona::config::SpendCapConfig::default(),
+            max_delegation_depth: 2,
+            personas: HashMap::new(),
+        };
+        config
+            .personas
+            .insert(PersonaId::new("companion"), PersonaConfig {
+                model: Some(ModelRef::new("anthropic", "some-legacy-text-only-model")),
+                prompt: "companion.md".to_string(),
+                display_name: Some("Companion".to_string()),
+                description: "warm, playful conversation".to_string(),
+                temperature: None,
+                tools: crate::tools::ToolSelection::none(),
+                budget: crate::persona::BudgetConfig::default(),
+                memory,
+                sandbox: crate::persona::SandboxPolicy::default(),
+                delegable: false,
+            });
+
+        let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
+        let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
+
+        Ai::from_parts(
+            personas,
             Arc::new(ToolRegistry::new()),
             Arc::new(InMemorySessionStore::new()),
             Arc::new(FixedProviderSource(provider)),
@@ -2365,6 +2436,109 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, HarnessEvent::TextDelta(_))),
             "a crisis response should still arrive as a text delta, got {events:?}"
+        );
+        assert!(matches!(
+            events.last(),
+            Some(HarnessEvent::TurnFinished { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_a_model_that_cant_see_refuses_history_containing_an_image() {
+        let provider = Arc::new(MockProvider::new().respond_text("unused"));
+        let ai = ai_with_non_vision_model(MemoryPolicy::Conversation, provider.clone());
+
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = ai
+            .sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .unwrap();
+        ai.sessions
+            .append(
+                conversation.id,
+                Message::new(Role::User, vec![ContentBlock::image_base64(
+                    "image/png",
+                    "iVBORw0KGgo=",
+                )]),
+            )
+            .await
+            .unwrap();
+
+        let outcome = ai
+            .turn(request("companion", "what do you see?"))
+            .await
+            .expect("a refusal is a successful turn, not an error");
+
+        let text = outcome.text.expect("refusal should have text");
+        assert!(
+            text.contains("Companion"),
+            "the refusal should name the persona, got {text:?}"
+        );
+        assert_eq!(
+            provider.request_count(),
+            0,
+            "the provider should never be called once history is known to contain an unseeable \
+             image"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_model_that_cant_see_still_answers_text_only_history() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi there!"));
+        let ai = ai_with_non_vision_model(MemoryPolicy::Conversation, provider.clone());
+
+        let outcome = ai
+            .turn(request("companion", "just saying hi, no pictures"))
+            .await
+            .expect("should succeed");
+
+        assert_eq!(outcome.text, Some("hi there!".to_string()));
+        assert_eq!(
+            provider.request_count(),
+            1,
+            "a text-only turn should reach the provider as normal"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vision_refusal_streams_the_same_event_shape_as_a_normal_turn() {
+        let provider = Arc::new(MockProvider::new().respond_text("unused"));
+        let ai = ai_with_non_vision_model(MemoryPolicy::Conversation, provider);
+
+        let scope = ConversationScope::new(Platform::Discord, "channel-1");
+        let conversation = ai
+            .sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .unwrap();
+        ai.sessions
+            .append(
+                conversation.id,
+                Message::new(Role::User, vec![ContentBlock::image_base64(
+                    "image/png",
+                    "iVBORw0KGgo=",
+                )]),
+            )
+            .await
+            .unwrap();
+
+        let events: Vec<HarnessEvent> = ai
+            .turn_streamed(request("companion", "what do you see?"))
+            .await
+            .expect("should succeed")
+            .collect()
+            .await;
+
+        assert!(matches!(
+            events.first(),
+            Some(HarnessEvent::TurnStarted { .. })
+        ));
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, HarnessEvent::TextDelta(_))),
+            "a vision refusal should still arrive as a text delta, got {events:?}"
         );
         assert!(matches!(
             events.last(),

@@ -144,6 +144,16 @@ impl ContentBlock {
         }
     }
 
+    /// Builds an image block from already base64-encoded bytes.
+    pub fn image_base64(media_type: impl Into<String>, data: impl Into<String>) -> Self {
+        Self::Image {
+            image: Image {
+                media_type: media_type.into(),
+                source: ImageSource::Base64 { data: data.into() },
+            },
+        }
+    }
+
     /// Returns the text of a [`ContentBlock::Text`], or `None` for any other
     /// block.
     pub fn as_text(&self) -> Option<&str> {
@@ -169,6 +179,12 @@ impl ContentBlock {
     /// Returns `true` if this block is a tool call.
     pub fn is_tool_use(&self) -> bool {
         matches!(self, Self::ToolUse { .. })
+    }
+
+    /// Returns `true` if this block is an image, for a caller checking
+    /// whether a message needs a model that can actually see it.
+    pub fn is_image(&self) -> bool {
+        matches!(self, Self::Image { .. })
     }
 }
 
@@ -280,6 +296,21 @@ mod tests {
         assert!(
             !text.is_tool_use(),
             "text should not report itself as a tool call"
+        );
+    }
+
+    #[test]
+    fn test_is_image_only_matches_image_blocks() {
+        let image = ContentBlock::image_base64("image/png", "iVBORw0KGgo=");
+        let text = ContentBlock::text("hi");
+
+        assert!(
+            image.is_image(),
+            "an image block should report itself as one"
+        );
+        assert!(
+            !text.is_image(),
+            "a text block should not report itself as an image"
         );
     }
 

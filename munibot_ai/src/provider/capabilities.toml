@@ -1,0 +1,19 @@
+# Per-model capability facts, one table per "provider:model" string - kept beside pricing.toml
+# since both are configuration facts about a model, loaded the same way.
+#
+# A model missing here reads as unable to see images (see
+# munibot_ai::provider::supports_vision's own doc comment for why the default runs the opposite
+# direction from pricing's). Update this file whenever a persona's model changes; no code change is
+# needed to do so.
+
+["anthropic:claude-opus-5"]
+vision = true
+
+["anthropic:claude-haiku-4"]
+vision = true
+
+["openai:gpt-5.2"]
+vision = true
+
+["openai:gpt-5.2-mini"]
+vision = true
