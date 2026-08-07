@@ -15,6 +15,11 @@ munibot_api = { path = "../munibot_api", default-features = false }
 # markdown rendering for the chat page -- pure rust, compiles to wasm, so it
 # stays unconditional rather than gated behind `server`
 pulldown-cmark = { version = "0.9", default-features = false }
+# the composer base64-encodes an attachment's bytes client-side before ever
+# reaching a server function, and decodes a pasted image's own JavaScript-side
+# encoding straight back -- both happen in wasm, so this stays unconditional too
+base64.workspace = true
+serde.workspace = true
 
 # desktop-only, enabled by the `desktop` feature. pulls in native-tls and
 # openssl-sys transitively, which can't compile for wasm32, so it must
