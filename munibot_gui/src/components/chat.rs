@@ -3,6 +3,7 @@
 //! list, and (in later commits) the composer and tool activity display.
 
 pub mod composer;
+pub mod delegation;
 pub mod markdown;
 pub mod message_list;
 pub mod persona_picker;

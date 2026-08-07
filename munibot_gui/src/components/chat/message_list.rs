@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use munibot_api::chat::{ChatMessage, ChatRole};
 
 use crate::components::chat::{
+    delegation::{DelegationEntry, DelegationStrip},
     markdown::render_markdown,
     tool_activity::{ToolActivityEntry, ToolActivityStrip},
 };
@@ -15,15 +16,18 @@ use crate::components::chat::{
 /// no database row (and so no id) until the turn finishes and the
 /// transcript is reloaded.
 ///
-/// `tool_activity` is shown as a strip directly above the live reply, and
-/// only while `live_reply` is `Some` -- both clear together once the turn
-/// ends and the transcript reloads with the persisted reply, rather than
-/// leaving the strip stranded below a bubble that has since disappeared.
+/// `tool_activity` and `delegations` are both shown directly above the live
+/// reply, and only while `live_reply` is `Some` -- all three clear together
+/// once the turn ends and the transcript reloads with the persisted reply,
+/// rather than leaving either stranded below a bubble that has since
+/// disappeared. `delegations` renders above `tool_activity`, since bringing
+/// a specialist in is the more significant event of the two.
 #[component]
 pub fn MessageList(
     messages: Vec<ChatMessage>,
     live_reply: Option<String>,
     tool_activity: Vec<ToolActivityEntry>,
+    delegations: Vec<DelegationEntry>,
 ) -> Element {
     rsx! {
         div { class: "flex flex-col p-4 gap-1",
@@ -31,6 +35,7 @@ pub fn MessageList(
                 MessageBubble { key: "{message.id}", message }
             }
             if let Some(text) = live_reply {
+                DelegationStrip { entries: delegations }
                 ToolActivityStrip { entries: tool_activity }
                 LiveReplyBubble { text }
             }

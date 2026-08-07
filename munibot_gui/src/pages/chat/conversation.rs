@@ -8,6 +8,7 @@ use crate::components::{
     Spinner,
     chat::{
         composer::Composer,
+        delegation::{DelegationEntry, record_delegation_finished, record_delegation_started},
         message_list::MessageList,
         tool_activity::{ToolActivityEntry, ToolActivityResult, record_finished, record_started},
         turn_failure::{TurnFailure, TurnFailureBanner},
@@ -33,6 +34,7 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
     // can't just be another entry in `messages` itself
     let mut live_reply = use_signal(|| None::<String>);
     let mut tool_activity = use_signal(Vec::<ToolActivityEntry>::new);
+    let mut delegations = use_signal(Vec::<DelegationEntry>::new);
     let mut turn_failure = use_signal(|| None::<TurnFailure>);
     // the last message id a turn was run for, so `retry` can re-ask munibot
     // to answer the same, already-persisted message rather than sending a
@@ -43,6 +45,7 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
         turn_failure.set(None);
         live_reply.set(Some(String::new()));
         tool_activity.set(Vec::new());
+        delegations.set(Vec::new());
 
         spawn(async move {
             match chat_stream(message_id).await {
@@ -73,6 +76,12 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
                                     },
                                 );
                             }
+                            Ok(ChatEvent::DelegationStarted { persona, task }) => {
+                                record_delegation_started(&mut delegations.write(), persona, task);
+                            }
+                            Ok(ChatEvent::DelegationFinished { persona, ok }) => {
+                                record_delegation_finished(&mut delegations.write(), &persona, ok);
+                            }
                             Ok(ChatEvent::Failed { message, kind }) => {
                                 turn_failure.set(Some(TurnFailure::from_event(kind, message)));
                             }
@@ -96,6 +105,7 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
             // than being stranded once the persisted transcript reloads below
             live_reply.set(None);
             tool_activity.set(Vec::new());
+            delegations.set(Vec::new());
             messages.restart();
         });
     };
@@ -121,6 +131,7 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
                 messages: loaded.clone(),
                 live_reply: live_reply.read().clone(),
                 tool_activity: tool_activity.read().clone(),
+                delegations: delegations.read().clone(),
             }
         },
         Some(Err(e)) => rsx! {
