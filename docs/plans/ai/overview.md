@@ -186,9 +186,9 @@ enabled = true
 default_model = "anthropic:claude-opus-5"
 ```
 
-That alone resolves every embedded persona - companion, researcher, coder, writer, and the six
-engineering-team roles - against the same model, with `default_persona` falling back to `companion`
-automatically. `[ai.personas.<id>]` is only for **overriding** one: an operator's own entry for an id
+That alone resolves every embedded persona - companion, researcher, coder, writer, the six
+engineering-team roles, and the critic - against the same model, with `default_persona` falling
+back to `companion` automatically. `[ai.personas.<id>]` is only for **overriding** one: an operator's own entry for an id
 replaces the embedded default entirely (not a field-by-field merge), and any id they never mention
 keeps the embedded one unchanged. A persona whose model can't be resolved - no `default_model` set
 and no explicit override - is skipped rather than failing startup, since it was never something the
@@ -292,6 +292,11 @@ delegable = true
 prompt = "project-manager.md"
 description = "given a plan and what's done, decides what to work on next"
 tools = ["tier0"]
+delegable = true
+
+[ai.personas.critic]
+prompt = "critic.md"
+description = "critiques a drawing, design, or screenshot: what works, what doesn't, what to try next"
 delegable = true
 
 [ai.personas.builder]

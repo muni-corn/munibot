@@ -697,4 +697,53 @@ mod prompt_tests {
             );
         }
     }
+
+    #[test]
+    fn test_critic_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/critic.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_critic_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/critic.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_critic_prompt_states_its_three_part_structure() {
+        // the plan's own words for this persona: "structured as what works,
+        // what does not, and what to try next"
+        let source = include_str!("../prompts/critic.md");
+        assert!(source.contains("What works"));
+        assert!(source.contains("What doesn't"));
+        assert!(source.contains("What to try next"));
+    }
+
+    #[test]
+    fn test_critic_prompt_asks_for_specificity_over_vague_praise() {
+        // the plan's own reasoning for this persona: "vague praise is
+        // worthless to someone trying to improve"
+        let source = include_str!("../prompts/critic.md");
+        assert!(
+            source.to_lowercase().contains("vague"),
+            "the critic prompt should explicitly reject vague feedback, not just imply it"
+        );
+    }
 }

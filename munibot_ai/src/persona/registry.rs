@@ -25,6 +25,7 @@ fn embedded_prompt(filename: &str) -> Option<&'static str> {
         "test-reviewer.md" => Some(include_str!("../../prompts/test-reviewer.md")),
         "architecture-reviewer.md" => Some(include_str!("../../prompts/architecture-reviewer.md")),
         "project-manager.md" => Some(include_str!("../../prompts/project-manager.md")),
+        "critic.md" => Some(include_str!("../../prompts/critic.md")),
         _ => None,
     }
 }
@@ -165,6 +166,16 @@ fn embedded_personas() -> HashMap<PersonaId, PersonaConfig> {
                 "project-manager.md",
                 "given a plan and what's done, decides what to work on next",
                 ToolSelection::named(["tier0"]),
+                true,
+            ),
+        ),
+        (
+            PersonaId::new("critic"),
+            base(
+                "critic.md",
+                "critiques a drawing, design, or screenshot: what works, what doesn't, what to \
+                 try next",
+                ToolSelection::none(),
                 true,
             ),
         ),
