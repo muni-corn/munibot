@@ -349,6 +349,69 @@ mod prompt_tests {
     }
 
     #[test]
+    fn test_issue_analyst_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/issue-analyst.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_issue_analyst_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/issue-analyst.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_issue_analyst_prompt_states_it_has_no_sandbox_yet() {
+        // milestone 3 phase 16's own requirement: this role lands before the
+        // sandbox does (milestone 4), so it must not imply it can actually
+        // run anything to reproduce a bug
+        let source = include_str!("../prompts/issue-analyst.md");
+        assert!(
+            source.contains("no sandbox yet"),
+            "the issue analyst prompt must state plainly that it has no sandbox yet"
+        );
+    }
+
+    #[test]
+    fn test_issue_analyst_prompt_has_no_pipeline_output_contract() {
+        // the porting rule's whole point - see software-architect's own
+        // equivalent test - plus the sandboxed tools (Read/Grep/Glob/Bash)
+        // this role's municode source assumed but does not have yet
+        let source = include_str!("../prompts/issue-analyst.md");
+        for pipeline_only in [
+            "IssueAnalysis",
+            "RequestAnalysisHelp",
+            "Handoff",
+            "```markdown",
+            "github-issue",
+            "`Bash`",
+            "`Grep`",
+            "`Glob`",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the issue analyst prompt should not contain pipeline-only text {pipeline_only:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_software_architect_prompt_has_no_pipeline_output_contract() {
         // the porting rule's whole point: output-contract prose ("return
         // JSON shaped like...") belongs in a future HandoffSchema, not the

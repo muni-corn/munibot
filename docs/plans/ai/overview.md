@@ -236,6 +236,21 @@ tools = ["tier0", "tier1"]
 delegable = true
 budget = { max_iterations = 30, max_cost_usd = 2.0 }
 
+[ai.personas.software-architect]
+model = "anthropic:claude-opus-5"
+prompt = "software-architect.md"
+description = "turns a request into a detailed, buildable plan"
+tools = ["tier0"]
+delegable = true
+budget = { max_iterations = 15, max_cost_usd = 1.0 }
+
+[ai.personas.issue-analyst]
+model = "anthropic:claude-opus-5"
+prompt = "issue-analyst.md"
+description = "triages an issue and works out what it needs before anyone builds it"
+tools = ["tier0", "tier1"]
+delegable = true
+
 [ai.personas.code-reviewer]
 model = "anthropic:claude-opus-5"
 prompt = "code-reviewer.md"
