@@ -22,7 +22,7 @@ use munibot_ai::{
     },
     persona::AiConfig,
     provider::ProviderResolver,
-    tools::ToolRegistry,
+    tools::{DelegablePersona, DelegateTool, Delegator, DelegatorCell, ToolRegistry},
     types::ModelRef,
     usage::DieselUsageRecorder,
 };
@@ -43,12 +43,31 @@ fn default_persona_model(config: &AiConfig) -> Option<ModelRef> {
         .map(|persona| persona.model.clone())
 }
 
+/// Every persona configured with `delegable = true`, for the `delegate`
+/// tool's own input schema - computed from config directly, since a
+/// resolved `PersonaRegistry` only exists once `Ai::new` runs, and the tool
+/// has to be registered before that.
+fn delegable_personas(config: &AiConfig) -> Vec<DelegablePersona> {
+    config
+        .personas
+        .iter()
+        .filter(|(_, persona)| persona.delegable)
+        .map(|(id, persona)| DelegablePersona {
+            id: id.clone(),
+            description: persona.description.clone(),
+        })
+        .collect()
+}
+
 /// Builds the AI service, or `None` when `ai.enabled` is `false` in config.
 ///
 /// `pool` backs every diesel-based piece: conversation persistence, the
 /// memory tools and store, usage recording, tool auditing, rate limit
 /// windows, spend caps, and (once a provider for the default persona's
-/// model resolves) conversation compaction.
+/// model resolves) conversation compaction. The `delegate` tool is
+/// registered here too, its `DelegatorCell` completed once `ai` itself
+/// exists (see that type's own doc comment for why it can't just hold an
+/// `Arc<Ai>` from the start).
 pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc<Ai>>> {
     if !config.enabled {
         info!("ai.enabled is false; skipping ai setup");
@@ -57,6 +76,15 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
 
     let mut tools = ToolRegistry::from_env();
     register_memory_tools(&mut tools, pool.clone());
+
+    // completed below, once ai actually exists - see DelegatorCell's own
+    // doc comment for why the delegate tool cannot just hold an Arc<Ai>
+    let delegator_cell = Arc::new(DelegatorCell::new());
+    tools.register(Arc::new(DelegateTool::new(
+        delegator_cell.clone(),
+        delegable_personas(config),
+        config.max_delegation_depth,
+    )));
 
     let sessions: Arc<dyn SessionStore> = Arc::new(DieselSessionStore::new(pool.clone()));
 
@@ -120,5 +148,8 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
         }
     }
 
-    Ok(Some(Arc::new(ai)))
+    let ai = Arc::new(ai);
+    delegator_cell.set(Arc::downgrade(&ai) as std::sync::Weak<dyn Delegator>);
+
+    Ok(Some(ai))
 }

@@ -201,7 +201,7 @@ pub struct PersonaConfig {
 /// deliberately avoids repeating the generic, pluggable per-crate configuration
 /// mechanism documented (and abandoned, at roughly 7,400 lines) in
 /// `docs/notes/gui-configuration-research.md`.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AiConfig {
     /// Defaults to `false`: a config file predating AI support, or one that
     /// never mentions `[ai]` at all, must boot with the feature off rather
@@ -233,6 +233,45 @@ pub struct AiConfig {
     /// existed at all.
     #[serde(default)]
     pub spend_caps: SpendCapConfig,
+    /// How many levels deep a chain of delegations may go before the
+    /// `delegate` tool refuses rather than starting another nested turn -
+    /// see `ToolCtx::delegation_depth`. A companion delegating to a
+    /// specialist is depth 1; that specialist delegating again is depth 2.
+    /// Without a cap, a specialist delegating back to the companion (or to
+    /// another specialist that does the same) would never terminate.
+    #[serde(default = "default_max_delegation_depth")]
+    pub max_delegation_depth: usize,
+}
+
+/// Two levels: a companion bringing in one specialist, and that specialist
+/// consulting one more - enough for the advisory engineering team's own
+/// shape (a companion delegating to, say, the project manager, who
+/// delegates once more to a reviewer) without allowing an unbounded chain.
+fn default_max_delegation_depth() -> usize {
+    2
+}
+
+impl Default for AiConfig {
+    /// Not `#[derive(Default)]`: `max_delegation_depth`'s sensible default
+    /// (`2`, see [`default_max_delegation_depth`]) is not `usize`'s own zero
+    /// value, and a derived `Default` would silently disagree with what
+    /// `#[serde(default = "default_max_delegation_depth")]` fills in for a
+    /// config file that mentions `[ai]` but not that field specifically.
+    /// Every other field's sensible default already happens to be its own
+    /// zero value, so this mirrors every `#[serde(default)]` above exactly
+    /// rather than drifting into a second, inconsistent default.
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            default_persona: None,
+            prompt_dir: None,
+            personas: HashMap::new(),
+            crisis_resources: Vec::new(),
+            rate_limits: RateLimitConfig::default(),
+            spend_caps: SpendCapConfig::default(),
+            max_delegation_depth: default_max_delegation_depth(),
+        }
+    }
 }
 
 /// One crisis resource an operator has configured: a hotline, a text line, a
@@ -286,6 +325,40 @@ mod tests {
         assert!(!config.enabled);
         assert!(config.personas.is_empty());
         assert_eq!(config.default_persona, None);
+    }
+
+    #[test]
+    fn test_default_max_delegation_depth_is_two() {
+        assert_eq!(AiConfig::default().max_delegation_depth, 2);
+    }
+
+    #[test]
+    fn test_a_config_file_with_no_ai_section_still_gets_the_sensible_delegation_depth_default() {
+        // the struct-level Default and the field-level serde default must
+        // agree, or AiConfig::default() (used directly in rust) would
+        // silently disagree with what a real config file deserializes to
+        let config = AiConfig::load_from_file("/nonexistent/path/does/not/exist.toml").unwrap();
+        assert_eq!(config.max_delegation_depth, 2);
+    }
+
+    #[test]
+    fn test_max_delegation_depth_defaults_to_two_when_ai_section_omits_it() {
+        let dir = tempdir();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[ai]\nenabled = true\n").unwrap();
+
+        let config = AiConfig::load_from_file(&path).unwrap();
+        assert_eq!(config.max_delegation_depth, 2);
+    }
+
+    #[test]
+    fn test_max_delegation_depth_is_read_from_the_ai_section() {
+        let dir = tempdir();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[ai]\nenabled = true\nmax_delegation_depth = 5\n").unwrap();
+
+        let config = AiConfig::load_from_file(&path).unwrap();
+        assert_eq!(config.max_delegation_depth, 5);
     }
 
     #[test]
