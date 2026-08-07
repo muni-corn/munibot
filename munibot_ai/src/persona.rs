@@ -131,6 +131,79 @@ mod prompt_tests {
     }
 
     #[test]
+    fn test_companion_prompt_still_renders_after_the_delegation_section() {
+        // the delegation section (milestone 3 phase 15) references
+        // {{user_name}} again inside its own prose - a stray literal
+        // {{...}} left in by mistake would fail this the same way a typo'd
+        // variable name would
+        let template = PromptTemplate::new(include_str!("../prompts/companion.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+            ("memories".to_string(), "Nothing recorded yet.".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        template
+            .render(&context)
+            .expect("should still render with every variable provided");
+    }
+
+    #[test]
+    fn test_companion_prompt_states_when_to_bring_in_a_specialist() {
+        // milestone 3 phase 15's own requirement: delegate when asked, or
+        // when a task plainly exceeds conversation - never reflexively
+        let source = include_str!("../prompts/companion.md");
+        assert!(
+            source.contains("bring in a specialist") || source.contains("bring in"),
+            "the companion prompt must state that it can bring in a specialist"
+        );
+        assert!(
+            source.to_lowercase().contains("not reflexively"),
+            "the companion prompt must state that delegation is not the reflexive choice for most \
+             questions"
+        );
+    }
+
+    #[test]
+    fn test_companion_prompt_requires_saying_delegation_out_loud() {
+        // milestone 3 phase 15's own requirement: never silently hand off
+        let source = include_str!("../prompts/companion.md");
+        assert!(
+            source.contains("say so plainly"),
+            "the companion prompt must require saying out loud that a specialist was brought in"
+        );
+    }
+
+    #[test]
+    fn test_companion_prompt_forbids_presenting_specialist_work_as_its_own() {
+        // milestone 3 phase 15's own requirement: report back in his own
+        // voice, never present a specialist's work as his own. checked as
+        // two short substrings rather than one long phrase, since the
+        // prompt's own prose wraps across lines and a raw file read keeps
+        // the literal newline
+        let source = include_str!("../prompts/companion.md");
+        assert!(
+            source.contains("present their work as your own"),
+            "the companion prompt must forbid presenting a specialist's work as its own"
+        );
+    }
+
+    #[test]
+    fn test_companion_prompt_states_a_brief_must_stand_alone() {
+        // milestone 3 phase 15 commit 113's own requirement: the specialist
+        // never sees the conversation, only the written brief
+        let source = include_str!("../prompts/companion.md");
+        assert!(
+            source.contains("self-contained brief")
+                || source.contains("never see this conversation"),
+            "the companion prompt must state that a specialist never sees the conversation and \
+             needs a self-contained brief"
+        );
+    }
+
+    #[test]
     fn test_writer_prompt_declares_exactly_user_name_and_platform() {
         let template = PromptTemplate::new(include_str!("../prompts/writer.md"));
         let mut variables = template.required_variables();
