@@ -4571,6 +4571,7 @@ dependencies = [
  "axum_session",
  "axum_session_auth",
  "axum_session_redispool",
+ "base64 0.23.1",
  "dioxus",
  "dioxus-desktop",
  "dioxus-html",
@@ -4580,6 +4581,7 @@ dependencies = [
  "pulldown-cmark",
  "redis",
  "redis_pool",
+ "serde",
  "tokio",
  "tracing",
 ]
