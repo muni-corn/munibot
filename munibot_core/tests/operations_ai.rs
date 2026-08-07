@@ -1070,3 +1070,146 @@ async fn test_deleting_a_user_cascades_to_their_settings() {
             .is_none()
     );
 }
+
+// --- attachments ---
+
+use munibot_core::db::models::NewAiAttachment;
+
+fn image_attachment(conversation_id: i64) -> NewAiAttachment {
+    NewAiAttachment {
+        conversation_id,
+        media_type: "image/png".to_string(),
+        byte_size: 4,
+        sha256: "a".repeat(64),
+        data: vec![1, 2, 3, 4],
+        created_at: Utc::now().naive_utc(),
+    }
+}
+
+#[tokio::test]
+async fn test_create_attachment_starts_with_no_message() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let conversation = ai::create_conversation(&db.pool, web_conversation(Some(user), "c1"))
+        .await
+        .unwrap();
+
+    let meta = ai::create_attachment(&db.pool, image_attachment(conversation.id))
+        .await
+        .expect("create failed");
+
+    assert_eq!(meta.conversation_id, conversation.id);
+    assert_eq!(meta.media_type, "image/png");
+    assert_eq!(meta.byte_size, 4);
+    assert!(meta.message_id.is_none());
+}
+
+#[tokio::test]
+async fn test_link_attachment_to_message_then_list_finds_it() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let conversation = ai::create_conversation(&db.pool, web_conversation(Some(user), "c1"))
+        .await
+        .unwrap();
+    let message = ai::append_message(&db.pool, conversation.id, "user", &text_content("hi"), 1)
+        .await
+        .unwrap();
+    let attachment = ai::create_attachment(&db.pool, image_attachment(conversation.id))
+        .await
+        .unwrap();
+
+    ai::link_attachment_to_message(&db.pool, attachment.id, message.id)
+        .await
+        .expect("link failed");
+
+    let linked = ai::get_attachment_meta(&db.pool, attachment.id)
+        .await
+        .unwrap()
+        .expect("should still exist");
+    assert_eq!(linked.message_id, Some(message.id));
+
+    let for_message = ai::list_attachments_for_message(&db.pool, message.id)
+        .await
+        .expect("list failed");
+    assert_eq!(for_message.len(), 1);
+    assert_eq!(for_message[0].id, attachment.id);
+}
+
+#[tokio::test]
+async fn test_get_attachment_returns_the_real_bytes() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let conversation = ai::create_conversation(&db.pool, web_conversation(Some(user), "c1"))
+        .await
+        .unwrap();
+    let meta = ai::create_attachment(&db.pool, image_attachment(conversation.id))
+        .await
+        .unwrap();
+
+    let full = ai::get_attachment(&db.pool, meta.id)
+        .await
+        .expect("query failed")
+        .expect("should exist");
+    assert_eq!(full.data, vec![1, 2, 3, 4]);
+}
+
+#[tokio::test]
+async fn test_get_attachment_missing_returns_none() {
+    let db = TestDb::new().await;
+    assert!(
+        ai::get_attachment(&db.pool, 999_999_999)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn test_list_attachments_for_a_message_with_none_is_empty() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let conversation = ai::create_conversation(&db.pool, web_conversation(Some(user), "c1"))
+        .await
+        .unwrap();
+    let message = ai::append_message(&db.pool, conversation.id, "user", &text_content("hi"), 1)
+        .await
+        .unwrap();
+
+    let for_message = ai::list_attachments_for_message(&db.pool, message.id)
+        .await
+        .unwrap();
+    assert!(for_message.is_empty());
+}
+
+#[tokio::test]
+async fn test_deleting_a_message_cascades_to_its_attachments() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let conversation = ai::create_conversation(&db.pool, web_conversation(Some(user), "c1"))
+        .await
+        .unwrap();
+    let message = ai::append_message(&db.pool, conversation.id, "user", &text_content("hi"), 1)
+        .await
+        .unwrap();
+    let attachment = ai::create_attachment(&db.pool, image_attachment(conversation.id))
+        .await
+        .unwrap();
+    ai::link_attachment_to_message(&db.pool, attachment.id, message.id)
+        .await
+        .unwrap();
+
+    // clearing a conversation deletes its messages outright (see
+    // ai::clear_conversation), which should cascade to any attachment
+    // linked to one of them
+    ai::clear_conversation(&db.pool, conversation.id)
+        .await
+        .unwrap();
+
+    assert!(
+        ai::get_attachment(&db.pool, attachment.id)
+            .await
+            .unwrap()
+            .is_none(),
+        "an attachment should not outlive the message it was linked to"
+    );
+}

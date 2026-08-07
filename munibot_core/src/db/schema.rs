@@ -1,6 +1,21 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    ai_attachments (id) {
+        id -> Bigint,
+        conversation_id -> Bigint,
+        message_id -> Nullable<Bigint>,
+        #[max_length = 64]
+        media_type -> Varchar,
+        byte_size -> Integer,
+        #[max_length = 64]
+        sha256 -> Char,
+        data -> Mediumblob,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     ai_conversations (id) {
         id -> Bigint,
         #[max_length = 32]
@@ -218,6 +233,8 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(ai_attachments -> ai_conversations (conversation_id));
+diesel::joinable!(ai_attachments -> ai_messages (message_id));
 diesel::joinable!(ai_conversations -> users (owner_user_id));
 diesel::joinable!(ai_memories -> users (user_id));
 diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
@@ -230,6 +247,7 @@ diesel::joinable!(quotes -> community_links (community_id));
 diesel::joinable!(user_permissions -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    ai_attachments,
     ai_conversations,
     ai_memories,
     ai_messages,
