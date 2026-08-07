@@ -1,5 +1,7 @@
 // server.rs: the axum server that renders the gui, serves munibot_api's
-// server functions, and backs login sessions with redis.
+// server functions, backs login sessions with redis, and serves a
+// signed-in user's own uploaded attachments directly (see the
+// `attachments` submodule).
 //
 // only compiled with the `server` feature -- native only, since it depends
 // on axum, redis, and munibot_core's diesel pool, none of which can target
@@ -19,6 +21,8 @@ use redis_pool::RedisPool;
 use tracing::info;
 
 use crate::app::App;
+
+mod attachments;
 
 /// Builds and serves the gui's axum app: the dioxus fullstack app, the
 /// discord oauth routes, and the redis-backed session/auth layers.
@@ -53,9 +57,11 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), App)
-        // merged before the layers below so sign-in/logout see the same
-        // session + db state as everything else
+        // merged before the layers below so sign-in/logout (and an
+        // attachment fetch) see the same session + db state as everything
+        // else
         .merge(munibot_api::oauth::routes::router())
+        .merge(attachments::router())
         .layer(
             AuthSessionLayer::<User, String, SessionRedisPool, _>::new(Some(pool.clone()))
                 .with_config(AuthConfig::<String>::default()),

@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use munibot_api::chat::{ChatMessage, ChatRole};
+use munibot_api::chat::{AttachmentSummary, ChatMessage, ChatRole};
 
 use crate::components::chat::{
     delegation::{DelegationEntry, DelegationStrip},
@@ -30,7 +30,7 @@ pub fn MessageList(
     delegations: Vec<DelegationEntry>,
 ) -> Element {
     rsx! {
-        div { class: "flex flex-col p-4 gap-1",
+        div { class: "flex flex-col gap-1 p-4",
             for message in messages {
                 MessageBubble { key: "{message.id}", message }
             }
@@ -49,7 +49,7 @@ pub fn MessageList(
 #[component]
 fn LiveReplyBubble(text: String) -> Element {
     rsx! {
-        div { class: "chat chat-start",
+        div { class: "chat-start chat",
             div { class: "chat-bubble max-w-full",
                 if text.is_empty() {
                     span { class: "opacity-60", "thinking..." }
@@ -80,7 +80,37 @@ fn MessageBubble(message: ChatMessage) -> Element {
 
     rsx! {
         div { class: "chat {side}",
-            div { class: "chat-bubble max-w-full {bubble_class}", {render_markdown(&message.content)} }
+            div { class: "chat-bubble max-w-full {bubble_class}",
+                if !message.attachments.is_empty() {
+                    div { class: "flex flex-wrap gap-2 pb-2",
+                        for attachment in message.attachments.iter().cloned() {
+                            AttachmentImage { key: "{attachment.id}", attachment }
+                        }
+                    }
+                }
+                {render_markdown(&message.content)}
+            }
+        }
+    }
+}
+
+/// One attachment shown inline in a message's own bubble: a thumbnail
+/// linking straight to `/attachments/{id}` (the plain axum route in
+/// `munibot_gui::server::attachments`, not a server function -- a server
+/// function's response is always JSON, so it can't be an `<img>`'s own
+/// `src`) for a full-size view in a new tab, so scrolling back through a
+/// conversation shows what was actually discussed rather than a
+/// placeholder.
+#[component]
+fn AttachmentImage(attachment: AttachmentSummary) -> Element {
+    let src = format!("/attachments/{}", attachment.id);
+    rsx! {
+        a { href: src.clone(), target: "_blank", rel: "noopener noreferrer",
+            img {
+                class: "max-h-48 rounded-box border border-slate-700 object-contain",
+                src,
+                alt: "an attached image",
+            }
         }
     }
 }
