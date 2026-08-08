@@ -8,11 +8,13 @@
 
 ### error handling
 
-- Error messages use friendly, lowercase language with plain-text emoticons
+- Error messages use friendly, lowercase language
 
 ### imports and structure
 
 - Always place `use` statements at top of files (or module)
+- Don't use qualified import paths inline; ALWAYS `use` what you need
+  - If necessary, inline paths should have only up to 3 segments (e.g. `db::models::User`)
 
 ### testing
 
