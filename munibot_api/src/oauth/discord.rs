@@ -1,6 +1,8 @@
 //! Discord OAuth2 client: authorization-code exchange, and the REST calls
 //! made with the resulting user access token.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -26,6 +28,13 @@ pub enum DiscordOAuthError {
 
     #[error("couldn't deserialize json: {0}")]
     Deserialize(#[from] serde_json::Error),
+
+    /// Discord rejected the request with a `429`, even after retrying with
+    /// backoff. `global` distinguishes a shared, ip-wide limit from a
+    /// per-route/per-user one -- both mean the same thing to a caller, but
+    /// it's useful in logs.
+    #[error("discord is rate limiting us; try again in {retry_after:?} :<")]
+    RateLimited { retry_after: Duration, global: bool },
 }
 
 /// The redirect URI munibot registers with discord for the oauth2 callback.
