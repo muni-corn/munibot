@@ -97,22 +97,17 @@ enum TokenResponse {
     },
 }
 
-/// Exchanges an authorization code (from the callback's `?code=` query
-/// parameter) for an access token.
-pub async fn exchange_code(
-    code: &str,
-    base_url: &str,
+/// Posts a `grant_type`-keyed form to `/oauth2/token`, shared by
+/// `exchange_code` and `refresh_access_token`.
+async fn token_request(
+    form: &[(&str, &str)],
     client_id: &str,
     client_secret: &str,
 ) -> Result<Token, DiscordOAuthError> {
     let response = rate_limit::send_with_retries(
         client::client()
             .post(format!("{API_BASE}/oauth2/token"))
-            .form(&[
-                ("grant_type", "authorization_code"),
-                ("code", code),
-                ("redirect_uri", &redirect_uri(base_url)),
-            ])
+            .form(form)
             .basic_auth(client_id, Some(client_secret)),
     )
     .await?
@@ -137,6 +132,44 @@ pub async fn exchange_code(
             error_description,
         }),
     }
+}
+
+/// Exchanges an authorization code (from the callback's `?code=` query
+/// parameter) for an access token.
+pub async fn exchange_code(
+    code: &str,
+    base_url: &str,
+    client_id: &str,
+    client_secret: &str,
+) -> Result<Token, DiscordOAuthError> {
+    token_request(
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", &redirect_uri(base_url)),
+        ],
+        client_id,
+        client_secret,
+    )
+    .await
+}
+
+/// Exchanges a refresh token for a new access token, once the previous one
+/// has expired (or is close to it).
+pub async fn refresh_access_token(
+    refresh_token: &str,
+    client_id: &str,
+    client_secret: &str,
+) -> Result<Token, DiscordOAuthError> {
+    token_request(
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+        ],
+        client_id,
+        client_secret,
+    )
+    .await
 }
 
 /// The subset of discord's user object munibot cares about.
