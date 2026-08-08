@@ -25,6 +25,11 @@ pub enum SettingsError {
     #[error("munibot hasn't been invited to this server yet")]
     BotNotInGuild,
 
+    /// Discord is rate limiting munibot's requests. `retry_after_secs` is a
+    /// hint for how long the caller should wait before trying again.
+    #[error("discord is rate limiting us; try again in a bit :<")]
+    RateLimited { retry_after_secs: u64 },
+
     /// Wraps a generic server function error so `SettingsResult` propagates
     /// cleanly.
     #[error(transparent)]
@@ -37,6 +42,7 @@ impl AsStatusCode for SettingsError {
             Self::NotSignedIn => StatusCode::UNAUTHORIZED,
             Self::NotGuildAdmin => StatusCode::FORBIDDEN,
             Self::BotNotInGuild => StatusCode::NOT_FOUND,
+            Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::ServerFnError(e) => e.as_status_code(),
         }
     }
@@ -69,11 +75,35 @@ impl From<anyhow::Error> for SettingsError {
 #[cfg(feature = "server")]
 impl From<DiscordOAuthError> for SettingsError {
     fn from(e: DiscordOAuthError) -> Self {
-        Self::ServerFnError(ServerFnError::ServerError {
-            message: e.to_string(),
-            code: StatusCode::INTERNAL_SERVER_ERROR.into(),
-            details: None,
-        })
+        match e {
+            DiscordOAuthError::RateLimited { retry_after, .. } => Self::RateLimited {
+                retry_after_secs: retry_after.as_secs(),
+            },
+            other => Self::ServerFnError(ServerFnError::ServerError {
+                message: other.to_string(),
+                code: StatusCode::INTERNAL_SERVER_ERROR.into(),
+                details: None,
+            }),
+        }
+    }
+}
+
+/// `try_get_with`'s coalesced error type -- multiple concurrent callers that
+/// all miss the guild cache share one underlying request, and so also share
+/// one `Arc`-wrapped error.
+#[cfg(feature = "server")]
+impl From<std::sync::Arc<DiscordOAuthError>> for SettingsError {
+    fn from(e: std::sync::Arc<DiscordOAuthError>) -> Self {
+        match &*e {
+            DiscordOAuthError::RateLimited { retry_after, .. } => Self::RateLimited {
+                retry_after_secs: retry_after.as_secs(),
+            },
+            other => Self::ServerFnError(ServerFnError::ServerError {
+                message: other.to_string(),
+                code: StatusCode::INTERNAL_SERVER_ERROR.into(),
+                details: None,
+            }),
+        }
     }
 }
 
@@ -82,6 +112,9 @@ impl From<DiscordBotError> for SettingsError {
     fn from(e: DiscordBotError) -> Self {
         match e {
             DiscordBotError::NotInGuild => Self::BotNotInGuild,
+            DiscordBotError::RateLimited { retry_after, .. } => Self::RateLimited {
+                retry_after_secs: retry_after.as_secs(),
+            },
             other => Self::ServerFnError(ServerFnError::ServerError {
                 message: other.to_string(),
                 code: StatusCode::INTERNAL_SERVER_ERROR.into(),
