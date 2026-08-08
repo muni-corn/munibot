@@ -11,6 +11,7 @@ pub mod client;
 pub mod credentials;
 pub mod guild_cache;
 pub mod rate_limit;
+pub mod token;
 
 const API_BASE: &str = "https://discord.com/api/v10";
 
