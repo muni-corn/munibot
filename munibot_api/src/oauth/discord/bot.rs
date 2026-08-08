@@ -5,6 +5,7 @@
 //! module), which does not permit listing a guild's channels -- that needs
 //! the bot's own token instead.
 
+use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -22,7 +23,7 @@ pub enum DiscordBotError {
     NotInGuild,
 
     #[error("discord returned an unexpected response: {status}")]
-    UnexpectedStatus { status: reqwest::StatusCode },
+    UnexpectedStatus { status: StatusCode },
 }
 
 /// The subset of a discord channel's REST representation munibot cares
@@ -60,9 +61,7 @@ pub async fn get_guild_channels(
 
     match response.status() {
         status if status.is_success() => Ok(response.json::<Vec<DiscordChannel>>().await?),
-        reqwest::StatusCode::FORBIDDEN | reqwest::StatusCode::NOT_FOUND => {
-            Err(DiscordBotError::NotInGuild)
-        }
+        StatusCode::FORBIDDEN | StatusCode::NOT_FOUND => Err(DiscordBotError::NotInGuild),
         status => Err(DiscordBotError::UnexpectedStatus { status }),
     }
 }
