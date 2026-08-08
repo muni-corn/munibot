@@ -75,39 +75,3 @@ preFixup = ''
   addAutoPatchelfSearchPath ${pkgs.libmysqlclient}/lib/mariadb
 '';
 ```
-
-## Local mysql `root` password can drift from what `devenv.nix` declares
-
-devenv's `services.mysql.ensureUsers` sets a user's password **at creation time only** -- if the
-mysql data directory already existed (e.g. from before a password was added to `devenv.nix`, or from
-some other prior state), it won't retroactively enforce the declared password. If some user's access
-suddenly starts failing with the password from `devenv.nix` but an empty password works, that's why;
-`ALTER USER '<user>'@'localhost' IDENTIFIED BY '<password>';` against the (passwordless) local
-instance brings it back in line with the declared config.
-
-`munibot_core`'s `TestDb` used to hit exactly this for `root` specifically, because it used to
-connect as `root` (with a password `devenv.nix` never actually declared for that user) just to
-create/drop each test's database. That dependency turned out to be unnecessary and has been removed:
-mysql's wildcard database-level grants (`GRANT ALL PRIVILEGES ON `` `munibot_test\_%` ``.* TO
-'munibot_test'@'localhost'`, already declared in `devenv.nix`) cover `CREATE DATABASE`/
-`DROP DATABASE` for any name matching the pattern, not just operations on tables within a database
-that already exists. `TestDb` now does everything as `munibot_test`, with no root/admin user
-involved at all -- see `munibot_core/tests/common/mod.rs`.
-
-Similar drift can still leave `munibot`/`munibot_test` themselves missing entirely from an old data
-directory, since `ensureUsers` never ran against it in the first place. `CREATE USER IF NOT EXISTS`/
-`GRANT` by hand, matching `devenv.nix`'s declared username/password/privilege scope, brings an old
-data dir back in line.
-
-**A blank-username anonymous account at the same host silently shadows a real, differently-hosted
-user of the same name.** MySQL/MariaDB sorts `mysql.user` rows by host specificity first (a literal
-host like `localhost` beats a wildcard host like `%`), and only _among rows with the same host_ does
-it prefer a non-blank username over a blank one. So if `''@'localhost'` (an anonymous account --
-common on distro-default installs, not something this project's devenv config creates) exists, and
-the intended account is only registered at `'<user>'@'%'` with no `'<user>'@'localhost'` row, a
-client connecting from the local machine matches the anonymous row _before_ it ever considers the
-wildcard-host row for the real username -- and authentication is silently checked against the
-anonymous account's own credentials instead. The error message still names the client's actual
-username and resolved host (e.g. `Access denied for user 'munibot_test'@'localhost'`), which reads
-like a simple password mismatch and hides the real cause. Fix: `DROP USER ''@'localhost';` (and any
-other anonymous host entries), then `FLUSH PRIVILEGES;`.
