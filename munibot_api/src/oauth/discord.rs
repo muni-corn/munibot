@@ -23,6 +23,9 @@ pub enum DiscordOAuthError {
         error: String,
         error_description: Option<String>,
     },
+
+    #[error("couldn't deserialize json: {0}")]
+    Deserialize(#[from] serde_json::Error),
 }
 
 /// The redirect URI munibot registers with discord for the oauth2 callback.
