@@ -36,6 +36,21 @@ pub enum DiscordBotError {
     RateLimited { retry_after: Duration, global: bool },
 }
 
+impl From<super::rate_limit::SendError> for DiscordBotError {
+    fn from(e: super::rate_limit::SendError) -> Self {
+        match e {
+            super::rate_limit::SendError::Request(e) => Self::Request(e),
+            super::rate_limit::SendError::RateLimited {
+                retry_after,
+                global,
+            } => Self::RateLimited {
+                retry_after,
+                global,
+            },
+        }
+    }
+}
+
 /// The subset of a discord channel's REST representation munibot cares
 /// about, as returned by `GET /guilds/{id}/channels`.
 #[derive(Debug, Clone, Deserialize)]
@@ -67,11 +82,12 @@ pub async fn get_guild_channels(guild_id: &str) -> Result<Vec<DiscordChannel>, D
         })?;
 
     let url = format!("{}/guilds/{guild_id}/channels", super::API_BASE);
-    let response = super::client::client()
-        .get(url)
-        .header("Authorization", format!("Bot {bot_token}"))
-        .send()
-        .await?;
+    let response = super::rate_limit::send_with_retries(
+        super::client::client()
+            .get(url)
+            .header("Authorization", format!("Bot {bot_token}")),
+    )
+    .await?;
 
     match response.status() {
         status if status.is_success() => Ok(response.json::<Vec<DiscordChannel>>().await?),
