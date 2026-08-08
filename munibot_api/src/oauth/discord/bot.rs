@@ -67,7 +67,7 @@ pub async fn get_guild_channels(guild_id: &str) -> Result<Vec<DiscordChannel>, D
         })?;
 
     let url = format!("{}/guilds/{guild_id}/channels", super::API_BASE);
-    let response = reqwest::Client::new()
+    let response = super::client::client()
         .get(url)
         .header("Authorization", format!("Bot {bot_token}"))
         .send()

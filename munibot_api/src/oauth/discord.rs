@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod bot;
+pub mod client;
 
 const API_BASE: &str = "https://discord.com/api/v10";
 
@@ -86,7 +87,7 @@ pub async fn exchange_code(
     client_id: &str,
     client_secret: &str,
 ) -> Result<Token, DiscordOAuthError> {
-    let response = reqwest::Client::new()
+    let response = client::client()
         .post(format!("{API_BASE}/oauth2/token"))
         .form(&[
             ("grant_type", "authorization_code"),
@@ -145,7 +146,7 @@ impl DiscordUser {
 
 /// Fetches the identity of the user who owns `access_token`.
 pub async fn get_current_user(access_token: &str) -> Result<DiscordUser, DiscordOAuthError> {
-    Ok(reqwest::Client::new()
+    Ok(client::client()
         .get(format!("{API_BASE}/users/@me"))
         .bearer_auth(access_token)
         .send()
@@ -191,7 +192,7 @@ impl DiscordGuild {
 pub async fn get_current_user_guilds(
     access_token: &str,
 ) -> Result<Vec<DiscordGuild>, DiscordOAuthError> {
-    Ok(reqwest::Client::new()
+    Ok(client::client()
         .get(format!("{API_BASE}/users/@me/guilds"))
         .bearer_auth(access_token)
         .send()
