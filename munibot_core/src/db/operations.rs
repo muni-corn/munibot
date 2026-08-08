@@ -567,3 +567,28 @@ pub async fn get_or_create_user_from_linked_account(
         .first(&mut conn)
         .await
 }
+
+/// Overwrites a linked account's token fields, e.g. after refreshing an
+/// expired oauth access token.
+pub async fn update_linked_account_tokens(
+    pool: &DbPool,
+    linked_account_id: i64,
+    access_token: &str,
+    refresh_token: Option<&str>,
+    token_expires_at: Option<NaiveDateTime>,
+) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    let now = chrono::Utc::now().naive_utc();
+
+    diesel::update(linked_accounts::table.find(linked_account_id))
+        .set((
+            linked_accounts::access_token.eq(access_token),
+            linked_accounts::refresh_token.eq(refresh_token),
+            linked_accounts::token_expires_at.eq(token_expires_at),
+            linked_accounts::updated_at.eq(now),
+        ))
+        .execute(&mut conn)
+        .await?;
+
+    Ok(())
+}

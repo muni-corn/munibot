@@ -5,7 +5,7 @@
 
 mod common;
 
-use chrono::Utc;
+use chrono::{Timelike, Utc};
 use common::TestDb;
 use munibot_core::db::{
     models::{AutoDeleteTimerRow, GuildConfig},
@@ -642,6 +642,58 @@ async fn test_get_or_create_user_from_linked_account_returns_existing() {
     assert_eq!(link.username, "new_username");
     assert_eq!(link.access_token, "access-token-new");
     assert_eq!(link.refresh_token.as_deref(), Some("refresh-token-new"));
+}
+
+#[tokio::test]
+async fn test_update_linked_account_tokens_overwrites_existing() {
+    let db = TestDb::new().await;
+
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "777888999",
+        "refresh_me",
+        "Refresh Me",
+        None,
+        "access-token-old",
+        Some("refresh-token-old"),
+        None,
+    )
+    .await
+    .expect("sign-in failed");
+
+    let link = operations::get_linked_account(&db.pool, user.id, "discord")
+        .await
+        .expect("get_linked_account failed")
+        .expect("linked account should exist");
+
+    // mysql's DATETIME column has no fractional-second precision, so a
+    // sub-second component here would never round-trip
+    let new_expiry = (Utc::now().naive_utc() + chrono::Duration::hours(1))
+        .with_nanosecond(0)
+        .expect("0 nanoseconds is always valid");
+
+    operations::update_linked_account_tokens(
+        &db.pool,
+        link.id,
+        "access-token-new",
+        Some("refresh-token-new"),
+        Some(new_expiry),
+    )
+    .await
+    .expect("update_linked_account_tokens failed");
+
+    let refreshed = operations::get_linked_account(&db.pool, user.id, "discord")
+        .await
+        .expect("get_linked_account failed")
+        .expect("linked account should still exist");
+
+    assert_eq!(refreshed.access_token, "access-token-new");
+    assert_eq!(
+        refreshed.refresh_token.as_deref(),
+        Some("refresh-token-new")
+    );
+    assert_eq!(refreshed.token_expires_at, Some(new_expiry));
 }
 
 #[tokio::test]
