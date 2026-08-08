@@ -21,7 +21,7 @@ use crate::{auth::AuthResult, guilds::GuildSummary};
 pub async fn get_guilds() -> AuthResult<Vec<GuildSummary>> {
     use munibot_core::db::operations;
 
-    use crate::oauth::discord::guild_cache;
+    use crate::oauth::discord::{guild_cache, token};
 
     let user = auth.current_user.ok_or(AuthError::NoAuthSession)?;
 
@@ -29,7 +29,8 @@ pub async fn get_guilds() -> AuthResult<Vec<GuildSummary>> {
         .await?
         .ok_or_else(|| anyhow::anyhow!("no discord account linked to this user"))?;
 
-    let guilds = guild_cache::guilds_for_user(user.id, &linked_account.access_token).await?;
+    let access_token = token::access_token_for(&pool, &linked_account).await?;
+    let guilds = guild_cache::guilds_for_user(user.id, &access_token).await?;
 
     Ok(guilds
         .iter()
