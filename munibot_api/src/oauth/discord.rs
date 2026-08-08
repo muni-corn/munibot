@@ -8,6 +8,7 @@ use thiserror::Error;
 
 pub mod bot;
 pub mod client;
+pub mod credentials;
 pub mod guild_cache;
 pub mod rate_limit;
 

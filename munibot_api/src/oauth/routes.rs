@@ -15,7 +15,10 @@ use munibot_core::db::{DbPool, operations};
 use serde::Deserialize;
 use tracing::{error, warn};
 
-use crate::{auth::server::AuthSession, oauth::discord};
+use crate::{
+    auth::server::AuthSession,
+    oauth::discord::{self, credentials::Credentials},
+};
 
 /// Mounts `/auth/discord/authorize`, `/auth/discord/callback`, and
 /// `/auth/logout`.
@@ -28,17 +31,16 @@ pub fn router() -> Router {
 
 /// Redirects to discord's consent screen.
 async fn authorize() -> impl IntoResponse {
-    match (
-        std::env::var("MUNIBOT_BASE_URL"),
-        std::env::var("DISCORD_APPLICATION_ID"),
-    ) {
-        (Ok(base_url), Ok(client_id)) => {
-            Redirect::to(&discord::authorize_url(&base_url, &client_id)).into_response()
-        }
-        _ => {
+    match Credentials::from_env() {
+        Ok(credentials) => Redirect::to(&discord::authorize_url(
+            &credentials.base_url,
+            &credentials.client_id,
+        ))
+        .into_response(),
+        Err(_) => {
             error!(
-                "MUNIBOT_BASE_URL and/or DISCORD_APPLICATION_ID aren't set; can't sign in with \
-                 discord"
+                "MUNIBOT_BASE_URL, DISCORD_APPLICATION_ID, and/or DISCORD_CLIENT_SECRET aren't \
+                 set; can't sign in with discord"
             );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -85,11 +87,15 @@ async fn callback(
 /// Exchanges the code, fetches the discord identity, and finds or creates
 /// the corresponding munibot user. Returns the signed-in user's id.
 async fn sign_in_with_discord(pool: &DbPool, code: &str) -> anyhow::Result<i64> {
-    let base_url = std::env::var("MUNIBOT_BASE_URL")?;
-    let client_id = std::env::var("DISCORD_APPLICATION_ID")?;
-    let client_secret = std::env::var("DISCORD_CLIENT_SECRET")?;
+    let credentials = Credentials::from_env()?;
 
-    let token = discord::exchange_code(code, &base_url, &client_id, &client_secret).await?;
+    let token = discord::exchange_code(
+        code,
+        &credentials.base_url,
+        &credentials.client_id,
+        &credentials.client_secret,
+    )
+    .await?;
     let discord_user = discord::get_current_user(&token.access_token).await?;
 
     let token_expires_at =
