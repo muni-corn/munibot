@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use axum_session_auth::{Authentication, HasPermission};
 use axum_session_redispool::SessionRedisPool;
-use munibot_core::db::{DbPool, operations};
+use munibot_core::db::{self, DbPool, operations};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::UserData;
@@ -20,8 +20,8 @@ pub struct User {
     pub data: UserData,
 }
 
-impl From<munibot_core::db::models::User> for User {
-    fn from(row: munibot_core::db::models::User) -> Self {
+impl From<db::models::User> for User {
+    fn from(row: db::models::User) -> Self {
         Self {
             id: row.id,
             data: UserData {
