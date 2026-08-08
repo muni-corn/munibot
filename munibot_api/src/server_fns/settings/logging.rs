@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 use crate::settings::{GuildLoggingSettings, SettingsResult};
 
 /// Returns a guild's logging settings.
+#[tracing::instrument]
 #[server(
     auth: crate::auth::server::AuthSession,
     pool: axum::extract::Extension<munibot_core::db::DbPool>,
