@@ -2,7 +2,7 @@ use munibot_core::db::{DbPool, models::LinkedAccount, operations};
 
 use crate::{
     auth::server::AuthSession,
-    oauth::discord,
+    oauth::discord::{self, guild_cache},
     settings::{SettingsError, SettingsResult},
 };
 
@@ -14,9 +14,9 @@ use crate::{
 /// Every settings server function that reads or writes state scoped to a
 /// guild must call this first -- nothing else in munibot verifies guild
 /// authority today (`is_administered_by_user` is otherwise used only as a
-/// display filter in `get_guilds`). This is a real http round trip to
-/// discord per call; there's no local cache of guild membership to check
-/// against instead.
+/// display filter in `get_guilds`). The guild list this checks against
+/// comes from `guild_cache`, so it's a real http round trip to discord at
+/// most once per user per its ttl, not once per call.
 pub async fn require_guild_admin(
     auth: &AuthSession,
     pool: &DbPool,
@@ -36,7 +36,7 @@ pub async fn require_guild_admin(
         .await?
         .ok_or(SettingsError::NotGuildAdmin)?;
 
-    let guilds = discord::get_current_user_guilds(&linked_account.access_token).await?;
+    let guilds = guild_cache::guilds_for_user(user.id, &linked_account.access_token).await?;
 
     let administers = guilds
         .iter()
