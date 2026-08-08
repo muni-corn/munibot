@@ -34,12 +34,6 @@ dioxus-html = "0.8.0-alpha.1"
 dotenvy = "0.15"
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = [
-  "env-filter",
-  "fmt",
-  "tracing-log",
-] }
 num-format = "0.4"
 once_cell = "1.18"
 poise = { version = "0.6", features = ["cache"] }
@@ -54,6 +48,12 @@ strum = { version = "0.28", features = ["derive"] }
 thiserror = "2.0"
 tokio = { version = "1.22", features = ["full"] }
 toml = "1.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "tracing-log",
+] }
 twitch-irc = { version = "6.0", features = ["refreshing-token-native-tls"] }
 twitch_api = { version = "0.7", features = [
   "client",
