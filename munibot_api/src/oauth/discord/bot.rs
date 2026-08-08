@@ -12,6 +12,9 @@ use thiserror::Error;
 /// Errors from a request made with the bot's own token.
 #[derive(Debug, Error)]
 pub enum DiscordBotError {
+    #[error("discord bot is misconfigured >_< {message}")]
+    Misconfiguration { message: String },
+
     #[error("request to discord failed :< {0}")]
     Request(#[from] reqwest::Error),
 
@@ -49,12 +52,16 @@ pub const CHANNEL_TYPE_CATEGORY: u8 = 4;
 pub const CHANNEL_TYPE_ANNOUNCEMENT: u8 = 5;
 
 /// Fetches every channel in a guild, using the bot's own token.
-pub async fn get_guild_channels(
-    bot_token: &str,
-    guild_id: &str,
-) -> Result<Vec<DiscordChannel>, DiscordBotError> {
+#[cfg(feature = "server")]
+pub async fn get_guild_channels(guild_id: &str) -> Result<Vec<DiscordChannel>, DiscordBotError> {
+    let bot_token =
+        std::env::var("DISCORD_TOKEN").map_err(|_| DiscordBotError::Misconfiguration {
+            message: "DISCORD_TOKEN isn't set".to_string(),
+        })?;
+
+    let url = format!("{}/guilds/{guild_id}/channels", super::API_BASE);
     let response = reqwest::Client::new()
-        .get(format!("{}/guilds/{guild_id}/channels", super::API_BASE))
+        .get(url)
         .header("Authorization", format!("Bot {bot_token}"))
         .send()
         .await?;
