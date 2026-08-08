@@ -49,9 +49,7 @@ pub async fn set_guild_logging_settings(
     require_guild_admin(&auth, &pool, &guild_id).await?;
 
     if let Some(channel_id) = &settings.channel_id {
-        let bot_token = std::env::var("DISCORD_TOKEN")
-            .map_err(|_| anyhow::anyhow!("DISCORD_TOKEN isn't set"))?;
-        let channels = bot::get_guild_channels(&bot_token, &guild_id).await?;
+        let channels = bot::get_guild_channels(&guild_id).await?;
         let is_text_channel_in_this_guild = channels.iter().any(|channel| {
             &channel.id == channel_id
                 && matches!(
