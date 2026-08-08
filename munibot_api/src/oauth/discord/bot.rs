@@ -5,6 +5,8 @@
 //! module), which does not permit listing a guild's channels -- that needs
 //! the bot's own token instead.
 
+use std::time::Duration;
+
 use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
@@ -27,6 +29,11 @@ pub enum DiscordBotError {
 
     #[error("discord returned an unexpected response: {status}")]
     UnexpectedStatus { status: StatusCode },
+
+    /// Discord rejected the request with a `429`, even after retrying with
+    /// backoff.
+    #[error("discord is rate limiting us; try again in {retry_after:?} :<")]
+    RateLimited { retry_after: Duration, global: bool },
 }
 
 /// The subset of a discord channel's REST representation munibot cares
