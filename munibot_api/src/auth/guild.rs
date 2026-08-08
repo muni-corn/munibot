@@ -36,7 +36,8 @@ pub async fn require_guild_admin(
         .await?
         .ok_or(SettingsError::NotGuildAdmin)?;
 
-    let guilds = guild_cache::guilds_for_user(user.id, &linked_account.access_token).await?;
+    let access_token = discord::token::access_token_for(pool, &linked_account).await?;
+    let guilds = guild_cache::guilds_for_user(user.id, &access_token).await?;
 
     let administers = guilds
         .iter()
