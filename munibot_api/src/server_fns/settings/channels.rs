@@ -9,6 +9,7 @@ use crate::settings::{ChannelSummary, SettingsResult};
 /// as `get_guilds`: `axum` and `munibot_core` are optional, server-only
 /// dependencies, so a top-level `use` of either would fail to resolve when
 /// compiling the wasm client.
+#[tracing::instrument]
 #[server(
     auth: crate::auth::server::AuthSession,
     pool: axum::extract::Extension<munibot_core::db::DbPool>,
