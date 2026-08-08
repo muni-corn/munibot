@@ -23,10 +23,7 @@ pub async fn get_guild_channels(guild_id: String) -> SettingsResult<Vec<ChannelS
 
     // the user's own oauth token can't list channels (scope is `identify
     // guilds`); this needs the bot's own token instead
-    let bot_token =
-        std::env::var("DISCORD_TOKEN").map_err(|_| anyhow::anyhow!("DISCORD_TOKEN isn't set"))?;
-
-    let channels = bot::get_guild_channels(&bot_token, &guild_id).await?;
+    let channels = bot::get_guild_channels(&guild_id).await?;
 
     // categories carry their own position among other categories; sort
     // uncategorized channels first (matching discord's own client), then by
