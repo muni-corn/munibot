@@ -1,9 +1,8 @@
 use dioxus::prelude::*;
 use munibot_api::{
     server_fns::settings::{
-        channels::get_guild_channels,
-        discord::get_discord_invite_link,
-        logging::{get_guild_logging_settings, set_guild_logging_settings},
+        discord::get_discord_invite_link, logging::set_guild_logging_settings,
+        logging_page::get_guild_logging_page,
     },
     settings::{GuildLoggingSettings, SettingsError},
 };
@@ -17,16 +16,10 @@ use crate::components::{
 /// logged to.
 #[component]
 pub fn LoggingSettingsPage(guild_id: String) -> Element {
-    let channels_guild_id = guild_id.clone();
-    let channels = use_resource(move || {
-        let guild_id = channels_guild_id.clone();
-        async move { get_guild_channels(guild_id).await }
-    });
-
-    let settings_guild_id = guild_id.clone();
-    let settings = use_resource(move || {
-        let guild_id = settings_guild_id.clone();
-        async move { get_guild_logging_settings(guild_id).await }
+    let page_guild_id = guild_id.clone();
+    let page = use_resource(move || {
+        let guild_id = page_guild_id.clone();
+        async move { get_guild_logging_page(guild_id).await }
     });
 
     // only fetched for the BotNotInGuild case below, so it's fine that this
@@ -47,9 +40,9 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
         if *seeded.read() {
             return;
         }
-        if let Some(Ok(loaded)) = &*settings.read() {
-            selected.set(loaded.channel_id.clone());
-            saved.set(loaded.channel_id.clone());
+        if let Some(Ok(loaded)) = &*page.read() {
+            selected.set(loaded.settings.channel_id.clone());
+            saved.set(loaded.settings.channel_id.clone());
             seeded.set(true);
         }
     });
@@ -76,8 +69,8 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
 
     let on_discard = move |_| selected.set(saved.read().clone());
 
-    let content = match (&*channels.read(), &*settings.read()) {
-        (Some(Ok(channels)), Some(Ok(_))) => rsx! {
+    let content = match &*page.read() {
+        Some(Ok(page)) => rsx! {
             SettingsSection {
                 title: "logging".to_string(),
                 description: Some(
@@ -88,7 +81,7 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
                     label: "log channel".to_string(),
                     description: Some("leave this empty to turn logging off.".to_string()),
                     ChannelSelect {
-                        channels: channels.clone(),
+                        channels: page.channels.clone(),
                         value: selected.read().clone(),
                         none_label: "off".to_string(),
                         on_change: move |value| selected.set(value),
@@ -105,7 +98,7 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
                 on_discard,
             }
         },
-        (Some(Err(SettingsError::BotNotInGuild)), _) => {
+        Some(Err(SettingsError::BotNotInGuild)) => {
             let invite_link = invite_link
                 .read()
                 .as_ref()
@@ -116,10 +109,10 @@ pub fn LoggingSettingsPage(guild_id: String) -> Element {
                 InviteMunibotPrompt { invite_link }
             }
         }
-        (Some(Err(_)), _) | (_, Some(Err(_))) => rsx! {
+        Some(Err(_)) => rsx! {
             div { class: "alert alert-error", "couldn't load this server's logging settings :<" }
         },
-        _ => rsx! {
+        None => rsx! {
             Spinner {}
         },
     };
