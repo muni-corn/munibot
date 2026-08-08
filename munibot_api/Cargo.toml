@@ -25,6 +25,7 @@ axum_session_redispool = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 diesel = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 tracing.workspace = true
 
 [features]
@@ -41,4 +42,5 @@ server = [
   "dep:chrono",
   "dep:diesel",
   "dep:reqwest",
+  "dep:serde_json",
 ]
