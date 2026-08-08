@@ -68,6 +68,10 @@ async fn callback(
 
     match sign_in_with_discord(&pool, &code).await {
         Ok(user_id) => {
+            // drop any guild list cached under this user id, so a stale
+            // entry from a previous session's token never gets served
+            // under the new one
+            discord::guild_cache::invalidate(user_id).await;
             auth.login_user(user_id.to_string());
             Redirect::to("/dashboard")
         }
@@ -109,6 +113,9 @@ async fn sign_in_with_discord(pool: &DbPool, code: &str) -> anyhow::Result<i64> 
 
 /// Logs the current session out and returns home.
 async fn logout(auth: AuthSession) -> Redirect {
+    if let Some(user) = &auth.current_user {
+        discord::guild_cache::invalidate(user.id).await;
+    }
     auth.logout_user();
     Redirect::to("/")
 }
