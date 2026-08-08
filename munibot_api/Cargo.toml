@@ -24,8 +24,10 @@ axum_session_auth = { workspace = true, optional = true }
 axum_session_redispool = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 diesel = { workspace = true, optional = true }
+moka = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 tracing.workspace = true
 
 [features]
@@ -41,6 +43,8 @@ server = [
   "dep:axum_session_redispool",
   "dep:chrono",
   "dep:diesel",
+  "dep:moka",
   "dep:reqwest",
+  "dep:tokio",
   "dep:serde_json",
 ]
