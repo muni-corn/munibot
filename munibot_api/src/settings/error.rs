@@ -2,6 +2,11 @@ use dioxus::{fullstack::AsStatusCode, prelude::*};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[cfg(feature = "server")]
+use crate::oauth::discord::DiscordOAuthError;
+#[cfg(feature = "server")]
+use crate::oauth::discord::bot::DiscordBotError;
+
 /// Error returned by settings server functions.
 ///
 /// Kept distinct from every other failure a settings page can hit, rather
@@ -62,8 +67,8 @@ impl From<anyhow::Error> for SettingsError {
 }
 
 #[cfg(feature = "server")]
-impl From<crate::oauth::discord::DiscordOAuthError> for SettingsError {
-    fn from(e: crate::oauth::discord::DiscordOAuthError) -> Self {
+impl From<DiscordOAuthError> for SettingsError {
+    fn from(e: DiscordOAuthError) -> Self {
         Self::ServerFnError(ServerFnError::ServerError {
             message: e.to_string(),
             code: StatusCode::INTERNAL_SERVER_ERROR.into(),
@@ -73,10 +78,10 @@ impl From<crate::oauth::discord::DiscordOAuthError> for SettingsError {
 }
 
 #[cfg(feature = "server")]
-impl From<crate::oauth::discord::bot::DiscordBotError> for SettingsError {
-    fn from(e: crate::oauth::discord::bot::DiscordBotError) -> Self {
+impl From<DiscordBotError> for SettingsError {
+    fn from(e: DiscordBotError) -> Self {
         match e {
-            crate::oauth::discord::bot::DiscordBotError::NotInGuild => Self::BotNotInGuild,
+            DiscordBotError::NotInGuild => Self::BotNotInGuild,
             other => Self::ServerFnError(ServerFnError::ServerError {
                 message: other.to_string(),
                 code: StatusCode::INTERNAL_SERVER_ERROR.into(),
