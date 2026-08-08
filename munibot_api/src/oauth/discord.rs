@@ -8,6 +8,7 @@ use thiserror::Error;
 
 pub mod bot;
 pub mod client;
+pub mod rate_limit;
 
 const API_BASE: &str = "https://discord.com/api/v10";
 
@@ -36,6 +37,21 @@ pub enum DiscordOAuthError {
     /// it's useful in logs.
     #[error("discord is rate limiting us; try again in {retry_after:?} :<")]
     RateLimited { retry_after: Duration, global: bool },
+}
+
+impl From<rate_limit::SendError> for DiscordOAuthError {
+    fn from(e: rate_limit::SendError) -> Self {
+        match e {
+            rate_limit::SendError::Request(e) => Self::Request(e),
+            rate_limit::SendError::RateLimited {
+                retry_after,
+                global,
+            } => Self::RateLimited {
+                retry_after,
+                global,
+            },
+        }
+    }
 }
 
 /// The redirect URI munibot registers with discord for the oauth2 callback.
@@ -87,18 +103,19 @@ pub async fn exchange_code(
     client_id: &str,
     client_secret: &str,
 ) -> Result<Token, DiscordOAuthError> {
-    let response = client::client()
-        .post(format!("{API_BASE}/oauth2/token"))
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("code", code),
-            ("redirect_uri", &redirect_uri(base_url)),
-        ])
-        .basic_auth(client_id, Some(client_secret))
-        .send()
-        .await?
-        .json::<TokenResponse>()
-        .await?;
+    let response = rate_limit::send_with_retries(
+        client::client()
+            .post(format!("{API_BASE}/oauth2/token"))
+            .form(&[
+                ("grant_type", "authorization_code"),
+                ("code", code),
+                ("redirect_uri", &redirect_uri(base_url)),
+            ])
+            .basic_auth(client_id, Some(client_secret)),
+    )
+    .await?
+    .json::<TokenResponse>()
+    .await?;
 
     match response {
         TokenResponse::Success {
@@ -146,13 +163,14 @@ impl DiscordUser {
 
 /// Fetches the identity of the user who owns `access_token`.
 pub async fn get_current_user(access_token: &str) -> Result<DiscordUser, DiscordOAuthError> {
-    Ok(client::client()
-        .get(format!("{API_BASE}/users/@me"))
-        .bearer_auth(access_token)
-        .send()
-        .await?
-        .json::<DiscordUser>()
-        .await?)
+    Ok(rate_limit::send_with_retries(
+        client::client()
+            .get(format!("{API_BASE}/users/@me"))
+            .bearer_auth(access_token),
+    )
+    .await?
+    .json::<DiscordUser>()
+    .await?)
 }
 
 /// The `MANAGE_GUILD` permission bit, per discord's permissions bitfield.
@@ -192,11 +210,12 @@ impl DiscordGuild {
 pub async fn get_current_user_guilds(
     access_token: &str,
 ) -> Result<Vec<DiscordGuild>, DiscordOAuthError> {
-    Ok(client::client()
-        .get(format!("{API_BASE}/users/@me/guilds"))
-        .bearer_auth(access_token)
-        .send()
-        .await?
-        .json::<Vec<DiscordGuild>>()
-        .await?)
+    Ok(rate_limit::send_with_retries(
+        client::client()
+            .get(format!("{API_BASE}/users/@me/guilds"))
+            .bearer_auth(access_token),
+    )
+    .await?
+    .json::<Vec<DiscordGuild>>()
+    .await?)
 }
