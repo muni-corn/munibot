@@ -1,10 +1,13 @@
 //! Shared test utilities for integration tests.
 //!
-//! MySQL requires the devenv database to be running. Two users are used:
-//!   root         -- global CREATE/DROP to manage per-test databases
-//!   munibot_test -- ALL PRIVILEGES on `munibot_test_%` for table operations
+//! MySQL requires the devenv database to be running. Tests connect as
+//! `munibot_test`, which has `ALL PRIVILEGES` on the wildcarded schema
+//! `munibot_test_%` (see `devenv.nix`) -- mysql's wildcard database grants
+//! cover `CREATE`/`DROP DATABASE` for any name matching the pattern, not
+//! just operations on tables within an already-existing database, so no
+//! separate root/admin user is needed to manage per-test databases.
 //!
-//! These credentials are only and SHOULD ONLY be used for local development
+//! This credential is only and SHOULD ONLY be used for local development
 //! servers.
 
 use diesel::prelude::*;
@@ -18,7 +21,6 @@ use rand::{RngExt, distr::Alphanumeric};
 
 // use 127.0.0.1 (not localhost) to force TCP -- the native MySQL C library
 // used by diesel's sync MysqlConnection interprets "localhost" as a Unix socket
-pub const ROOT_DB_URL: &str = "mysql://root:sillylittlepassword@127.0.0.1:3306/mysql";
 pub const TEST_DB_BASE_URL: &str = "mysql://munibot_test:sillylittlepassword@127.0.0.1:3306";
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
@@ -47,9 +49,11 @@ impl TestDb {
             .collect();
         let db_name = format!("munibot_test_{suffix}");
 
-        // create the database via a sync management connection
+        // create the database via a sync management connection -- no
+        // database in the url yet, since the one we're about to create
+        // doesn't exist until this statement runs
         {
-            let mut conn = MysqlConnection::establish(ROOT_DB_URL)
+            let mut conn = MysqlConnection::establish(TEST_DB_BASE_URL)
                 .expect("couldn't connect to mysql for test db creation");
             diesel::RunQueryDsl::execute(
                 diesel::sql_query(format!("CREATE DATABASE `{db_name}`")),
@@ -85,7 +89,7 @@ impl Drop for TestDb {
     fn drop(&mut self) {
         // drop the database using a fresh sync connection -- this runs even on
         // test panic so we don't leave stale databases behind
-        let mut conn = MysqlConnection::establish(ROOT_DB_URL)
+        let mut conn = MysqlConnection::establish(TEST_DB_BASE_URL)
             .expect("couldn't connect to mysql for test db cleanup");
         diesel::RunQueryDsl::execute(
             diesel::sql_query(format!("DROP DATABASE IF EXISTS `{}`", self.db_name)),
