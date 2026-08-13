@@ -17,10 +17,7 @@ use crate::components::{
 #[component]
 pub fn LoggingSettingsPage(guild_id: String) -> Element {
     let page_guild_id = guild_id.clone();
-    let page = use_resource(move || {
-        let guild_id = page_guild_id.clone();
-        async move { get_guild_logging_page(guild_id).await }
-    });
+    let page = use_resource(move || get_guild_logging_page(page_guild_id.clone()));
 
     // only fetched for the BotNotInGuild case below, so it's fine that this
     // makes a request up front regardless -- it's a single cheap read of an
