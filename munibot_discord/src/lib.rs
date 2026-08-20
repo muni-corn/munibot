@@ -19,6 +19,7 @@ pub mod error;
 pub mod handler;
 pub mod handlers;
 pub mod pluralkit;
+mod push_safer;
 pub mod simple;
 pub mod state;
 pub mod utils;
