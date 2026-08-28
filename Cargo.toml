@@ -78,6 +78,8 @@ html2text = "0.17"
 base64 = "0.23"
 sha2 = "0.11"
 bollard = "0.21"
+globset = "0.4"
+ignore = "0.4"
 twitch_oauth2 = "0.15"
 url = "2.4"
 uuid = { version = "1.24.0", features = ["v4"] }

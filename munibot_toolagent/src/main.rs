@@ -8,7 +8,10 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use munibot_toolagent::server::{Dispatcher, serve};
+use munibot_toolagent::{
+    server::{Dispatcher, serve},
+    tools::{glob::GlobHandler, read::ReadHandler},
+};
 use tokio::net::UnixListener;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -18,6 +21,9 @@ struct Args {
     /// the host.
     #[clap(long)]
     socket: String,
+    /// The repository root every filesystem and shell tool is jailed to.
+    #[clap(long)]
+    root: std::path::PathBuf,
 }
 
 /// Resolves once `SIGTERM` arrives, or immediately if this process somehow
@@ -56,11 +62,13 @@ async fn main() {
         }
     };
 
-    tracing::info!(socket = %args.socket, "starting munibot_toolagent");
+    tracing::info!(socket = %args.socket, root = ?args.root, "starting munibot_toolagent");
 
-    // no tools are registered yet - later commits add read, write, edit,
-    // bash, grep, and glob here one at a time
-    let dispatcher = Arc::new(Dispatcher::new());
+    // later commits add write, edit, bash, and grep here one at a time
+    let mut dispatcher = Dispatcher::new();
+    dispatcher.register("read", Arc::new(ReadHandler::new(args.root.clone())));
+    dispatcher.register("glob", Arc::new(GlobHandler::new(args.root.clone())));
+    let dispatcher = Arc::new(dispatcher);
 
     serve(listener, dispatcher, wait_for_sigterm()).await;
 
