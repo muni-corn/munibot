@@ -42,6 +42,8 @@
 //! but the one time it is is the one that matters.
 
 pub mod checkout;
+pub mod codec;
 pub mod config;
 pub mod container;
 pub mod protocol;
+pub mod rpc;

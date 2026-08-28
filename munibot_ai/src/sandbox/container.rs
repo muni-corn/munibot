@@ -20,6 +20,13 @@ use crate::{
 /// Matches the `Containerfile`'s own `WORKDIR /workspace`.
 pub const WORKSPACE_MOUNT_PATH: &str = "/workspace";
 
+/// Where the per-sandbox rpc socket is mounted inside the container.
+pub const SOCKET_MOUNT_DIR: &str = "/run/toolagent";
+
+/// The socket's filename within [`SOCKET_MOUNT_DIR`] (and its host-side
+/// mirror, [`Sandbox::socket_host_path`]).
+pub const SOCKET_FILENAME: &str = "agent.sock";
+
 /// How long `stop` waits for the container to exit on its own before
 /// escalating to a kill signal.
 const STOP_TIMEOUT_SECS: i32 = 10;
@@ -38,6 +45,12 @@ pub struct Sandbox {
     /// until [`Self::with_workspace_mount`] sets it, which
     /// [`Self::checkout`] (commit 143) requires before it can do anything.
     workspace_mount: Option<PathBuf>,
+    /// The host directory bind-mounted at [`SOCKET_MOUNT_DIR`], holding
+    /// just the tool agent's rpc socket. Generated fresh for every
+    /// sandbox - unlike the workspace mount, nothing external needs to
+    /// choose this path, so there is no `with_socket_mount` builder to
+    /// match [`Self::with_workspace_mount`].
+    socket_host_dir: PathBuf,
 }
 
 impl Sandbox {
@@ -62,6 +75,7 @@ impl Sandbox {
             config,
             container_id: None,
             workspace_mount: None,
+            socket_host_dir: fresh_socket_host_dir(),
         }
     }
 
@@ -127,10 +141,13 @@ impl Sandbox {
             NetworkPolicy::Allowlist(_) => "bridge",
         };
 
-        let binds = self
-            .workspace_mount
-            .as_ref()
-            .map(|host_path| vec![format!("{}:{WORKSPACE_MOUNT_PATH}:rw", host_path.display())]);
+        let mut binds = vec![format!(
+            "{}:{SOCKET_MOUNT_DIR}:rw",
+            self.socket_host_dir.display()
+        )];
+        if let Some(host_path) = &self.workspace_mount {
+            binds.push(format!("{}:{WORKSPACE_MOUNT_PATH}:rw", host_path.display()));
+        }
 
         HostConfig {
             nano_cpus: Some(nano_cpus),
@@ -140,9 +157,10 @@ impl Sandbox {
             cap_drop: Some(vec!["ALL".to_string()]),
             security_opt: Some(vec!["no-new-privileges".to_string()]),
             readonly_rootfs: Some(true),
-            // the workspace bind mount is the one other writable path
-            // besides /tmp on this otherwise read-only root filesystem
-            binds,
+            // the workspace and socket bind mounts are the only other
+            // writable paths besides /tmp on this otherwise read-only
+            // root filesystem
+            binds: Some(binds),
             tmpfs: Some(HashMap::from([("/tmp".to_string(), String::new())])),
             ..Default::default()
         }
@@ -152,6 +170,27 @@ impl Sandbox {
     /// [`Self::with_workspace_mount`] set one.
     pub fn workspace_mount(&self) -> Option<&std::path::Path> {
         self.workspace_mount.as_deref()
+    }
+
+    /// The host-side path of the tool agent's rpc socket, once it starts
+    /// listening - the file itself does not exist until the container
+    /// actually creates it, but the containing directory (bind-mounted at
+    /// [`SOCKET_MOUNT_DIR`]) is created up front by [`fresh_socket_host_dir`].
+    pub fn socket_host_path(&self) -> PathBuf {
+        self.socket_host_dir.join(SOCKET_FILENAME)
+    }
+
+    /// The `munibot_toolagent` arguments this sandbox's container should
+    /// run with - the socket and repository root paths as seen from
+    /// *inside* the container, matching [`SOCKET_MOUNT_DIR`] and
+    /// [`WORKSPACE_MOUNT_PATH`].
+    pub fn tool_agent_cmd(&self) -> Vec<String> {
+        vec![
+            "--socket".to_string(),
+            format!("{SOCKET_MOUNT_DIR}/{SOCKET_FILENAME}"),
+            "--root".to_string(),
+            WORKSPACE_MOUNT_PATH.to_string(),
+        ]
     }
 
     /// Runs `cmd` inside the running container via `docker exec`, waiting
@@ -248,6 +287,32 @@ impl Sandbox {
     }
 }
 
+/// Creates a fresh, unique host directory to bind-mount the tool agent's
+/// rpc socket into a container from.
+///
+/// Prefers `$XDG_RUNTIME_DIR` (already tmpfs-backed on every system this
+/// runs on - it's where rootless podman's own socket already lives, per
+/// `devenv.nix`) and falls back to `/dev/shm`, so the socket file never
+/// touches a real disk.
+fn fresh_socket_host_dir() -> PathBuf {
+    let base = std::env::var("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/dev/shm"));
+
+    let dir = base.join(format!(
+        "munibot-sandbox-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    // best-effort: if this somehow fails, the later bind-mount attempt
+    // fails loudly instead when the container is actually created, which
+    // is a clearer error than one from here ever could be
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 /// Removes a container by id, force-removing so a still-running container
 /// (one that never got a chance to `stop` cleanly) is torn down anyway.
 async fn remove_container_best_effort(
@@ -272,6 +337,12 @@ impl Drop for Sandbox {
     /// podman's own garbage collection is still far better than a panic in
     /// a destructor.
     fn drop(&mut self) {
+        // the socket directory is a plain host directory, cleaned up
+        // synchronously regardless of whether a container ever existed -
+        // unlike the container itself, there is no async daemon call
+        // needed to remove it
+        std::fs::remove_dir_all(&self.socket_host_dir).ok();
+
         let Some(id) = self.container_id.take() else {
             return;
         };
@@ -359,16 +430,46 @@ mod tests {
         let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"))
             .with_workspace_mount("/host/repo");
         let host_config = sandbox.build_host_config();
-        assert_eq!(
-            host_config.binds,
-            Some(vec![format!("/host/repo:{WORKSPACE_MOUNT_PATH}:rw")])
-        );
+        let binds = host_config.binds.expect("should have binds");
+        assert!(binds.contains(&format!("/host/repo:{WORKSPACE_MOUNT_PATH}:rw")));
     }
 
     #[test]
-    fn test_no_workspace_mount_means_no_extra_binds() {
+    fn test_no_workspace_mount_means_only_the_socket_bind() {
         let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
-        assert_eq!(sandbox.build_host_config().binds, None);
+        let binds = sandbox
+            .build_host_config()
+            .binds
+            .expect("the socket mount is always present");
+        assert_eq!(binds.len(), 1);
+        assert!(binds[0].ends_with(&format!(":{SOCKET_MOUNT_DIR}:rw")));
+    }
+
+    #[test]
+    fn test_socket_host_path_lives_under_the_generated_socket_directory() {
+        let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
+        let path = sandbox.socket_host_path();
+        assert_eq!(path.file_name().unwrap(), SOCKET_FILENAME);
+        assert!(path.to_string_lossy().contains("munibot-sandbox-"));
+    }
+
+    #[test]
+    fn test_tool_agent_cmd_points_at_the_in_container_mount_paths() {
+        let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
+        let cmd = sandbox.tool_agent_cmd();
+        assert_eq!(cmd, vec![
+            "--socket".to_string(),
+            format!("{SOCKET_MOUNT_DIR}/{SOCKET_FILENAME}"),
+            "--root".to_string(),
+            WORKSPACE_MOUNT_PATH.to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_each_sandbox_gets_a_distinct_socket_host_directory() {
+        let first = Sandbox::with_docker(docker(), test_config("alpine:latest"));
+        let second = Sandbox::with_docker(docker(), test_config("alpine:latest"));
+        assert_ne!(first.socket_host_path(), second.socket_host_path());
     }
 
     #[test]
