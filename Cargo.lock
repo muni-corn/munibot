@@ -4595,6 +4595,7 @@ dependencies = [
 name = "munibot_toolagent"
 version = "0.3.3"
 dependencies = [
+ "async-trait",
  "clap",
  "serde",
  "serde_json",
