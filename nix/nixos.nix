@@ -72,6 +72,19 @@ in
       description = "Group account under which munibot runs.";
       default = "munibot";
     };
+
+    enableAiSandbox = mkOption {
+      type = types.bool;
+      description = ''
+        Whether to enable rootless podman for the ai agent harness's container sandbox (see `docs/plans/ai/milestone-4-sandbox.md`). Required for any persona with a `sandbox` policy other than `forbidden` to actually work; harmless to enable otherwise, since nothing provisions a container unless a persona's own configuration asks for one.
+
+        Also allocates a subuid/subgid range for the munibot user and enables systemd lingering for it, both required for rootless podman to run reliably from a system service rather than an interactive login session.
+
+        One manual, one-time step this module does not automate: the munibot user's own `podman.socket` unit needs enabling once after first deploy, since NixOS's `virtualisation.podman` module ships the unit but does not enable it per-user on its own:
+        `sudo -u munibot XDG_RUNTIME_DIR=/run/user/$(id -u munibot) systemctl --user enable --now podman.socket`
+      '';
+      default = true;
+    };
   };
 
   config =
@@ -96,6 +109,14 @@ in
         enable = true;
         port = 6379;
         bind = "127.0.0.1";
+      };
+
+      # the ai sandbox's container runtime - see ai::sandbox and
+      # munibot_toolagent. rootless podman needs a real subuid/subgid
+      # allocation and a persistent user systemd instance (linger) to run
+      # reliably from this system service rather than an interactive login
+      virtualisation.podman = lib.mkIf cfg.enableAiSandbox {
+        enable = true;
       };
 
       systemd.services.munibot =
@@ -153,7 +174,28 @@ in
           isSystemUser = true;
           name = cfg.user;
           group = cfg.group;
+          # rootless podman maps container uids/gids into this range - see
+          # cfg.enableAiSandbox's own doc comment for why both this and
+          # linger are needed for a system service rather than a login session
+          subUidRanges = lib.mkIf cfg.enableAiSandbox [
+            {
+              count = 65536;
+              startUid = 100000;
+            }
+          ];
+          subGidRanges = lib.mkIf cfg.enableAiSandbox [
+            {
+              count = 65536;
+              startGid = 100000;
+            }
+          ];
         };
       };
+
+      # starts (and keeps running) this user's own systemd instance at boot,
+      # which is what actually owns the rootless podman socket - without
+      # this, podman would only work for the duration of an interactive
+      # login this system service never has
+      users.users.${cfg.user}.linger = lib.mkIf cfg.enableAiSandbox true;
     };
 }
