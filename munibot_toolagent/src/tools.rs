@@ -5,5 +5,7 @@
 //! [`crate::jail::resolve_in_jail`] before it reaches the filesystem or a
 //! shell - never trusting a model-authored path directly.
 
+pub mod edit;
 pub mod glob;
 pub mod read;
+pub mod write;
