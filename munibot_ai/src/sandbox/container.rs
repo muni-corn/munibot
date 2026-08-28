@@ -2,7 +2,7 @@
 //! container through bollard, applying every resource and security limit
 //! from [`SandboxConfig`].
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use bollard::{
     Docker,
@@ -14,6 +14,11 @@ use crate::{
     sandbox::config::{NetworkPolicy, SandboxConfig},
     types::AiError,
 };
+
+/// Where the repository is mounted inside every sandbox container - the one
+/// writable path on an otherwise read-only root filesystem besides `/tmp`.
+/// Matches the `Containerfile`'s own `WORKDIR /workspace`.
+pub const WORKSPACE_MOUNT_PATH: &str = "/workspace";
 
 /// How long `stop` waits for the container to exit on its own before
 /// escalating to a kill signal.
@@ -29,6 +34,10 @@ pub struct Sandbox {
     docker: Docker,
     config: SandboxConfig,
     container_id: Option<String>,
+    /// The host directory bind-mounted at [`WORKSPACE_MOUNT_PATH`] - `None`
+    /// until [`Self::with_workspace_mount`] sets it, which
+    /// [`Self::checkout`] (commit 143) requires before it can do anything.
+    workspace_mount: Option<PathBuf>,
 }
 
 impl Sandbox {
@@ -52,7 +61,20 @@ impl Sandbox {
             docker,
             config,
             container_id: None,
+            workspace_mount: None,
         }
+    }
+
+    /// Sets the host directory bind-mounted at [`WORKSPACE_MOUNT_PATH`]
+    /// once the container is created - the one writable path on an
+    /// otherwise read-only root filesystem besides `/tmp`.
+    ///
+    /// Must be called before [`Self::create`]; the mount is part of the
+    /// container's own creation options and cannot be added to one that
+    /// already exists.
+    pub fn with_workspace_mount(mut self, host_path: impl Into<PathBuf>) -> Self {
+        self.workspace_mount = Some(host_path.into());
+        self
     }
 
     /// Creates a container from `config.image`, applying every resource
@@ -105,6 +127,11 @@ impl Sandbox {
             NetworkPolicy::Allowlist(_) => "bridge",
         };
 
+        let binds = self
+            .workspace_mount
+            .as_ref()
+            .map(|host_path| vec![format!("{}:{WORKSPACE_MOUNT_PATH}:rw", host_path.display())]);
+
         HostConfig {
             nano_cpus: Some(nano_cpus),
             memory: Some(self.config.memory_limit_bytes as i64),
@@ -113,8 +140,66 @@ impl Sandbox {
             cap_drop: Some(vec!["ALL".to_string()]),
             security_opt: Some(vec!["no-new-privileges".to_string()]),
             readonly_rootfs: Some(true),
+            // the workspace bind mount is the one other writable path
+            // besides /tmp on this otherwise read-only root filesystem
+            binds,
             tmpfs: Some(HashMap::from([("/tmp".to_string(), String::new())])),
             ..Default::default()
+        }
+    }
+
+    /// This sandbox's configured workspace mount, if
+    /// [`Self::with_workspace_mount`] set one.
+    pub fn workspace_mount(&self) -> Option<&std::path::Path> {
+        self.workspace_mount.as_deref()
+    }
+
+    /// Runs `cmd` inside the running container via `docker exec`, waiting
+    /// for it to finish and failing if it exits non-zero.
+    ///
+    /// Used by [`Self::checkout`] to run a repository's own dependency
+    /// install step - anything a project's install scripts do (an npm
+    /// postinstall hook, a `setup.py`, a build-time proc macro) executes
+    /// inside the container's own isolation, never on the host.
+    pub(crate) async fn exec(&self, cmd: Vec<String>) -> Result<(), AiError> {
+        let id = self.require_id()?;
+
+        let exec = self
+            .docker
+            .create_exec(id, bollard::exec::CreateExecOptions {
+                cmd: Some(cmd),
+                working_dir: Some(WORKSPACE_MOUNT_PATH.to_string()),
+                attach_stdout: Some(true),
+                attach_stderr: Some(true),
+                ..Default::default()
+            })
+            .await
+            .map_err(|error| AiError::Other(format!("couldn't prepare a command :< {error}")))?;
+
+        let start_result = self
+            .docker
+            .start_exec(&exec.id, None)
+            .await
+            .map_err(|error| AiError::Other(format!("couldn't run a command :< {error}")))?;
+
+        // the output stream must be drained even though its contents are
+        // discarded here - the exec process does not finish (and
+        // inspect_exec below never reports an exit code) until this side
+        // has read it to completion
+        if let bollard::exec::StartExecResults::Attached { mut output, .. } = start_result {
+            use futures::StreamExt;
+            while output.next().await.is_some() {}
+        }
+
+        let inspected = self.docker.inspect_exec(&exec.id).await.map_err(|error| {
+            AiError::Other(format!("couldn't check a command's result :< {error}"))
+        })?;
+
+        match inspected.exit_code {
+            Some(0) => Ok(()),
+            other => Err(AiError::Other(format!(
+                "command exited with status {other:?}"
+            ))),
         }
     }
 
@@ -269,6 +354,35 @@ mod tests {
         assert_eq!(host_config.pids_limit, Some(config.pids_limit));
     }
 
+    #[test]
+    fn test_with_workspace_mount_adds_a_bind_mount() {
+        let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"))
+            .with_workspace_mount("/host/repo");
+        let host_config = sandbox.build_host_config();
+        assert_eq!(
+            host_config.binds,
+            Some(vec![format!("/host/repo:{WORKSPACE_MOUNT_PATH}:rw")])
+        );
+    }
+
+    #[test]
+    fn test_no_workspace_mount_means_no_extra_binds() {
+        let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
+        assert_eq!(sandbox.build_host_config().binds, None);
+    }
+
+    #[test]
+    fn test_workspace_mount_accessor_reflects_what_was_set() {
+        let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
+        assert!(sandbox.workspace_mount().is_none());
+
+        let sandbox = sandbox.with_workspace_mount("/host/repo");
+        assert_eq!(
+            sandbox.workspace_mount(),
+            Some(std::path::Path::new("/host/repo"))
+        );
+    }
+
     #[tokio::test]
     async fn test_calling_create_or_remove_before_a_container_exists_is_an_error() {
         let mut sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
@@ -337,6 +451,42 @@ mod tests {
             inspected.is_err(),
             "the container should no longer exist after being dropped"
         );
+    }
+
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_the_workspace_mount_is_visible_inside_the_running_container() {
+        let host_dir = std::env::temp_dir().join(format!(
+            "munibot_ai_sandbox_workspace_mount_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&host_dir).unwrap();
+        std::fs::write(host_dir.join("marker.txt"), "hello from the host").unwrap();
+
+        let mut sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"))
+            .with_workspace_mount(&host_dir);
+        sandbox
+            .create(vec!["sleep".to_string(), "30".to_string()])
+            .await
+            .expect("should create");
+        sandbox.start().await.expect("should start");
+
+        sandbox
+            .exec(vec!["cat".to_string(), "marker.txt".to_string()])
+            .await
+            .expect("cat should succeed against a file the host already wrote");
+
+        let error = sandbox
+            .exec(vec!["cat".to_string(), "does_not_exist.txt".to_string()])
+            .await
+            .expect_err("a nonzero exit should be an error");
+        assert!(error.to_string().contains("exited with status"));
+
+        sandbox.remove().await.expect("cleanup should succeed");
+        std::fs::remove_dir_all(&host_dir).ok();
     }
 
     #[tokio::test]
