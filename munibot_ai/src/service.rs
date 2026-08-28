@@ -90,6 +90,10 @@ pub struct AiTurnRequest {
 struct PreparedTurn {
     request: TurnRequest,
     provider: Arc<dyn Provider>,
+    /// The base tool registry, with the six sandbox tools layered on top
+    /// when `sandbox` provisioned one - see
+    /// [`crate::sandbox::provision::provision_if_needed`].
+    tools: Arc<ToolRegistry>,
     conversation_id: ConversationId,
     /// The persona's display name, for [`HarnessEvent::TurnStarted`] - the
     /// harness itself only knows the model reference, not the persona.
@@ -110,6 +114,11 @@ struct PreparedTurn {
     /// [`Ai::turn`]/[`Ai::turn_streamed`] can record actual token usage
     /// against each one afterward.
     rate_limit_scopes: Vec<Scope>,
+    /// Held for the turn's own duration so the sandbox it provisioned -
+    /// if any - tears down only once the turn (or, for a streamed turn,
+    /// the whole stream) actually finishes; see that type's own doc
+    /// comment for why holding it is what "tears down afterwards" means.
+    sandbox: Option<crate::sandbox::provision::ProvisionedSandbox>,
 }
 
 /// What [`Ai::prepare`] produces: either a normal turn ready to run through
@@ -412,7 +421,7 @@ impl Ai {
         let model = prepared.request.model.clone();
         let persona_id = prepared.persona_id.clone();
 
-        let mut harness = Harness::new(prepared.provider, self.tools.clone());
+        let mut harness = Harness::new(prepared.provider, prepared.tools.clone());
         if let Some(auditor) = &self.tool_auditor {
             harness = harness.with_auditor(auditor.clone());
         }
@@ -505,7 +514,7 @@ impl Ai {
             }
             Preparation::Turn(prepared) => *prepared,
         };
-        let mut harness = Harness::new(prepared.provider, self.tools.clone());
+        let mut harness = Harness::new(prepared.provider, prepared.tools.clone());
         if let Some(auditor) = &self.tool_auditor {
             harness = harness.with_auditor(auditor.clone());
         }
@@ -530,6 +539,9 @@ impl Ai {
             // slot only once this turn - success, failure, or a dropped
             // connection, whichever happens first - actually finishes
             let _rate_limit_guards = prepared.rate_limit_guards;
+            // same reasoning: a provisioned sandbox tears down only once
+            // the whole streamed turn is done, never partway through it
+            let _sandbox_guard = prepared.sandbox;
             let record_usage = |usage: Usage, cost: Cost| {
                 let rate_limiter = rate_limiter.clone();
                 let spend_cap_enforcer = spend_cap_enforcer.clone();
@@ -816,6 +828,17 @@ impl Ai {
 
         let system = self.render_system_prompt(persona, req).await?;
 
+        let sandbox = crate::sandbox::provision::provision_if_needed(
+            persona.sandbox,
+            crate::sandbox::config::SandboxConfig::default(),
+            &self.tools,
+        )
+        .await?;
+        let tools = sandbox
+            .as_ref()
+            .map(|provisioned| provisioned.tools.clone())
+            .unwrap_or_else(|| self.tools.clone());
+
         let ctx = ToolCtx {
             user_id: req.user_id,
             platform: req.scope.platform,
@@ -846,12 +869,14 @@ impl Ai {
         Ok(Preparation::Turn(Box::new(PreparedTurn {
             request: turn_request,
             provider,
+            tools,
             conversation_id: conversation.id,
             persona_label: persona.display_name.clone(),
             persona_id: persona.id.0.clone(),
             needs_title: conversation.title.is_none(),
             rate_limit_guards,
             rate_limit_scopes,
+            sandbox,
         })))
     }
 
@@ -958,7 +983,21 @@ impl crate::tools::Delegator for Ai {
             .with_params(persona.params.clone())
             .with_budget(budget);
 
-        let mut harness = Harness::new(provider, self.tools.clone());
+        // held for the rest of this function - tears down once the
+        // delegated turn finishes, the same reasoning Ai::prepare's own
+        // provisioning documents
+        let sandbox = crate::sandbox::provision::provision_if_needed(
+            persona.sandbox,
+            crate::sandbox::config::SandboxConfig::default(),
+            &self.tools,
+        )
+        .await?;
+        let tools = sandbox
+            .as_ref()
+            .map(|provisioned| provisioned.tools.clone())
+            .unwrap_or_else(|| self.tools.clone());
+
+        let mut harness = Harness::new(provider, tools);
         if let Some(auditor) = &self.tool_auditor {
             harness = harness.with_auditor(auditor.clone());
         }
@@ -1190,6 +1229,47 @@ mod tests {
         Ai::from_parts(
             personas,
             Arc::new(registry),
+            Arc::new(InMemorySessionStore::new()),
+            Arc::new(FixedProviderSource(provider)),
+        )
+    }
+
+    /// Builds an `Ai` with one persona, `builder`, whose `sandbox` policy
+    /// is [`crate::persona::SandboxPolicy::Required`] - for the sandbox
+    /// provisioning wiring tests, which need a persona actually configured
+    /// to trigger it rather than every other test's default `Forbidden`.
+    fn ai_with_required_sandbox(provider: Arc<dyn Provider>) -> Ai {
+        let mut config = AiConfig {
+            enabled: true,
+            default_persona: Some(PersonaId::new("builder")),
+            default_model: None,
+            prompt_dir: None,
+            crisis_resources: Vec::new(),
+            rate_limits: crate::persona::config::RateLimitConfig::default(),
+            spend_caps: crate::persona::config::SpendCapConfig::default(),
+            max_delegation_depth: 2,
+            personas: HashMap::new(),
+        };
+        config
+            .personas
+            .insert(PersonaId::new("builder"), PersonaConfig {
+                model: Some(ModelRef::new("anthropic", "claude-opus-5")),
+                prompt: "companion.md".to_string(),
+                display_name: Some("Builder".to_string()),
+                description: "implements one subtask".to_string(),
+                temperature: None,
+                tools: crate::tools::ToolSelection::none(),
+                budget: crate::persona::BudgetConfig::default(),
+                memory: MemoryPolicy::None,
+                sandbox: crate::persona::SandboxPolicy::Required,
+                delegable: true,
+            });
+        let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
+        let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
+
+        Ai::from_parts(
+            personas,
+            Arc::new(ToolRegistry::new()),
             Arc::new(InMemorySessionStore::new()),
             Arc::new(FixedProviderSource(provider)),
         )
@@ -3155,5 +3235,40 @@ mod tests {
             .await
             .expect("should have a status once an enforcer is wired");
         assert_eq!(status.limit_micros, 1000);
+    }
+
+    #[tokio::test]
+    async fn test_a_forbidden_sandbox_policy_never_attempts_to_provision_one() {
+        // the default SandboxConfig names an image ("munibot-sandbox:latest")
+        // nothing in this test environment ever builds - if Forbidden
+        // provisioned anyway, this would fail trying to reach podman
+        // (or reach an image that doesn't exist), not just return quietly
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::None, provider);
+
+        let outcome = ai
+            .turn(request("companion", "hello"))
+            .await
+            .expect("a Forbidden-sandbox persona's turn should never touch podman at all");
+        assert_eq!(outcome.text, Some("hi".to_string()));
+    }
+
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_a_required_sandbox_policy_fails_the_turn_when_provisioning_fails() {
+        // SandboxConfig::default()'s image was never built in this
+        // environment, so provisioning must fail - and because this
+        // persona's policy is Required, that failure must fail the whole
+        // turn rather than silently falling back to no sandbox at all
+        let provider = Arc::new(MockProvider::new().respond_text("should never be reached"));
+        let ai = ai_with_required_sandbox(provider);
+
+        let error = ai
+            .turn(request("builder", "do the thing"))
+            .await
+            .expect_err("a Required persona's turn must fail if provisioning does");
+        // not asserting the exact message - only that a real attempt was
+        // made and failed, rather than the turn quietly succeeding
+        assert!(!error.to_string().is_empty());
     }
 }

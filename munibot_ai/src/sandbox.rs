@@ -46,5 +46,6 @@ pub mod codec;
 pub mod config;
 pub mod container;
 pub mod protocol;
+pub mod provision;
 pub mod rpc;
 pub mod tools;

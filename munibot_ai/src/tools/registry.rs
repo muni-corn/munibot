@@ -66,6 +66,25 @@ impl ToolRegistry {
         self.tools.keys().map(String::as_str).collect()
     }
 
+    /// Builds a fresh registry with every tool already in this one, plus
+    /// `extra` registered on top - a second registration under a name
+    /// already present replaces the first, the same as [`Self::register`].
+    ///
+    /// Used for a sandboxed turn: the six sandbox tools are per-turn (they
+    /// close over one running container's own
+    /// [`crate::sandbox::rpc::RpcClient`]), so they are layered onto the
+    /// shared base registry fresh for each such turn rather than ever being
+    /// registered into it directly.
+    pub fn with_overlay(&self, extra: impl IntoIterator<Item = Arc<dyn Tool>>) -> Self {
+        let mut overlaid = Self {
+            tools: self.tools.clone(),
+        };
+        for tool in extra {
+            overlaid.register(tool);
+        }
+        overlaid
+    }
+
     /// The schemas a provider should be offered: every registered tool that a
     /// persona's selection covers *and* that the invoker's granted tier
     /// permits.
@@ -241,6 +260,54 @@ mod tests {
             let schemas = registry.schemas_for(selection, *granted);
             assert_eq!(names_of(&schemas), *expected, "case failed: {description}");
         }
+    }
+
+    #[test]
+    fn test_with_overlay_keeps_the_base_tools_and_adds_the_extra_ones() {
+        let mut base = ToolRegistry::new();
+        base.register(Arc::new(StubTool {
+            name: "base_tool",
+            tier: RiskTier::Safe,
+        }));
+
+        let overlaid = base.with_overlay([Arc::new(StubTool {
+            name: "extra_tool",
+            tier: RiskTier::Sandbox,
+        }) as Arc<dyn Tool>]);
+
+        assert!(overlaid.get("base_tool").is_some());
+        assert!(overlaid.get("extra_tool").is_some());
+    }
+
+    #[test]
+    fn test_with_overlay_does_not_mutate_the_base_registry() {
+        let base = ToolRegistry::new();
+        let overlaid = base.with_overlay([Arc::new(StubTool {
+            name: "extra_tool",
+            tier: RiskTier::Sandbox,
+        }) as Arc<dyn Tool>]);
+
+        assert!(base.get("extra_tool").is_none());
+        assert!(overlaid.get("extra_tool").is_some());
+    }
+
+    #[test]
+    fn test_with_overlay_replaces_a_base_tool_of_the_same_name() {
+        let mut base = ToolRegistry::new();
+        base.register(Arc::new(StubTool {
+            name: "shared_name",
+            tier: RiskTier::Safe,
+        }));
+
+        let overlaid = base.with_overlay([Arc::new(StubTool {
+            name: "shared_name",
+            tier: RiskTier::Sandbox,
+        }) as Arc<dyn Tool>]);
+
+        assert_eq!(
+            overlaid.get("shared_name").unwrap().tier(),
+            RiskTier::Sandbox
+        );
     }
 
     #[test]
