@@ -1,0 +1,22 @@
+[package]
+name = "munibot_toolagent"
+description = "in-container rpc server executing filesystem and shell tools for the ai sandbox"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# deliberately no munibot_core, munibot_ai, or any other munibot crate here.
+# this binary ships into an untrusted container and must stay small
+# regardless of what munibot_ai's own dependency tree grows into (diesel-async,
+# bollard, rig-core, ...) -- see docs/plans/ai/overview.md's crate
+# architecture section and milestone-4-sandbox.md's architecture note on why
+# its rpc wire types are a deliberate, hand-mirrored duplication rather than
+# a shared dependency.
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
