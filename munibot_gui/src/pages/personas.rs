@@ -32,7 +32,7 @@ pub fn Personas() -> Element {
     rsx! {
         document::Title { "personas ~ munibot" }
         div { class: "flex h-full flex-col gap-4 p-6",
-            h2 { class: "font-black text-2xl", "personas" }
+            h2 { class: "text-2xl font-black", "personas" }
             {content}
         }
     }
@@ -41,14 +41,14 @@ pub fn Personas() -> Element {
 #[component]
 fn PersonaCard(persona: PersonaSummary) -> Element {
     rsx! {
-        div { class: "flex flex-col p-4 gap-2 rounded-box bg-slate-900/50",
+        div { class: "flex flex-col gap-2 rounded-box bg-slate-900/50 p-4",
             div { class: "flex items-center justify-between",
-                span { class: "font-black text-lg", {persona.display_name.clone()} }
+                span { class: "text-lg font-black", {persona.display_name.clone()} }
                 span { class: "font-mono text-xs text-slate-400", {persona.model.clone()} }
             }
-            p { class: "text-slate-300 text-sm", {persona.description.clone()} }
+            p { class: "text-sm text-slate-300", {persona.description.clone()} }
             if persona.remembers_you {
-                span { class: "badge badge-primary badge-sm self-start",
+                span { class: "badge self-start badge-sm badge-primary",
                     "remembers you across conversations"
                 }
             }

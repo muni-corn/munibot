@@ -59,22 +59,22 @@ impl TurnFailure {
 pub fn TurnFailureBanner(failure: TurnFailure, on_retry: EventHandler<()>) -> Element {
     match failure {
         TurnFailure::NotSignedIn => rsx! {
-            div { class: "alert alert-warning mx-4 mb-2 text-sm",
+            div { class: "mx-4 mb-2 alert text-sm alert-warning",
                 span { "you've been signed out. " }
                 a { class: "link", href: "/auth/discord/authorize", "sign in again" }
                 span { " to keep chatting." }
             }
         },
         TurnFailure::AiDisabled => rsx! {
-            div { class: "alert alert-warning mx-4 mb-2 text-sm",
+            div { class: "mx-4 mb-2 alert text-sm alert-warning",
                 "the companion isn't turned on right now :<"
             }
         },
         TurnFailure::BudgetExceeded(message) => rsx! {
-            div { class: "alert alert-warning mx-4 mb-2 text-sm", {message} }
+            div { class: "mx-4 mb-2 alert text-sm alert-warning", {message} }
         },
         TurnFailure::Transient(message) => rsx! {
-            div { class: "flex items-center alert alert-error mx-4 mb-2 justify-between text-sm",
+            div { class: "mx-4 mb-2 alert flex items-center justify-between text-sm alert-error",
                 span { {message} }
                 button {
                     class: "btn btn-ghost btn-xs",
@@ -84,7 +84,7 @@ pub fn TurnFailureBanner(failure: TurnFailure, on_retry: EventHandler<()>) -> El
             }
         },
         TurnFailure::Other(message) => rsx! {
-            div { class: "alert alert-error mx-4 mb-2 text-sm", {message} }
+            div { class: "mx-4 mb-2 alert text-sm alert-error", {message} }
         },
     }
 }

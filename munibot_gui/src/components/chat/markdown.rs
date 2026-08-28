@@ -53,7 +53,7 @@ pub fn render_markdown(source: &str) -> Element {
             }
             Event::Text(text) => push_text(&mut stack, &mut code_accum, &text),
             Event::Code(text) => top(&mut stack).push(rsx! {
-                code { class: "bg-slate-800 rounded px-1 py-0.5 text-sm", {text.into_string()} }
+                code { class: "rounded bg-slate-800 px-1 py-0.5 text-sm", {text.into_string()} }
             }),
             Event::SoftBreak => top(&mut stack).push(rsx! { " " }),
             Event::HardBreak => top(&mut stack).push(rsx! {
@@ -128,7 +128,7 @@ fn render_tag(tag: &Tag<'_>, children: Vec<Element>) -> Element {
         },
         Tag::Heading(level, ..) => render_heading(*level, children),
         Tag::BlockQuote => rsx! {
-            blockquote { class: "text-slate-300 border-s-4 border-slate-700 ps-4 italic",
+            blockquote { class: "border-s-4 border-slate-700 ps-4 text-slate-300 italic",
                 for child in children {
                     {child}
                 }
@@ -206,21 +206,21 @@ fn render_tag(tag: &Tag<'_>, children: Vec<Element>) -> Element {
 fn render_heading(level: HeadingLevel, children: Vec<Element>) -> Element {
     match level {
         HeadingLevel::H1 => rsx! {
-            h1 { class: "font-black text-2xl",
+            h1 { class: "text-2xl font-black",
                 for child in children {
                     {child}
                 }
             }
         },
         HeadingLevel::H2 => rsx! {
-            h2 { class: "font-black text-xl",
+            h2 { class: "text-xl font-black",
                 for child in children {
                     {child}
                 }
             }
         },
         HeadingLevel::H3 => rsx! {
-            h3 { class: "font-bold text-lg",
+            h3 { class: "text-lg font-bold",
                 for child in children {
                     {child}
                 }
@@ -274,7 +274,7 @@ fn render_code_block(language: Option<String>, code: String) -> Element {
                 span { {label} }
                 CopyButton { text: code.clone() }
             }
-            pre { class: "p-4 overflow-x-auto text-sm",
+            pre { class: "overflow-x-auto p-4 text-sm",
                 code {
                     id,
                     class: lang_class,
@@ -325,14 +325,14 @@ fn CopyButton(text: String) -> Element {
 
     if *copied.read() {
         rsx! {
-            button { class: "btn btn-ghost btn-xs gap-1", disabled: true,
+            button { class: "btn gap-1 btn-ghost btn-xs", disabled: true,
                 i { class: "ph-duotone ph-check" }
                 "copied!"
             }
         }
     } else {
         rsx! {
-            button { class: "btn btn-ghost btn-xs gap-1", onclick: on_click,
+            button { class: "btn gap-1 btn-ghost btn-xs", onclick: on_click,
                 i { class: "ph-duotone ph-copy" }
                 "copy"
             }

@@ -39,7 +39,7 @@ pub fn ConversationSidebar() -> Element {
 
     let content = match &*conversations.read() {
         Some(Ok(entries)) if entries.is_empty() => rsx! {
-            div { class: "flex grow flex-col place-content-center items-center p-4 gap-2 text-center text-slate-400",
+            div { class: "flex grow flex-col place-content-center items-center gap-2 p-4 text-center text-slate-400",
                 p { "no conversations yet." }
                 NewConversationButton { on_picked: start_new }
             }
@@ -65,13 +65,13 @@ pub fn ConversationSidebar() -> Element {
     };
 
     rsx! {
-        div { class: "flex h-full flex-col p-4 w-64 gap-2 border-e border-slate-800",
+        div { class: "flex h-full w-64 flex-col gap-2 border-e border-slate-800 p-4",
             div { class: "flex items-center justify-between",
                 span { class: "font-black", "conversations" }
                 NewConversationButton { on_picked: start_new }
             }
             if let Some(message) = &*error.read() {
-                div { class: "alert alert-error alert-sm text-xs", {message.as_str()} }
+                div { class: "alert text-xs alert-error alert-sm", {message.as_str()} }
             }
             {content}
         }
@@ -129,7 +129,7 @@ fn ConversationRow(
         return rsx! {
             li {
                 input {
-                    class: "input input-sm w-full",
+                    class: "input w-full input-sm",
                     value: "{draft_title}",
                     autofocus: true,
                     oninput: move |event| draft_title.set(event.value()),

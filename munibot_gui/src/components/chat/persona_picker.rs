@@ -21,7 +21,7 @@ pub fn NewConversationButton(on_picked: EventHandler<String>) -> Element {
     let content = match &*personas.read() {
         Some(Ok(list)) if !list.is_empty() => rsx! {
             select {
-                class: "select select-sm w-full",
+                class: "select w-full select-sm",
                 value: "{selected}",
                 onchange: move |event| selected.set(event.value()),
                 for persona in list.iter() {
@@ -31,7 +31,7 @@ pub fn NewConversationButton(on_picked: EventHandler<String>) -> Element {
                 }
             }
             button {
-                class: "btn btn-primary btn-sm w-full",
+                class: "btn w-full btn-primary btn-sm",
                 onclick: move |_| on_picked.call(selected.read().clone()),
                 "start"
             }
@@ -57,7 +57,7 @@ pub fn NewConversationButton(on_picked: EventHandler<String>) -> Element {
             }
             div {
                 tabindex: 0,
-                class: "flex flex-col bg-slate-800 dropdown-content menu z-1 w-64 gap-2 rounded-box p-3 shadow-lg",
+                class: "menu dropdown-content z-1 flex w-64 flex-col gap-2 rounded-box bg-slate-800 p-3 shadow-lg",
                 {content}
             }
         }

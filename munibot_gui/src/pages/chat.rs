@@ -42,7 +42,7 @@ pub fn ChatLayout() -> Element {
 #[component]
 pub fn Chat() -> Element {
     rsx! {
-        div { class: "flex h-full flex-col place-content-center items-center p-4 text-slate-300 gap-2",
+        div { class: "flex h-full flex-col place-content-center items-center gap-2 p-4 text-slate-300",
             p { "pick a conversation from the sidebar, or start a new one." }
         }
     }

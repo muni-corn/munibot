@@ -67,7 +67,7 @@ pub fn DelegationStrip(entries: Vec<DelegationEntry>) -> Element {
     }
 
     rsx! {
-        div { class: "flex flex-col mx-4 mb-2 gap-1",
+        div { class: "mx-4 mb-2 flex flex-col gap-1",
             for (index, entry) in entries.into_iter().enumerate() {
                 DelegationCard { key: "{index}", entry }
             }
@@ -79,13 +79,13 @@ pub fn DelegationStrip(entries: Vec<DelegationEntry>) -> Element {
 fn DelegationCard(entry: DelegationEntry) -> Element {
     let status = match entry.finished {
         None => rsx! {
-            i { class: "animate-spin ph-duotone ph-circle-notch text-info" }
+            i { class: "animate-spin text-info ph-duotone ph-circle-notch" }
         },
         Some(true) => rsx! {
-            i { class: "ph-duotone ph-check-circle text-success" }
+            i { class: "text-success ph-duotone ph-check-circle" }
         },
         Some(false) => rsx! {
-            i { class: "ph-duotone ph-x-circle text-error" }
+            i { class: "text-error ph-duotone ph-x-circle" }
         },
     };
 

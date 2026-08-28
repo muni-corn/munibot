@@ -82,7 +82,7 @@ pub fn Memory() -> Element {
                         }
                     }
                     button {
-                        class: "btn btn-error btn-sm self-start",
+                        class: "btn self-start btn-error btn-sm",
                         onclick: wipe,
                         "wipe everything"
                     }
@@ -100,7 +100,7 @@ pub fn Memory() -> Element {
     rsx! {
         document::Title { "memory ~ munibot" }
         div { class: "flex h-full flex-col gap-4 p-6",
-            h2 { class: "font-black text-2xl", "memory" }
+            h2 { class: "text-2xl font-black", "memory" }
             if let Some(message) = &*error.read() {
                 div { class: "alert alert-error", {message.clone()} }
             }
@@ -121,7 +121,7 @@ fn MemoryRow(memory: MemoryEntry, on_forgotten: EventHandler<()>) -> Element {
     };
 
     rsx! {
-        li { class: "flex items-center gap-4 justify-between rounded-box bg-slate-900/50 p-3",
+        li { class: "flex items-center justify-between gap-4 rounded-box bg-slate-900/50 p-3",
             div { class: "flex flex-col",
                 span { class: "font-semibold", {memory.key.clone()} }
                 span { class: "text-sm text-slate-400", {memory.value.clone()} }

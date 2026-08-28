@@ -47,7 +47,7 @@ pub fn Usage() -> Element {
     rsx! {
         document::Title { "usage ~ munibot" }
         div { class: "flex h-full flex-col gap-4 p-6",
-            h2 { class: "font-black text-2xl", "usage" }
+            h2 { class: "text-2xl font-black", "usage" }
             SettingsSection {
                 title: "your usage".to_string(),
                 description: Some("what you've spent talking with munibot.".to_string()),
@@ -87,8 +87,8 @@ fn UsageCard(summary: UsageSummary) -> Element {
 fn Stat(label: String, value: String) -> Element {
     rsx! {
         div { class: "flex flex-col",
-            span { class: "text-xs uppercase tracking-wide text-slate-400", {label} }
-            span { class: "font-mono font-bold text-lg", {value} }
+            span { class: "text-xs tracking-wide text-slate-400 uppercase", {label} }
+            span { class: "font-mono text-lg font-bold", {value} }
         }
     }
 }
@@ -117,7 +117,7 @@ fn SpendCapBar(cap: SpendCapStatus) -> Element {
                 }
                 span { "resets {cap.reset_at}" }
             }
-            div { class: "rounded-full bg-slate-800 h-2 w-full overflow-hidden",
+            div { class: "h-2 w-full overflow-hidden rounded-full bg-slate-800",
                 div {
                     class: "h-full rounded-full {bar_class}",
                     style: "width: {percent}%",

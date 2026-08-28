@@ -57,7 +57,7 @@ pub fn ToolActivityStrip(entries: Vec<ToolActivityEntry>) -> Element {
     }
 
     rsx! {
-        div { class: "flex flex-col mx-4 mb-2 divide-y divide-slate-800 rounded-box bg-slate-900/60",
+        div { class: "mx-4 mb-2 flex flex-col divide-y divide-slate-800 rounded-box bg-slate-900/60",
             for (index, entry) in entries.into_iter().enumerate() {
                 ToolActivityRow { key: "{index}", entry }
             }
@@ -90,7 +90,7 @@ fn ToolActivityRow(entry: ToolActivityEntry) -> Element {
                 span { class: "font-mono", {entry.name.clone()} }
                 span { class: "opacity-60", "{result.duration_ms}ms" }
             }
-            pre { class: "text-slate-300 mt-1 max-h-48 overflow-y-auto rounded bg-slate-950 p-2 text-xs whitespace-pre-wrap",
+            pre { class: "mt-1 max-h-48 overflow-y-auto rounded bg-slate-950 p-2 text-xs whitespace-pre-wrap text-slate-300",
                 {result.result.clone()}
             }
         }
