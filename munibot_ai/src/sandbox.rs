@@ -42,4 +42,5 @@
 //! but the one time it is is the one that matters.
 
 pub mod config;
+pub mod container;
 pub mod protocol;
