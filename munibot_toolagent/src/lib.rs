@@ -9,4 +9,5 @@
 //! Takes no munibot dependency at all -- see this crate's `Cargo.toml` for
 //! why.
 
+pub mod codec;
 pub mod protocol;
