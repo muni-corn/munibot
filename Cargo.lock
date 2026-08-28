@@ -4592,6 +4592,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "munibot_toolagent"
+version = "0.3.3"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "munibot_twitch"
 version = "0.3.3"
 dependencies = [
