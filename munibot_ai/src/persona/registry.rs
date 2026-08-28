@@ -26,6 +26,12 @@ fn embedded_prompt(filename: &str) -> Option<&'static str> {
         "architecture-reviewer.md" => Some(include_str!("../../prompts/architecture-reviewer.md")),
         "project-manager.md" => Some(include_str!("../../prompts/project-manager.md")),
         "critic.md" => Some(include_str!("../../prompts/critic.md")),
+        "codebase-researcher.md" => Some(include_str!("../../prompts/codebase-researcher.md")),
+        "builder.md" => Some(include_str!("../../prompts/builder.md")),
+        "test-engineer.md" => Some(include_str!("../../prompts/test-engineer.md")),
+        "final-code-reviewer.md" => Some(include_str!("../../prompts/final-code-reviewer.md")),
+        "commit-crafter.md" => Some(include_str!("../../prompts/commit-crafter.md")),
+        "pr-author.md" => Some(include_str!("../../prompts/pr-author.md")),
         _ => None,
     }
 }
@@ -182,6 +188,68 @@ fn embedded_personas() -> HashMap<PersonaId, PersonaConfig> {
                 true,
             ),
         ),
+        (PersonaId::new("codebase-researcher"), PersonaConfig {
+            sandbox: crate::persona::SandboxPolicy::Required,
+            budget: budget(20, 1.5),
+            ..base(
+                "codebase-researcher.md",
+                "explores a checked-out repository and summarizes what an implementation plan \
+                 needs to know",
+                ToolSelection::named(["tier0", "read", "grep", "glob"]),
+                true,
+            )
+        }),
+        (PersonaId::new("builder"), PersonaConfig {
+            sandbox: crate::persona::SandboxPolicy::Required,
+            budget: budget(40, 3.0),
+            ..base(
+                "builder.md",
+                "implements one subtask in a checked-out repository",
+                ToolSelection::named(["tier0", "tier3"]),
+                true,
+            )
+        }),
+        (PersonaId::new("test-engineer"), PersonaConfig {
+            sandbox: crate::persona::SandboxPolicy::Required,
+            budget: budget(30, 2.0),
+            ..base(
+                "test-engineer.md",
+                "writes tests for a subtask before the implementation exists, and runs them to \
+                 confirm they fail for the right reason",
+                ToolSelection::named(["tier0", "tier3"]),
+                true,
+            )
+        }),
+        (PersonaId::new("final-code-reviewer"), PersonaConfig {
+            sandbox: crate::persona::SandboxPolicy::Required,
+            budget: budget(25, 1.5),
+            ..base(
+                "final-code-reviewer.md",
+                "reviews every change across every subtask holistically, against the original plan",
+                ToolSelection::named(["tier0", "read", "grep", "glob", "bash"]),
+                true,
+            )
+        }),
+        (PersonaId::new("commit-crafter"), PersonaConfig {
+            sandbox: crate::persona::SandboxPolicy::Required,
+            budget: budget(10, 0.5),
+            ..base(
+                "commit-crafter.md",
+                "turns approved changes into a clean, atomic git commit",
+                ToolSelection::named(["tier0", "bash", "read", "grep", "glob"]),
+                true,
+            )
+        }),
+        (PersonaId::new("pr-author"), PersonaConfig {
+            sandbox: crate::persona::SandboxPolicy::Required,
+            budget: budget(10, 0.5),
+            ..base(
+                "pr-author.md",
+                "writes a pull request title and body from the real diff and commit history",
+                ToolSelection::named(["tier0", "read", "grep", "glob", "bash"]),
+                true,
+            )
+        }),
     ])
 }
 
@@ -790,6 +858,12 @@ mod tests {
             "test-reviewer",
             "architecture-reviewer",
             "project-manager",
+            "codebase-researcher",
+            "builder",
+            "test-engineer",
+            "final-code-reviewer",
+            "commit-crafter",
+            "pr-author",
         ] {
             assert!(
                 registry.get(&PersonaId::new(id)).is_some(),
@@ -836,10 +910,65 @@ mod tests {
             "test-reviewer",
             "architecture-reviewer",
             "project-manager",
+            "codebase-researcher",
+            "builder",
+            "test-engineer",
+            "final-code-reviewer",
+            "commit-crafter",
+            "pr-author",
         ] {
             assert!(
                 personas[&PersonaId::new(id)].delegable,
                 "{id} should be delegable by default"
+            );
+        }
+    }
+
+    #[test]
+    fn test_the_hands_on_team_all_require_a_sandbox() {
+        let personas = super::embedded_personas();
+        for id in [
+            "codebase-researcher",
+            "builder",
+            "test-engineer",
+            "final-code-reviewer",
+            "commit-crafter",
+            "pr-author",
+        ] {
+            assert_eq!(
+                personas[&PersonaId::new(id)].sandbox,
+                crate::persona::SandboxPolicy::Required,
+                "{id} needs a checked-out repository, so its sandbox policy must be Required"
+            );
+        }
+    }
+
+    #[test]
+    fn test_the_codebase_researcher_cannot_modify_files() {
+        // the read-only tool selection is the actual enforcement of "do
+        // not modify any files" - not just the prompt's own instruction
+        let personas = super::embedded_personas();
+        let researcher = &personas[&PersonaId::new("codebase-researcher")];
+        for destructive_tool in ["write", "edit", "bash"] {
+            assert!(
+                !researcher
+                    .tools
+                    .covers(destructive_tool, crate::tools::RiskTier::Sandbox),
+                "the codebase researcher should not be authorized for {destructive_tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_the_final_code_reviewer_cannot_modify_files() {
+        let personas = super::embedded_personas();
+        let reviewer = &personas[&PersonaId::new("final-code-reviewer")];
+        for destructive_tool in ["write", "edit"] {
+            assert!(
+                !reviewer
+                    .tools
+                    .covers(destructive_tool, crate::tools::RiskTier::Sandbox),
+                "the final code reviewer should not be authorized for {destructive_tool:?}"
             );
         }
     }
