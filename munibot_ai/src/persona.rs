@@ -753,4 +753,70 @@ mod prompt_tests {
             "the critic prompt should explicitly reject vague feedback, not just imply it"
         );
     }
+
+    #[test]
+    fn test_codebase_researcher_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/codebase-researcher.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_codebase_researcher_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/codebase-researcher.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_codebase_researcher_prompt_names_its_real_read_only_tools() {
+        // milestone 4's own wrinkle for the hands-on roles: unlike the
+        // milestone-3 roster, these actually have real tool access, and
+        // should say so in present tense - see docs/notes/persona-prompt-
+        // porting.md's note on this
+        let source = include_str!("../prompts/codebase-researcher.md");
+        assert!(source.contains("`read`"));
+        assert!(source.contains("`grep`"));
+        assert!(source.contains("`glob`"));
+    }
+
+    #[test]
+    fn test_codebase_researcher_prompt_states_it_does_not_modify_anything() {
+        let source = include_str!("../prompts/codebase-researcher.md");
+        assert!(
+            source.contains("do not implement") || source.contains("do not have `write`"),
+            "the codebase researcher prompt must state plainly that it does not modify files"
+        );
+    }
+
+    #[test]
+    fn test_codebase_researcher_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/codebase-researcher.md");
+        for pipeline_only in [
+            "ResearchComplete",
+            "```json",
+            "user-instructions",
+            "relevant_files",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the codebase researcher prompt should not contain pipeline-only text \
+                 {pipeline_only:?}"
+            );
+        }
+    }
 }
