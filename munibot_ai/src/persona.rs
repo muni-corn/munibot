@@ -1031,4 +1031,146 @@ mod prompt_tests {
             );
         }
     }
+
+    #[test]
+    fn test_commit_crafter_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/commit-crafter.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_commit_crafter_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/commit-crafter.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_commit_crafter_prompt_names_its_real_tools() {
+        let source = include_str!("../prompts/commit-crafter.md");
+        for tool in ["`bash`", "`read`", "`grep`", "`glob`"] {
+            assert!(
+                source.contains(tool),
+                "the commit crafter prompt should name its real tool {tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_commit_crafter_prompt_forbids_bulk_staging_and_amending() {
+        let source = include_str!("../prompts/commit-crafter.md");
+        assert!(source.contains("git add ."));
+        assert!(source.to_lowercase().contains("never amend"));
+    }
+
+    #[test]
+    fn test_commit_crafter_prompt_points_at_the_target_repositories_own_conventions() {
+        // rather than hardcoding this repository's own commit style into a
+        // generic persona - see docs/plans/ai/milestone-4-sandbox.md's own
+        // note on why
+        let source = include_str!("../prompts/commit-crafter.md");
+        assert!(
+            source.contains("AGENTS.md") || source.contains("CONTRIBUTING.md"),
+            "the commit crafter prompt should point at the target repository's own documented \
+             conventions"
+        );
+    }
+
+    #[test]
+    fn test_commit_crafter_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/commit-crafter.md");
+        for pipeline_only in [
+            "CommitComplete",
+            "```json",
+            "commit-message",
+            "code-changes",
+            "files_committed",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the commit crafter prompt should not contain pipeline-only text {pipeline_only:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pr_author_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/pr-author.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_pr_author_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/pr-author.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_pr_author_prompt_names_its_real_read_only_tools() {
+        let source = include_str!("../prompts/pr-author.md");
+        for tool in ["`read`", "`grep`", "`glob`", "`bash`"] {
+            assert!(
+                source.contains(tool),
+                "the pr author prompt should name its real tool {tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pr_author_prompt_describes_the_required_body_sections() {
+        let source = include_str!("../prompts/pr-author.md");
+        for section in ["Summary", "Changes", "Files changed", "Testing"] {
+            assert!(
+                source.contains(section),
+                "the pr author prompt should describe the {section:?} section"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pr_author_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/pr-author.md");
+        for pipeline_only in [
+            "PullRequestReady",
+            "```json",
+            "all-changes",
+            "completed-tasks",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the pr author prompt should not contain pipeline-only text {pipeline_only:?}"
+            );
+        }
+    }
 }
