@@ -961,4 +961,74 @@ mod prompt_tests {
             );
         }
     }
+
+    #[test]
+    fn test_final_code_reviewer_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/final-code-reviewer.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_final_code_reviewer_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/final-code-reviewer.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_final_code_reviewer_prompt_names_its_real_read_only_tools() {
+        let source = include_str!("../prompts/final-code-reviewer.md");
+        for tool in ["`read`", "`grep`", "`glob`", "`bash`"] {
+            assert!(
+                source.contains(tool),
+                "the final code reviewer prompt should name its real tool {tool:?}"
+            );
+        }
+        assert!(
+            !source.contains("`write`") && !source.contains("`edit`"),
+            "a reviewer should never be described as having write/edit access"
+        );
+    }
+
+    #[test]
+    fn test_final_code_reviewer_prompt_states_the_merge_ready_bar() {
+        // the plan's own framing: "ready to merge as a pull request," not
+        // "theoretically perfect"
+        let source = include_str!("../prompts/final-code-reviewer.md");
+        assert!(source.contains("ready to merge"));
+    }
+
+    #[test]
+    fn test_final_code_reviewer_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/final-code-reviewer.md");
+        for pipeline_only in [
+            "ProjectComplete",
+            "RequestCodeChanges",
+            "```json",
+            "all-changes",
+            "completed-tasks",
+            "files_reviewed",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the final code reviewer prompt should not contain pipeline-only text \
+                 {pipeline_only:?}"
+            );
+        }
+    }
 }
