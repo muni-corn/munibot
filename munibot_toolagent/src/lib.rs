@@ -10,5 +10,6 @@
 //! why.
 
 pub mod codec;
+pub mod jail;
 pub mod protocol;
 pub mod server;
