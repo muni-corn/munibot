@@ -10,7 +10,10 @@ use std::sync::Arc;
 use clap::Parser;
 use munibot_toolagent::{
     server::{Dispatcher, serve},
-    tools::{edit::EditHandler, glob::GlobHandler, read::ReadHandler, write::WriteHandler},
+    tools::{
+        edit::EditHandler, glob::GlobHandler, grep::GrepHandler, read::ReadHandler,
+        write::WriteHandler,
+    },
 };
 use tokio::net::UnixListener;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -64,12 +67,13 @@ async fn main() {
 
     tracing::info!(socket = %args.socket, root = ?args.root, "starting munibot_toolagent");
 
-    // later commits add bash and grep here
+    // the next commit adds bash, the last of the six sandbox tools
     let mut dispatcher = Dispatcher::new();
     dispatcher.register("read", Arc::new(ReadHandler::new(args.root.clone())));
     dispatcher.register("glob", Arc::new(GlobHandler::new(args.root.clone())));
     dispatcher.register("write", Arc::new(WriteHandler::new(args.root.clone())));
     dispatcher.register("edit", Arc::new(EditHandler::new(args.root.clone())));
+    dispatcher.register("grep", Arc::new(GrepHandler::new(args.root.clone())));
     let dispatcher = Arc::new(dispatcher);
 
     serve(listener, dispatcher, wait_for_sigterm()).await;
