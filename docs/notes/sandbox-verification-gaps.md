@@ -39,6 +39,18 @@ stage, which is a meaningfully slower, more infrastructure-heavy check than
 anything else in this milestone's test suite, and needs to happen at least
 once before this ships anywhere real.
 
+## `coder`'s `Optional` policy is eager in practice
+
+`coder` (`munibot_ai/src/persona/registry.rs`) is configured with
+`sandbox: SandboxPolicy::Optional`, matching its actual intent - most
+coder chat ("what does this regex do?") never touches a sandbox tool at
+all. But `provision_if_needed` treats `Optional` exactly like `Required`
+(see its own doc comment), so today every `coder` turn eagerly starts a
+container regardless of whether the model ever calls a sandbox tool. This
+makes plain chat-coding help unnecessarily slow until real lazy
+provisioning (deferred until the first sandbox tool call actually happens)
+replaces the current eager stand-in.
+
 **Do this before milestone 4 is considered done, not milestone 5**:
 
 ```bash

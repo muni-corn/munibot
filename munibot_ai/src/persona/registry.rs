@@ -97,15 +97,18 @@ fn embedded_personas() -> HashMap<PersonaId, PersonaConfig> {
                 true,
             )
         }),
-        (
-            PersonaId::new("coder"),
-            base(
+        (PersonaId::new("coder"), PersonaConfig {
+            // lazy in spirit - see provision_if_needed's own note on why
+            // Optional is currently provisioned exactly as eagerly as
+            // Required, tracked in docs/notes/sandbox-verification-gaps.md
+            sandbox: crate::persona::SandboxPolicy::Optional,
+            ..base(
                 "coder.md",
-                "explains, reviews, and debugs pasted code in chat",
-                ToolSelection::none(),
+                "explains, reviews, debugs, and now runs and verifies code in a sandbox",
+                ToolSelection::named(["tier0", "tier3"]),
                 false,
-            ),
-        ),
+            )
+        }),
         (
             PersonaId::new("writer"),
             base(

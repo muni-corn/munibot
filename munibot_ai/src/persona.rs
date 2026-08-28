@@ -298,12 +298,19 @@ mod prompt_tests {
     }
 
     #[test]
-    fn test_coder_prompt_states_it_cannot_run_or_modify_code_yet() {
-        // the plan's explicit requirement for this persona in this milestone
+    fn test_coder_prompt_states_it_can_run_and_verify_code() {
+        // milestone 4 gives the coder sandbox tools - the prompt must say so,
+        // and push toward actually running things rather than asserting
+        // correctness (the inverse of this test's own pre-milestone-4 name)
         let source = include_str!("../prompts/coder.md");
         assert!(
-            source.contains("cannot run it") || source.contains("no ability to execute"),
-            "the coder prompt must state plainly that it cannot execute or modify code yet"
+            source.contains("bash") && source.contains("sandbox"),
+            "the coder prompt must mention it has sandbox tools available"
+        );
+        assert!(
+            source.contains("run the tests") || source.contains("run it"),
+            "the coder prompt must instruct running code to verify it, not just asserting \
+             correctness"
         );
     }
 
