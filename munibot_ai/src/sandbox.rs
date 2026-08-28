@@ -40,3 +40,6 @@
 //!
 //! Treat every model-authored shell command as hostile. It usually is not,
 //! but the one time it is is the one that matters.
+
+pub mod config;
+pub mod protocol;
