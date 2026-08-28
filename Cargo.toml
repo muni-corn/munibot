@@ -80,6 +80,8 @@ sha2 = "0.11"
 bollard = "0.21"
 globset = "0.4"
 ignore = "0.4"
+grep-regex = "0.1"
+grep-searcher = "0.1"
 twitch_oauth2 = "0.15"
 url = "2.4"
 uuid = { version = "1.24.0", features = ["v4"] }
