@@ -886,4 +886,79 @@ mod prompt_tests {
             );
         }
     }
+
+    #[test]
+    fn test_test_engineer_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/test-engineer.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_test_engineer_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/test-engineer.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_test_engineer_prompt_names_its_real_tools() {
+        let source = include_str!("../prompts/test-engineer.md");
+        for tool in ["`read`", "`write`", "`edit`", "`bash`", "`grep`", "`glob`"] {
+            assert!(
+                source.contains(tool),
+                "the test engineer prompt should name its real tool {tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_test_engineer_prompt_instructs_actually_running_the_tests() {
+        // milestone 4's own explicit divergence from the municode source,
+        // which could only write tests without ever running them - see
+        // milestone-4-sandbox.md commit 148's own description
+        let source = include_str!("../prompts/test-engineer.md");
+        assert!(
+            source.contains("Run what you wrote") || source.contains("actually run"),
+            "the test engineer prompt must instruct actually running the tests it writes, not \
+             just describing them"
+        );
+        assert!(
+            source.contains("fail") && source.contains("right reason"),
+            "the test engineer prompt should instruct confirming tests fail for the right reason \
+             before an implementation exists"
+        );
+    }
+
+    #[test]
+    fn test_test_engineer_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/test-engineer.md");
+        for pipeline_only in [
+            "SubmitTests",
+            "RequestBuildHelp",
+            "```json",
+            "start-task-tests",
+            "tests_written",
+            "all_passing",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the test engineer prompt should not contain pipeline-only text {pipeline_only:?}"
+            );
+        }
+    }
 }
