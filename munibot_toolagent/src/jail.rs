@@ -108,7 +108,15 @@ pub fn resolve_in_jail(root: &Path, requested: &str) -> Result<PathBuf, JailErro
         });
     }
 
-    Ok(canonical_ancestor.join(remainder))
+    // Path::join appends a trailing separator even for an empty remainder -
+    // harmless for a directory, but turns a regular file's path into one
+    // the OS refuses with ENOTDIR ("Not a directory"), since a trailing
+    // separator asserts the target is a directory
+    if remainder.as_os_str().is_empty() {
+        Ok(canonical_ancestor)
+    } else {
+        Ok(canonical_ancestor.join(remainder))
+    }
 }
 
 /// Replays `relative`'s components against a stack seeded with `base`'s own
@@ -224,6 +232,21 @@ mod tests {
                 .unwrap()
                 .join("src/main.rs")
         );
+    }
+
+    #[test]
+    fn test_resolving_an_existing_file_never_appends_a_trailing_separator() {
+        // Path::join("") appends a trailing separator even for an empty
+        // remainder, which turns a regular file's path into one the OS
+        // refuses with ENOTDIR - a resolved file path must be usable
+        // directly with fs::read/fs::write, not just equal by value
+        let jail = Jail::new("no_trailing_slash");
+        let resolved = resolve_in_jail(&jail.root, "src/main.rs").expect("should resolve");
+        assert!(
+            !resolved.to_string_lossy().ends_with('/'),
+            "got {resolved:?}"
+        );
+        assert!(resolved.is_file(), "should resolve to a readable file");
     }
 
     #[test]
