@@ -819,4 +819,71 @@ mod prompt_tests {
             );
         }
     }
+
+    #[test]
+    fn test_builder_prompt_declares_exactly_user_name_and_platform() {
+        let template = PromptTemplate::new(include_str!("../prompts/builder.md"));
+        let mut variables = template.required_variables();
+        variables.sort();
+        assert_eq!(variables, vec![
+            "platform".to_string(),
+            "user_name".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_builder_prompt_renders_with_a_sample_context() {
+        let template = PromptTemplate::new(include_str!("../prompts/builder.md"));
+        let context = [
+            ("user_name".to_string(), "muni".to_string()),
+            ("platform".to_string(), "Discord".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let rendered = template.render(&context).expect("should render");
+        assert!(
+            !rendered.contains("{{"),
+            "no placeholder should survive rendering"
+        );
+    }
+
+    #[test]
+    fn test_builder_prompt_names_its_real_tools() {
+        let source = include_str!("../prompts/builder.md");
+        for tool in ["`read`", "`write`", "`edit`", "`bash`", "`grep`", "`glob`"] {
+            assert!(
+                source.contains(tool),
+                "the builder prompt should name its real tool {tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_builder_prompt_forbids_creating_commits() {
+        // the plan's own scope boundary: "the Commit Crafter handles that"
+        let source = include_str!("../prompts/builder.md");
+        assert!(
+            source.contains("Don't create git commits")
+                || source.contains("don't create git commits")
+        );
+    }
+
+    #[test]
+    fn test_builder_prompt_has_no_pipeline_output_contract() {
+        let source = include_str!("../prompts/builder.md");
+        for pipeline_only in [
+            "SubmitCode",
+            "RequestBuildHelp",
+            "```json",
+            "start-task-tests",
+            "reviewer-feedback",
+            "files_changed",
+        ] {
+            assert!(
+                !source.contains(pipeline_only),
+                "the builder prompt should not contain pipeline-only text {pipeline_only:?}"
+            );
+        }
+    }
 }
