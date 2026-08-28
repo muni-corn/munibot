@@ -26,6 +26,7 @@ axum_session_auth = "0.20.0"
 axum_session_redispool = "0.11.0"
 backon = "1.6"
 base64 = "0.23"
+bollard = "0.21"
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 clap = { version = "4.5.4", features = ["derive"] }

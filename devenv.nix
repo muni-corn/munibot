@@ -49,6 +49,15 @@ in
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
     # matches the redirect URI registered with discord for local development
     PORT = 8080;
+    # the ai sandbox (munibot_ai::sandbox) talks to rootless podman over this
+    # socket via bollard, never the setuid docker socket. one-time host setup,
+    # outside this devenv shell since it's a per-user systemd unit:
+    #   systemctl --user enable --now podman.socket
+    # that starts podman as a lingering user service listening at exactly this
+    # path. sandbox integration tests are gated behind a feature flag (see
+    # munibot_ai/Cargo.toml's "sandbox-integration" feature) so `devenv test`
+    # stays green on a machine where this was never set up.
+    DOCKER_HOST = "unix://$XDG_RUNTIME_DIR/podman/podman.sock";
   };
 
   # setup helix to format dioxus rust and scss with treefmt
@@ -114,6 +123,7 @@ in
     [
       diesel-cli
       flyctl
+      podman
       tailwindcss_4
       wasm-bindgen-cli-pinned
     ]

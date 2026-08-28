@@ -247,6 +247,21 @@ retry falls back to its own computed backoff, never the provider's own guidance.
 `AiError` gained a `Rejected` variant distinct from `Provider`: the original design treated all
 provider trouble as transient, which is wrong for a 4xx that will only ever fail the same way again.
 
+## 11. Podman re-verified live for milestone 4 commit 130
+
+Re-running the check finding 7 flagged as deferred: podman is now installed and running on this
+machine, with a rootless socket active via the user's own systemd unit
+(`systemctl --user enable --now podman.socket`, already done) at
+`$XDG_RUNTIME_DIR/podman/podman.sock`. `bollard` 0.21.1 connects to it and calls `version()`
+and `list_images()` successfully.
+
+One correction to the plan's own assumption: `Docker::connect_with_socket_defaults()` does **not**
+read `$DOCKER_HOST` and instead hardcodes `/var/run/docker.sock`, which does not exist for a rootless
+setup and panics with `SocketNotFoundError`. The correct constructor is
+**`Docker::connect_with_podman_defaults()`**, which probes `$DOCKER_HOST` first and falls back to the
+well-known rootless and system podman socket paths - this is what `ai::sandbox` (commit 142) must
+call, not `connect_with_socket_defaults()`.
+
 ## Reproducing
 
 The probe was a throwaway crate outside the repository. To rebuild it, create a binary crate on
