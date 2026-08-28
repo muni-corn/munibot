@@ -23,6 +23,7 @@ pub mod limits;
 pub mod memory;
 pub mod persona;
 pub mod provider;
+pub mod sandbox;
 pub mod service;
 pub mod tools;
 pub mod types;
