@@ -179,6 +179,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    email_signin_tokens (id) {
+        id -> Bigint,
+        #[max_length = 255]
+        email -> Varchar,
+        #[max_length = 64]
+        token_hash -> Char,
+        expires_at -> Datetime,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     guild_configs (guild_id) {
         guild_id -> Bigint,
         logging_channel -> Nullable<Bigint>,
@@ -287,6 +299,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     ai_user_settings,
     autodelete_timers,
     community_links,
+    email_signin_tokens,
     guild_configs,
     guild_payouts,
     guild_wallets,
