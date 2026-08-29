@@ -4,14 +4,19 @@ use munibot_api::{
     server_fns::chat::{conversation::get_conversation_messages, stream::chat_stream},
 };
 
-use crate::components::{
-    Spinner,
-    chat::{
-        composer::Composer,
-        delegation::{DelegationEntry, record_delegation_finished, record_delegation_started},
-        message_list::MessageList,
-        tool_activity::{ToolActivityEntry, ToolActivityResult, record_finished, record_started},
-        turn_failure::{TurnFailure, TurnFailureBanner},
+use crate::{
+    app::Route,
+    components::{
+        Spinner,
+        chat::{
+            composer::Composer,
+            delegation::{DelegationEntry, record_delegation_finished, record_delegation_started},
+            message_list::MessageList,
+            tool_activity::{
+                ToolActivityEntry, ToolActivityResult, record_finished, record_started,
+            },
+            turn_failure::{TurnFailure, TurnFailureBanner},
+        },
     },
 };
 
@@ -145,6 +150,15 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
     rsx! {
         document::Title { "chat ~ munibot" }
         div { class: "flex h-full flex-col",
+            div { class: "flex justify-end p-2",
+                Link {
+                    to: Route::Transcript {
+                        conversation_id,
+                    },
+                    class: "text-xs text-slate-400 hover:text-slate-200",
+                    "view transcript"
+                }
+            }
             div { class: "grow overflow-y-auto", {content} }
             if let Some(failure) = turn_failure.read().clone() {
                 TurnFailureBanner { failure, on_retry: retry }

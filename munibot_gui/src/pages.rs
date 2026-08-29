@@ -6,4 +6,5 @@ pub mod home;
 pub mod memory;
 pub mod personas;
 pub mod pipelines;
+pub mod transcript;
 pub mod usage;

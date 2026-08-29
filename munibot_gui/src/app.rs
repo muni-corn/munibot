@@ -11,6 +11,7 @@ use crate::{
         memory::Memory,
         personas::Personas,
         pipelines::{PipelineDetail, Pipelines},
+        transcript::TranscriptViewer,
         usage::Usage,
     },
 };
@@ -87,6 +88,8 @@ pub enum Route {
             Pipelines {},
             #[route("/pipelines/:pipeline_id")]
             PipelineDetail { pipeline_id: i64 },
+            #[route("/transcript/:conversation_id", TranscriptViewer)]
+            Transcript { conversation_id: i64 },
         #[end_layout]
     #[end_layout]
 
