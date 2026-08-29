@@ -9,6 +9,7 @@
 //! same way the harness itself is provider-agnostic.
 
 mod advance;
+mod branch;
 mod event;
 mod handoff;
 mod plan;
@@ -16,6 +17,7 @@ mod state;
 mod store;
 
 pub use advance::{AdvanceError, advance};
+pub use branch::resolve_branch_name;
 pub use event::PipelineEvent;
 pub use handoff::{
     AgentRole, ApproveCode, ApprovePlan, ApproveTests, ArchitectureReviewerHandoff,
