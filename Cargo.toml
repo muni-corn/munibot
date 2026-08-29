@@ -9,6 +9,7 @@ members = [
   "munibot_gui",
   "munibot_toolagent",
   "munibot_twitch",
+  "munibot_vcs",
 ]
 
 [workspace.package]
