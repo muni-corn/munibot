@@ -4881,6 +4881,7 @@ dependencies = [
  "humantime-serde",
  "jsonschema",
  "munibot_core",
+ "munibot_vcs",
  "reqwest 0.12.28",
  "rig-core",
  "schemars",
