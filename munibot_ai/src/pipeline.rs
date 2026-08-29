@@ -7,3 +7,7 @@
 //! `munibot_vcs::PullRequestTarget` through that crate directly, never
 //! `munibot_github` -- the pipeline is forge-agnostic by construction, the
 //! same way the harness itself is provider-agnostic.
+
+mod state;
+
+pub use state::{InteractionRequest, PipelineId, PipelineState, SubtaskId};
