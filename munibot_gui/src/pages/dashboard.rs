@@ -1,7 +1,10 @@
 use dioxus::prelude::*;
 use munibot_api::{guilds::GuildSummary, server_fns::guilds::get_guilds};
 
-use crate::{app::Route, components::Spinner};
+use crate::{
+    app::Route,
+    components::{SignInLinks, Spinner},
+};
 
 /// Layout for every `/dashboard/*` route: shows the sidebar of discord
 /// servers the signed-in user owns or administrates, with the current
@@ -27,9 +30,7 @@ pub fn Dashboard() -> Element {
             div { class: "flex h-full grow flex-col place-content-center items-center gap-4",
                 h2 { class: "text-3xl font-black", "who are you?" }
                 p { "you need to sign in to see your servers." }
-                a { href: "/auth/discord/authorize", class: "btn btn-primary",
-                    "Sign in with discord"
-                }
+                SignInLinks {}
             }
         },
         None => rsx! {
