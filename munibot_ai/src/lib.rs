@@ -26,6 +26,7 @@ pub mod moderation;
 pub mod persona;
 pub mod pipeline;
 pub mod provider;
+pub mod safety;
 pub mod sandbox;
 pub mod service;
 pub mod tools;

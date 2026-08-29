@@ -26,6 +26,7 @@ use crate::{
     moderation::ModerationGate,
     persona::{AiConfig, CrisisResourceConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
     provider::{Provider, ProviderRegistry, ProviderResolver, estimate_cost},
+    safety::{SafetyEvent, SafetyEventAuditor, SafetyEventType},
     tools::{ConversationId, RiskTier, ToolCtx, ToolRegistry},
     types::{AiError, Cost, History, Message, ModelRef, Usage, rough_token_estimate},
     usage::{UsageRecord, UsageRecorder},
@@ -206,6 +207,11 @@ pub struct Ai {
     /// moderation endpoint - exactly the behaviour every turn had before
     /// this existed.
     moderation_gate: Option<Arc<ModerationGate>>,
+    /// `None` until [`Self::with_safety_auditor`] enables it. Without it,
+    /// a rate limit trip, a spend cap refusal, a moderation block, or a
+    /// crisis trigger still happens exactly the same - only the durable
+    /// `ai_safety_events` record of it is skipped.
+    safety_auditor: Option<Arc<dyn SafetyEventAuditor>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -226,6 +232,15 @@ async fn write_usage(recorder: &Option<Arc<dyn UsageRecorder>>, record: UsageRec
     if let Err(error) = recorder.record(record).await {
         tracing::warn!(%error, "failed to record ai usage");
     }
+}
+
+/// Records `event` through `auditor` if one is configured, a no-op
+/// otherwise - the same shape as [`write_usage`], and for the same reason:
+/// [`Ai::turn_streamed`] needs to call this from inside its `'static`
+/// stream body, which cannot hold a borrow of `&self`.
+async fn record_safety_event(auditor: &Option<Arc<dyn SafetyEventAuditor>>, event: SafetyEvent) {
+    let Some(auditor) = auditor else { return };
+    auditor.record(event).await;
 }
 
 /// Spawns a detached background task naming `conversation_id` from its first
@@ -333,6 +348,7 @@ impl Ai {
             spend_cap_enforcer: None,
             abuse_detector: None,
             moderation_gate: None,
+            safety_auditor: None,
         }
     }
 
@@ -454,6 +470,13 @@ impl Ai {
         self
     }
 
+    /// Enables recording every rate limit trip, spend cap refusal,
+    /// moderation block, and crisis trigger to `ai_safety_events`.
+    pub fn with_safety_auditor(mut self, auditor: Arc<dyn SafetyEventAuditor>) -> Self {
+        self.safety_auditor = Some(auditor);
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = match self.prepare(&req).await? {
@@ -508,8 +531,20 @@ impl Ai {
             // way it is not in Self::turn_streamed, since nothing has been
             // shown to anyone yet; a flagged or unmoderatable reply is
             // simply never stored or returned
-            if let Some(gate) = &self.moderation_gate {
-                gate.check(prepared.moderation_policy, text).await?;
+            if let Some(gate) = &self.moderation_gate
+                && let Err(error) = gate.check(prepared.moderation_policy, text).await
+            {
+                record_safety_event(
+                    &self.safety_auditor,
+                    SafetyEvent::new(
+                        SafetyEventType::Moderation,
+                        Scope::User(req.user_id),
+                        error.to_string(),
+                    )
+                    .with_content(text),
+                )
+                .await;
+                return Err(error);
             }
 
             self.sessions
@@ -579,6 +614,7 @@ impl Ai {
         let spend_cap_enforcer = self.spend_cap_enforcer.clone();
         let moderation_gate = self.moderation_gate.clone();
         let moderation_policy = prepared.moderation_policy;
+        let safety_auditor = self.safety_auditor.clone();
         let rate_limit_scopes = prepared.rate_limit_scopes;
         let conversation_id = prepared.conversation_id;
         let persona_label = prepared.persona_label;
@@ -667,8 +703,21 @@ impl Ai {
                             // the user from having already seen it
                             if let Some(gate) = moderation_gate.clone() {
                                 let text = assistant_text.clone();
+                                let safety_auditor = safety_auditor.clone();
                                 tokio::spawn(async move {
-                                    let _ = gate.check(moderation_policy, &text).await;
+                                    if let Err(error) = gate.check(moderation_policy, &text).await
+                                    {
+                                        record_safety_event(
+                                            &safety_auditor,
+                                            SafetyEvent::new(
+                                                SafetyEventType::Moderation,
+                                                Scope::User(user_id),
+                                                error.to_string(),
+                                            )
+                                            .with_content(&text),
+                                        )
+                                        .await;
+                                    }
                                 });
                             }
 
@@ -777,25 +826,35 @@ impl Ai {
         if let Some(limiter) = &self.rate_limiter {
             rate_limit_guards.reserve(rate_limit_scopes.len());
             for &scope in &rate_limit_scopes {
-                let guard =
-                    limiter
-                        .check(scope)
-                        .await
-                        .map_err(|error| AiError::BudgetExceeded {
+                let guard = match limiter.check(scope).await {
+                    Ok(guard) => guard,
+                    Err(error) => {
+                        record_safety_event(
+                            &self.safety_auditor,
+                            SafetyEvent::new(SafetyEventType::RateLimit, scope, error.to_string()),
+                        )
+                        .await;
+                        return Err(AiError::BudgetExceeded {
                             limit: error.to_string(),
-                        })?;
+                        });
+                    }
+                };
                 rate_limit_guards.push(guard);
             }
         }
 
         if let Some(enforcer) = &self.spend_cap_enforcer {
             for &scope in &rate_limit_scopes {
-                enforcer
-                    .check(scope)
-                    .await
-                    .map_err(|error| AiError::BudgetExceeded {
+                if let Err(error) = enforcer.check(scope).await {
+                    record_safety_event(
+                        &self.safety_auditor,
+                        SafetyEvent::new(SafetyEventType::SpendCap, scope, error.to_string()),
+                    )
+                    .await;
+                    return Err(AiError::BudgetExceeded {
                         limit: error.to_string(),
-                    })?;
+                    });
+                }
             }
         }
 
@@ -813,7 +872,16 @@ impl Ai {
         // in Self::turn once a reply actually exists (turn_streamed cannot
         // block its own output the same way - see that method's own note)
         if let Some(gate) = &self.moderation_gate {
-            gate.check(persona.moderation_policy, &req.message).await?;
+            let scope = Scope::User(req.user_id);
+            if let Err(error) = gate.check(persona.moderation_policy, &req.message).await {
+                record_safety_event(
+                    &self.safety_auditor,
+                    SafetyEvent::new(SafetyEventType::Moderation, scope, error.to_string())
+                        .with_content(&req.message),
+                )
+                .await;
+                return Err(error);
+            }
         }
 
         let mut conversation = self
@@ -843,6 +911,16 @@ impl Ai {
                     "crisis classifier flagged an inbound message; bypassing the normal turn for \
                      the reviewed crisis response"
                 );
+                record_safety_event(
+                    &self.safety_auditor,
+                    SafetyEvent::new(
+                        SafetyEventType::Crisis,
+                        Scope::User(req.user_id),
+                        format!("severity {severity:?}"),
+                    )
+                    .with_content(&req.message),
+                )
+                .await;
 
                 let text = crisis_response_text(&self.crisis_resources);
                 self.sessions

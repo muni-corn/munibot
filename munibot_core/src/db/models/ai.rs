@@ -10,8 +10,8 @@ use diesel::prelude::*;
 
 use crate::db::schema::{
     ai_abuse_cooldowns, ai_attachments, ai_conversations, ai_memories, ai_messages,
-    ai_pipeline_events, ai_pipelines, ai_rate_limits, ai_spend_caps, ai_tool_calls, ai_usage,
-    ai_user_settings,
+    ai_pipeline_events, ai_pipelines, ai_rate_limits, ai_safety_events, ai_spend_caps,
+    ai_tool_calls, ai_usage, ai_user_settings,
 };
 
 // ai_conversations
@@ -374,6 +374,42 @@ pub struct NewAiAbuseCooldown {
     pub cooldown_until: NaiveDateTime,
     pub last_reason: String,
     pub last_tripped_at: NaiveDateTime,
+}
+
+// ai_safety_events
+
+/// A row in the `ai_safety_events` table: one trip of a rate limit, a spend
+/// cap, a moderation check, or a crisis classifier - see
+/// `munibot_ai::safety::SafetyEvent`, which this mirrors.
+///
+/// Deliberately carries no raw content: `content_hash` is a one-way digest,
+/// the same reasoning [`AiAbuseCooldown`]'s own doc comment documents for
+/// `last_reason`.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = ai_safety_events)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiSafetyEvent {
+    pub id: i64,
+    pub event_type: String,
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub reason: String,
+    pub content_hash: Option<String>,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable shape for `ai_safety_events`. No `AsChangeset`: safety events
+/// are append-only, never updated in place, unlike every other table in
+/// this module.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = ai_safety_events)]
+pub struct NewAiSafetyEvent {
+    pub event_type: String,
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub reason: String,
+    pub content_hash: Option<String>,
+    pub created_at: NaiveDateTime,
 }
 
 // ai_pipelines

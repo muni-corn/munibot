@@ -10,10 +10,10 @@ pub mod ai;
 
 pub use ai::{
     AiAbuseCooldown, AiAttachment, AiAttachmentMeta, AiConversation, AiMemory, AiMessage,
-    AiPipeline, AiPipelineEvent, AiRateLimit, AiSpendCap, AiToolCall, AiUsage, AiUserSettings,
-    NewAiAbuseCooldown, NewAiAttachment, NewAiConversation, NewAiMemory, NewAiMessage,
-    NewAiPipeline, NewAiPipelineEvent, NewAiRateLimit, NewAiSpendCap, NewAiToolCall, NewAiUsage,
-    NewAiUserSettings,
+    AiPipeline, AiPipelineEvent, AiRateLimit, AiSafetyEvent, AiSpendCap, AiToolCall, AiUsage,
+    AiUserSettings, NewAiAbuseCooldown, NewAiAttachment, NewAiConversation, NewAiMemory,
+    NewAiMessage, NewAiPipeline, NewAiPipelineEvent, NewAiRateLimit, NewAiSafetyEvent,
+    NewAiSpendCap, NewAiToolCall, NewAiUsage, NewAiUserSettings,
 };
 
 // guild_configs

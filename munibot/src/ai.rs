@@ -24,6 +24,7 @@ use munibot_ai::{
     moderation::OpenAiModerator,
     persona::AiConfig,
     provider::ProviderResolver,
+    safety::DieselSafetyEventAuditor,
     tools::{DelegablePersona, DelegateTool, Delegator, DelegatorCell, ToolRegistry},
     types::ModelRef,
     usage::DieselUsageRecorder,
@@ -127,7 +128,8 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
         .with_tool_auditor(Arc::new(DieselToolAuditor::new(pool.clone())))
         .with_rate_limiter(Arc::new(rate_limiter))
         .with_spend_cap_enforcer(Arc::new(spend_cap_enforcer))
-        .with_abuse_detector(Arc::new(abuse_detector));
+        .with_abuse_detector(Arc::new(abuse_detector))
+        .with_safety_auditor(Arc::new(DieselSafetyEventAuditor::new(pool.clone())));
 
     // opt-in: moderation only ever runs where a provider actually has an
     // endpoint for it (today, only OpenAI) - see OpenAiModerator's own doc

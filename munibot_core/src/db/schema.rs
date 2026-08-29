@@ -113,6 +113,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    ai_safety_events (id) {
+        id -> Bigint,
+        #[max_length = 16]
+        event_type -> Varchar,
+        #[max_length = 16]
+        scope_type -> Varchar,
+        scope_id -> Nullable<Bigint>,
+        #[max_length = 255]
+        reason -> Varchar,
+        #[max_length = 64]
+        content_hash -> Nullable<Char>,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     ai_spend_caps (id) {
         id -> Bigint,
         #[max_length = 16]
@@ -296,6 +312,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     ai_pipeline_events,
     ai_pipelines,
     ai_rate_limits,
+    ai_safety_events,
     ai_spend_caps,
     ai_tool_calls,
     ai_usage,

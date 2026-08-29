@@ -10,6 +10,7 @@ pub mod abuse;
 pub mod attachment;
 pub mod limits;
 pub mod pipeline;
+pub mod safety;
 pub mod usage;
 
 pub use abuse::{get_abuse_cooldown, upsert_abuse_cooldown};
@@ -27,6 +28,7 @@ pub use pipeline::{
     append_pipeline_event, create_pipeline, get_pipeline, list_pipeline_events, list_pipeline_ids,
     list_pipelines,
 };
+pub use safety::{list_safety_events, record_safety_event};
 pub use usage::{UsageTotals, sum_usage_for_user, sum_usage_global};
 
 use crate::db::{
