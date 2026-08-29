@@ -12,6 +12,7 @@ use super::{MainLayout, NotFound};
 use crate::{
     layouts::home::HomeLayout,
     pages::{
+        account::Account,
         chat::{Chat, ChatLayout, conversation::ChatConversation},
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
@@ -39,6 +40,8 @@ pub enum Route {
         #[route("/")]
         Home,
         #[layout(HomeLayout)]
+            #[route("/account")]
+            Account {},
             #[layout(Dashboard)]
                 #[route("/dashboard")]
                 DashboardIndex {},

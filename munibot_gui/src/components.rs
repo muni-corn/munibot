@@ -26,6 +26,8 @@ pub fn AccountStatus() -> Element {
                 span { "hi, {name}! ^-^ " }
                 Link { to: Route::DashboardIndex {}, "your servers" }
                 " · "
+                Link { to: Route::Account {}, "account" }
+                " · "
                 a { href: "/auth/logout", "sign out" }
             }
         }

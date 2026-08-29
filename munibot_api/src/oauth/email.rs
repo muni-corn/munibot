@@ -16,6 +16,8 @@ use rand::RngExt;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+use crate::oauth::LinkOrSignIn;
+
 /// How long a magic link stays valid before [`verify_signin`] refuses it.
 const TOKEN_TTL: Duration = Duration::minutes(15);
 
@@ -33,6 +35,10 @@ pub enum EmailSigninError {
     Mailer(#[from] crate::mailer::MailerError),
     #[error(transparent)]
     Database(#[from] diesel::result::Error),
+    /// From [`LinkOrSignIn::resolve`], which returns `anyhow::Result` since
+    /// it is shared by every provider, not just this one.
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Generates a fresh token, stores only its hash, and emails the resulting
@@ -70,26 +76,40 @@ pub async fn request_signin(
     Ok(())
 }
 
-/// Consumes a token from a callback's `?token=` query parameter, returning
-/// the signed-in user's id when it was valid and unexpired, or `None`
-/// when it was missing, already used, or expired - the caller shows the
-/// same "that link didn't work" response either way, never leaking which.
-pub async fn verify_signin(pool: &DbPool, token: &str) -> Result<Option<i64>, EmailSigninError> {
+/// Consumes a token from a callback's `?token=` query parameter, then
+/// either signs in as (or creates) its matching user, or links it to
+/// `existing_user_id` - see [`LinkOrSignIn`]'s own doc comment for that
+/// branch. `None` when the token was missing, already used, or expired -
+/// the caller shows the same "that link didn't work" response either way,
+/// never leaking which.
+pub async fn verify_signin(
+    pool: &DbPool,
+    token: &str,
+    existing_user_id: Option<i64>,
+) -> Result<Option<LinkOrSignIn>, EmailSigninError> {
     let token_hash = hash_token(token);
     let Some(email) = operations::consume_email_signin_token(pool, &token_hash).await? else {
         return Ok(None);
     };
 
-    let user = operations::get_or_create_user_from_linked_account(
-        pool, "email", &email, &email, &email, None,
+    let outcome = LinkOrSignIn::resolve(
+        pool,
+        existing_user_id,
+        "email",
+        &email,
+        &email,
+        &email,
+        None,
         // an email sign-in has no oauth access token at all --
         // linked_accounts.access_token is NOT NULL, so an empty string
         // stands in for "not applicable" here, never a real credential
-        "", None, None,
+        "",
+        None,
+        None,
     )
     .await?;
 
-    Ok(Some(user.id))
+    Ok(Some(outcome))
 }
 
 /// A fresh random token, as lowercase hex.
