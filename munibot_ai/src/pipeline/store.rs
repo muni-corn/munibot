@@ -14,9 +14,8 @@ use munibot_core::db::{DbPool, operations::ai as core_ai};
 use munibot_vcs::IssueRef;
 use thiserror::Error;
 
-use crate::pipeline::{
-    InteractionRequest, PipelineEvent, PipelineId, PipelineState, RecommendedAction,
-};
+use super::advance::advance;
+use crate::pipeline::{PipelineEvent, PipelineId, PipelineState};
 
 /// Why a [`PipelineStore`] operation failed.
 #[derive(Error, Debug)]
@@ -25,98 +24,28 @@ pub enum PipelineStoreError {
     NotFound(PipelineId),
     #[error("couldn't (de)serialize a pipeline event: {0}")]
     Serialization(String),
+    /// `replay` folded a persisted event log through `advance` and hit an
+    /// illegal transition -- every event in a real log was itself
+    /// appended after `advance` already accepted it, so this means the
+    /// log itself was corrupted or written by something that bypassed
+    /// that check, not an ordinary runtime condition.
+    #[error("pipeline event log is not a legal history: {0}")]
+    InvalidHistory(String),
     #[error("pipeline store operation failed: {0}")]
     Other(String),
-}
-
-/// Folds one event onto the state it's assumed to have already arrived
-/// on, producing the state that comes next.
-///
-/// Trusts the event log rather than validating it: every event this
-/// function ever sees was itself produced by an executor that already
-/// checked a transition was legal before appending it (a later commit adds
-/// that check as its own, separate concern -- see
-/// `docs/plans/ai/milestone-5-autonomous.md`'s pipeline advance commit).
-/// This function's own job is only to compute the resulting state, not to
-/// police how it got there.
-fn fold_one(state: PipelineState, event: &PipelineEvent) -> PipelineState {
-    use PipelineEvent as E;
-    use PipelineState as S;
-
-    match event {
-        E::Triggered { .. } => S::Triaging,
-        E::IssueAnalyzed(analysis) => match analysis.recommended_action {
-            RecommendedAction::Proceed => S::Researching,
-            RecommendedAction::NeedsMoreInfo => S::AwaitingUserInput {
-                request: InteractionRequest {
-                    prompt: analysis.summary.clone(),
-                },
-                resume: Box::new(S::Triaging),
-            },
-            RecommendedAction::Skip => S::Complete,
-        },
-        E::ResearchCompleted(_) => S::Planning,
-        E::PlanCreated(_) => S::ReviewingPlan,
-        E::PlanHelpRequested(help) => S::AwaitingUserInput {
-            request: InteractionRequest {
-                prompt: help.question.clone(),
-            },
-            resume: Box::new(S::Planning),
-        },
-        E::PlanApproved(_) => S::Scheduling,
-        E::PlanChangesRequested(_) => S::Planning,
-        E::SubtaskTestsStarted(start) => S::TestWriting {
-            subtask: start.subtask_id.clone(),
-        },
-        E::FinalReviewStarted(_) => S::FinalReview,
-        E::TestsSubmitted(submitted) => S::TestReviewing {
-            subtask: submitted.subtask_id.clone(),
-        },
-        E::TestsApproved(_) => match state {
-            S::TestReviewing { subtask } => S::Building { subtask },
-            other => other,
-        },
-        E::TestChangesRequested(_) => match state {
-            S::TestReviewing { subtask } => S::TestWriting { subtask },
-            other => other,
-        },
-        E::CodeSubmitted(submitted) => S::ReviewingCode {
-            subtask: submitted.subtask_id.clone(),
-        },
-        E::BuildHelpRequested(help) => S::AwaitingUserInput {
-            request: InteractionRequest {
-                prompt: help.question.clone(),
-            },
-            resume: Box::new(state),
-        },
-        E::CodeApproved(_) => match state {
-            S::ReviewingCode { subtask } => S::Committing { subtask },
-            other => other,
-        },
-        E::CodeChangesRequested(_) => match state {
-            S::ReviewingCode { subtask } => S::Building { subtask },
-            S::FinalReview => S::AwaitingFixSubtask,
-            other => other,
-        },
-        E::ProjectCompleted(_) => S::WritingPr,
-        E::SubtaskCommitted(_) => S::Scheduling,
-        E::PullRequestAuthored(_) => S::Complete,
-        E::UserInputReceived { .. } => match state {
-            S::AwaitingUserInput { resume, .. } => *resume,
-            other => other,
-        },
-        E::Failed { reason } => S::Failed {
-            reason: reason.clone(),
-        },
-    }
 }
 
 /// Folds a whole event log into the state it resolves to, starting from
 /// `PipelineState::Triaging` -- an empty log resolves there too, since
 /// that's the state a run is in before its own `Triggered` event even
 /// arrives.
-fn fold(events: &[PipelineEvent]) -> PipelineState {
-    events.iter().fold(PipelineState::Triaging, fold_one)
+fn fold(events: &[PipelineEvent]) -> Result<PipelineState, PipelineStoreError> {
+    events
+        .iter()
+        .try_fold(PipelineState::Triaging, |state, event| {
+            advance(state, event)
+                .map_err(|error| PipelineStoreError::InvalidHistory(error.to_string()))
+        })
 }
 
 /// Persists one pipeline's own append-only event log.
@@ -146,7 +75,7 @@ pub trait PipelineStore: Send + Sync {
 
     /// The state `pipeline_id`'s own event log currently resolves to.
     async fn replay(&self, pipeline_id: PipelineId) -> Result<PipelineState, PipelineStoreError> {
-        Ok(fold(&self.events(pipeline_id).await?))
+        fold(&self.events(pipeline_id).await?)
     }
 }
 
@@ -267,7 +196,8 @@ mod tests {
 
     use super::*;
     use crate::pipeline::{
-        ApprovePlan, CreatePlan, IssueAnalysis, IssueClassification, ReproductionStatus,
+        ApprovePlan, CreatePlan, IssueAnalysis, IssueClassification, RecommendedAction,
+        ReproductionStatus,
     };
 
     fn issue() -> IssueRef {

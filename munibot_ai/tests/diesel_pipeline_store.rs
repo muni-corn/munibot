@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use munibot_ai::pipeline::{
     ApprovePlan, CreatePlan, DieselPipelineStore, IssueAnalysis, IssueClassification,
     PipelineEvent, PipelineState, PipelineStore, RecommendedAction, ReproductionStatus,
+    ResearchComplete,
 };
 use munibot_core::db::{DbPool, establish_pool};
 use munibot_vcs::{Forge, IssueRef, RepoRef};
@@ -77,6 +78,16 @@ async fn test_appended_events_persist_and_replay_correctly() {
     store
         .append_event(
             id,
+            PipelineEvent::ResearchCompleted(ResearchComplete {
+                summary: "uses axum".to_string(),
+                relevant_files: vec![],
+            }),
+        )
+        .await
+        .expect("append failed");
+    store
+        .append_event(
+            id,
             PipelineEvent::PlanCreated(CreatePlan {
                 summary: "add dark mode".to_string(),
                 subtasks: vec![],
@@ -96,7 +107,7 @@ async fn test_appended_events_persist_and_replay_correctly() {
         .expect("append failed");
 
     let events = store.events(id).await.expect("events failed");
-    assert_eq!(events.len(), 4);
+    assert_eq!(events.len(), 5);
 
     assert_eq!(
         store.replay(id).await.expect("replay failed"),

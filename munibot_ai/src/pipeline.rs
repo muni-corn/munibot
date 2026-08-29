@@ -8,12 +8,14 @@
 //! `munibot_github` -- the pipeline is forge-agnostic by construction, the
 //! same way the harness itself is provider-agnostic.
 
+mod advance;
 mod event;
 mod handoff;
 mod plan;
 mod state;
 mod store;
 
+pub use advance::{AdvanceError, advance};
 pub use event::PipelineEvent;
 pub use handoff::{
     AgentRole, ApproveCode, ApprovePlan, ApproveTests, ArchitectureReviewerHandoff,
