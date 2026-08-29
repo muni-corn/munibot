@@ -7,6 +7,8 @@
 
 mod auth;
 mod error;
+mod webhook;
 
 pub use auth::{InstallationTokenCache, OctocrabTokenMinter, TokenMinter};
 pub use error::GitHubError;
+pub use webhook::verify_signature;
