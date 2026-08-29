@@ -14,7 +14,10 @@ use axum_session::{SessionConfig, SessionLayer, SessionStore};
 use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_redispool::SessionRedisPool;
 use dioxus::prelude::*;
-use munibot_ai::Ai;
+use munibot_ai::{
+    Ai,
+    pipeline::{ConcurrencyConfig, PipelineRegistry},
+};
 use munibot_api::auth::server::User;
 use munibot_core::{config::DiscordConfig, db::establish_pool};
 use redis_pool::RedisPool;
@@ -69,6 +72,12 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
         dispatch: None,
     });
 
+    // one registry per process, shared by every pipeline-monitor server
+    // function and (once a real pipeline is actually started somewhere)
+    // whatever runs it -- see docs/notes/pipeline-sandbox-wiring-gap.md
+    // for what still needs wiring before any pipeline actually runs here
+    let pipeline_registry = Arc::new(PipelineRegistry::new(ConcurrencyConfig::default()));
+
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), App)
@@ -86,7 +95,8 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
         .layer(Extension(pool))
         .layer(Extension(discord_config))
         .layer(Extension(ai))
-        .layer(Extension(webhook_config));
+        .layer(Extension(webhook_config))
+        .layer(Extension(pipeline_registry));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "listening");

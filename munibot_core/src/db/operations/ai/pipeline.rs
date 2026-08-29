@@ -69,6 +69,17 @@ pub async fn list_pipeline_ids(pool: &DbPool) -> QueryResult<Vec<i64>> {
         .await
 }
 
+/// Every pipeline ever created, most recently created first -- what the
+/// pipeline monitor page lists.
+pub async fn list_pipelines(pool: &DbPool) -> QueryResult<Vec<AiPipeline>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_pipelines::table
+        .order(ai_pipelines::id.desc())
+        .select(AiPipeline::as_select())
+        .load(&mut conn)
+        .await
+}
+
 /// Appends one event, assigning it the next sequence number in this
 /// pipeline's own log.
 ///

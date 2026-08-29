@@ -9,6 +9,7 @@ use crate::{
         home::Home,
         memory::Memory,
         personas::Personas,
+        pipelines::{PipelineDetail, Pipelines},
         usage::Usage,
     },
 };
@@ -74,6 +75,10 @@ pub enum Route {
             Personas {},
             #[route("/usage")]
             Usage {},
+            #[route("/pipelines")]
+            Pipelines {},
+            #[route("/pipelines/:pipeline_id")]
+            PipelineDetail { pipeline_id: i64 },
         #[end_layout]
     #[end_layout]
 

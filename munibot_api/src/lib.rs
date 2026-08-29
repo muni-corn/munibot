@@ -9,6 +9,7 @@
 pub mod auth;
 pub mod chat;
 pub mod guilds;
+pub mod pipeline;
 
 #[cfg(feature = "server")]
 pub mod oauth;

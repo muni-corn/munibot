@@ -49,6 +49,10 @@ pub enum ChatError {
     #[error("that attachment doesn't exist")]
     AttachmentNotFound,
 
+    /// The referenced pipeline run doesn't exist.
+    #[error("that pipeline doesn't exist")]
+    PipelineNotFound,
+
     /// Wraps a generic server function error so `ChatResult` propagates
     /// cleanly.
     #[error(transparent)]
@@ -66,6 +70,7 @@ impl AsStatusCode for ChatError {
             Self::AiDisabled => StatusCode::SERVICE_UNAVAILABLE,
             Self::AttachmentRejected(_) => StatusCode::BAD_REQUEST,
             Self::AttachmentNotFound => StatusCode::NOT_FOUND,
+            Self::PipelineNotFound => StatusCode::NOT_FOUND,
             Self::ServerFnError(e) => e.as_status_code(),
         }
     }
@@ -159,6 +164,14 @@ mod tests {
     fn test_attachment_not_found_is_not_found() {
         assert_eq!(
             ChatError::AttachmentNotFound.as_status_code(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn test_pipeline_not_found_is_not_found() {
+        assert_eq!(
+            ChatError::PipelineNotFound.as_status_code(),
             StatusCode::NOT_FOUND
         );
     }

@@ -37,3 +37,18 @@ and `Sandbox::checkout` both already exist and are independently tested
 one thing that turns "the executor can drive a scripted mock through every
 state" into "the executor can actually build software". Do this before a
 real repository is ever pointed at this pipeline.
+
+## Pipeline monitor page's own scope (phase 22, commit 181)
+
+The monitor page's per-pipeline detail view shows one row per persisted
+`PipelineEvent` - "every agent invocation" in the sense that each event is
+exactly what one role's own handoff produced. It does not show "every tool
+call" a turn made along the way: those are recorded in `ai_tool_calls`
+today, keyed by `conversation_id`, and a pipeline turn has no
+`conversation_id` at all (`HarnessDispatcher` never records usage or tool
+calls anywhere). Linking a turn's own tool-call audit trail back to the
+pipeline that ran it needs either a `pipeline_id` column somewhere in that
+recording path, or folding it into the event log itself - neither exists
+yet. `PipelineRegistry::is_running` is real, but nothing in the current
+binary actually starts a pipeline running in the first place (see above),
+so `running` on every summary is `false` until that wiring lands too.

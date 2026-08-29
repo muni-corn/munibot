@@ -23,6 +23,7 @@ pub use limits::{
 };
 pub use pipeline::{
     append_pipeline_event, create_pipeline, get_pipeline, list_pipeline_events, list_pipeline_ids,
+    list_pipelines,
 };
 pub use usage::{UsageTotals, sum_usage_for_user, sum_usage_global};
 

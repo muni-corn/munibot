@@ -87,6 +87,42 @@ impl PipelineState {
     pub fn is_terminal(&self) -> bool {
         matches!(self, PipelineState::Complete | PipelineState::Failed { .. })
     }
+
+    /// A short, stable name for this state's own variant -- for display
+    /// (the pipeline monitor page) and logging, the same reasoning
+    /// `PipelineEvent::label` already applies to events.
+    pub fn label(&self) -> &'static str {
+        match self {
+            PipelineState::Triaging => "triaging",
+            PipelineState::Researching => "researching",
+            PipelineState::Planning => "planning",
+            PipelineState::ReviewingPlan => "reviewing_plan",
+            PipelineState::Scheduling => "scheduling",
+            PipelineState::TestWriting { .. } => "test_writing",
+            PipelineState::TestReviewing { .. } => "test_reviewing",
+            PipelineState::Building { .. } => "building",
+            PipelineState::ReviewingCode { .. } => "reviewing_code",
+            PipelineState::Committing { .. } => "committing",
+            PipelineState::FinalReview => "final_review",
+            PipelineState::AwaitingFixSubtask => "awaiting_fix_subtask",
+            PipelineState::WritingPr => "writing_pr",
+            PipelineState::AwaitingUserInput { .. } => "awaiting_user_input",
+            PipelineState::Complete => "complete",
+            PipelineState::Failed { .. } => "failed",
+        }
+    }
+
+    /// The subtask a subtask-scoped state names, if this is one.
+    pub fn subtask(&self) -> Option<&SubtaskId> {
+        match self {
+            PipelineState::TestWriting { subtask }
+            | PipelineState::TestReviewing { subtask }
+            | PipelineState::Building { subtask }
+            | PipelineState::ReviewingCode { subtask }
+            | PipelineState::Committing { subtask } => Some(subtask),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -128,6 +164,46 @@ mod tests {
     #[test]
     fn test_scheduling_is_not_terminal() {
         assert!(!PipelineState::Scheduling.is_terminal());
+    }
+
+    #[test]
+    fn test_label_names_the_building_variant() {
+        assert_eq!(
+            PipelineState::Building {
+                subtask: SubtaskId("task-1".to_string())
+            }
+            .label(),
+            "building"
+        );
+    }
+
+    #[test]
+    fn test_label_names_the_failed_variant() {
+        assert_eq!(
+            PipelineState::Failed {
+                reason: "?".to_string()
+            }
+            .label(),
+            "failed"
+        );
+    }
+
+    #[test]
+    fn test_subtask_is_some_for_a_subtask_scoped_state() {
+        let subtask = SubtaskId("task-1".to_string());
+        assert_eq!(
+            PipelineState::Building {
+                subtask: subtask.clone()
+            }
+            .subtask(),
+            Some(&subtask)
+        );
+    }
+
+    #[test]
+    fn test_subtask_is_none_for_a_state_with_no_subtask() {
+        assert_eq!(PipelineState::Scheduling.subtask(), None);
+        assert_eq!(PipelineState::Triaging.subtask(), None);
     }
 
     #[test]

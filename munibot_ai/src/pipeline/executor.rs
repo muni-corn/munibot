@@ -18,7 +18,7 @@ use crate::{
     pipeline::{
         AgentContext, AgentDispatcher, AgentRole, DispatchError, InteractionAdapter,
         InteractionError, PipelineEvent, PipelineId, PipelineState, PipelineStore,
-        PipelineStoreError, SubtaskId, advance,
+        PipelineStoreError, advance,
     },
     tools::{ConversationId, ToolRegistry},
 };
@@ -278,7 +278,7 @@ fn task_brief(role: AgentRole, state: &PipelineState, events: &[PipelineEvent]) 
             }
         }
         AgentRole::TestEngineer => {
-            let subtask = subtask_of(state);
+            let subtask = state.subtask();
             format!("Write tests for subtask {subtask:?}.")
         }
         AgentRole::TestReviewer => {
@@ -290,7 +290,7 @@ fn task_brief(role: AgentRole, state: &PipelineState, events: &[PipelineEvent]) 
             format!("Review these tests: {summary}")
         }
         AgentRole::Builder => {
-            let subtask = subtask_of(state);
+            let subtask = state.subtask();
             format!("Implement subtask {subtask:?} against its approved tests.")
         }
         AgentRole::CodeReviewer => {
@@ -305,23 +305,10 @@ fn task_brief(role: AgentRole, state: &PipelineState, events: &[PipelineEvent]) 
             "Review every change across every subtask against the original plan.".to_string()
         }
         AgentRole::CommitCrafter => {
-            let subtask = subtask_of(state);
+            let subtask = state.subtask();
             format!("Commit the approved changes for subtask {subtask:?}.")
         }
         AgentRole::PrAuthor => "Write the pull request title and body.".to_string(),
-    }
-}
-
-/// The subtask a subtask-scoped state names, if `state` is one.
-fn subtask_of(state: &PipelineState) -> Option<&SubtaskId> {
-    use PipelineState as S;
-    match state {
-        S::TestWriting { subtask }
-        | S::TestReviewing { subtask }
-        | S::Building { subtask }
-        | S::ReviewingCode { subtask }
-        | S::Committing { subtask } => Some(subtask),
-        _ => None,
     }
 }
 

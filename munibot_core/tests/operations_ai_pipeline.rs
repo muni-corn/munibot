@@ -184,3 +184,19 @@ async fn test_list_pipeline_ids_is_empty_for_a_fresh_database() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn test_list_pipelines_returns_full_rows_most_recently_created_first() {
+    let db = TestDb::new().await;
+    let first = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 1)
+        .await
+        .expect("create failed");
+    let second = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 2)
+        .await
+        .expect("create failed");
+
+    let pipelines = ai::list_pipelines(&db.pool).await.expect("query failed");
+    assert_eq!(pipelines.len(), 2);
+    assert_eq!(pipelines[0].id, second.id);
+    assert_eq!(pipelines[1].id, first.id);
+}
