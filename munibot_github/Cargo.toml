@@ -12,6 +12,7 @@ async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
 hmac.workspace = true
+http.workspace = true
 jsonwebtoken.workspace = true
 octocrab.workspace = true
 secrecy.workspace = true
