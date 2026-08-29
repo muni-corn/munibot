@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use munibot_api::{
     pipeline::PipelineSummary,
-    server_fns::pipeline::{get_pipeline_detail, pipeline_monitor_stream},
+    server_fns::pipeline::{abort_pipeline_action, get_pipeline_detail, pipeline_monitor_stream},
 };
 
 use crate::{app::Route, components::Spinner};
@@ -57,23 +57,74 @@ pub fn Pipelines() -> Element {
 #[component]
 fn PipelineRow(pipeline: PipelineSummary) -> Element {
     rsx! {
-        Link {
-            to: Route::PipelineDetail {
-                pipeline_id: pipeline.id,
-            },
-            class: "flex flex-row items-center gap-4 rounded-lg bg-slate-900/50 p-4 hover:bg-slate-900",
-            span { class: "font-mono text-sm text-slate-400", "#{pipeline.id}" }
-            span { class: "font-bold", "{pipeline.owner}/{pipeline.repo_name}#{pipeline.issue_number}" }
-            StateBadge {
-                state: pipeline.state.clone(),
-                subtask: pipeline.subtask.clone(),
+        div { class: "flex flex-row items-center gap-4 rounded-lg bg-slate-900/50 p-4 hover:bg-slate-900",
+            Link {
+                to: Route::PipelineDetail {
+                    pipeline_id: pipeline.id,
+                },
+                class: "flex grow flex-row items-center gap-4",
+                span { class: "font-mono text-sm text-slate-400", "#{pipeline.id}" }
+                span { class: "font-bold",
+                    "{pipeline.owner}/{pipeline.repo_name}#{pipeline.issue_number}"
+                }
+                StateBadge {
+                    state: pipeline.state.clone(),
+                    subtask: pipeline.subtask.clone(),
+                }
+                if pipeline.running {
+                    span { class: "badge badge-success", "running" }
+                }
+                span { class: "ml-auto font-mono text-xs text-slate-400",
+                    {format_elapsed(pipeline.elapsed_seconds)}
+                }
             }
             if pipeline.running {
-                span { class: "badge badge-success", "running" }
+                AbortButton { pipeline_id: pipeline.id }
             }
-            span { class: "ml-auto font-mono text-xs text-slate-400",
-                {format_elapsed(pipeline.elapsed_seconds)}
-            }
+        }
+    }
+}
+
+/// Stops a running pipeline: cancels its own turn and its container.
+/// Restricted to operators server-side (`abort_pipeline_action` itself
+/// checks) -- this button rendering at all is convenience, not the real
+/// access control.
+///
+/// Being able to stop a misbehaving run from your phone is worth more
+/// than any dashboard, which is why this is a single, unambiguous button
+/// rather than a confirmation dialog to tap through first: a run worth
+/// aborting is, by definition, one you already decided needed to stop.
+#[component]
+fn AbortButton(pipeline_id: i64) -> Element {
+    let mut status = use_signal(|| None::<Result<bool, String>>);
+    let mut aborting = use_signal(|| false);
+
+    let onclick = move |_| {
+        spawn(async move {
+            aborting.set(true);
+            status.set(Some(
+                abort_pipeline_action(pipeline_id)
+                    .await
+                    .map_err(|error| error.to_string()),
+            ));
+            aborting.set(false);
+        });
+    };
+
+    let label = match &*status.read() {
+        _ if *aborting.read() => "aborting…".to_string(),
+        Some(Ok(true)) => "aborted".to_string(),
+        Some(Ok(false)) => "wasn't running".to_string(),
+        Some(Err(error)) => format!("failed: {error}"),
+        None => "abort".to_string(),
+    };
+
+    rsx! {
+        button {
+            class: "btn btn-error btn-sm",
+            disabled: *aborting.read(),
+            onclick,
+            {label}
         }
     }
 }
@@ -106,6 +157,10 @@ pub fn PipelineDetail(pipeline_id: i64) -> Element {
                         StateBadge {
                             state: summary.state.clone(),
                             subtask: summary.subtask.clone(),
+                        }
+                        if summary.running {
+                            span { class: "badge badge-success", "running" }
+                            AbortButton { pipeline_id: summary.id }
                         }
                     }
                     p { class: "text-sm text-slate-400",
