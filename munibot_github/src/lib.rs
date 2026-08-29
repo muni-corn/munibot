@@ -4,3 +4,9 @@
 //! [`octocrab`](https://docs.rs/octocrab), authenticating as a GitHub App
 //! installation rather than a personal access token -- see
 //! `docs/plans/ai/milestone-5-autonomous.md` phase 20 for the full design.
+
+mod auth;
+mod error;
+
+pub use auth::{InstallationTokenCache, OctocrabTokenMinter, TokenMinter};
+pub use error::GitHubError;
