@@ -9,8 +9,8 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::db::schema::{
-    ai_attachments, ai_conversations, ai_memories, ai_messages, ai_rate_limits, ai_spend_caps,
-    ai_tool_calls, ai_usage, ai_user_settings,
+    ai_attachments, ai_conversations, ai_memories, ai_messages, ai_pipeline_events, ai_pipelines,
+    ai_rate_limits, ai_spend_caps, ai_tool_calls, ai_usage, ai_user_settings,
 };
 
 // ai_conversations
@@ -337,4 +337,69 @@ pub struct NewAiSpendCap {
     pub limit_micros: i64,
     pub current_micros: i64,
     pub reset_at: NaiveDateTime,
+}
+
+// ai_pipelines
+
+/// A row in the `ai_pipelines` table: one autonomous pipeline run,
+/// identified by the issue that triggered it.
+///
+/// Deliberately holds only identity, never a mutable "current state"
+/// column -- `munibot_ai::pipeline::PipelineState` is always a fold over
+/// `ai_pipeline_events` (see [`AiPipelineEvent`]), recomputed by replay, so
+/// there is nothing here for a crash mid-run to leave inconsistent.
+#[derive(Clone, Debug, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = ai_pipelines)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiPipeline {
+    pub id: i64,
+    pub forge: String,
+    pub owner: String,
+    pub repo_name: String,
+    pub issue_number: u64,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable shape for `ai_pipelines`.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = ai_pipelines)]
+pub struct NewAiPipeline {
+    pub forge: String,
+    pub owner: String,
+    pub repo_name: String,
+    pub issue_number: u64,
+    pub created_at: NaiveDateTime,
+}
+
+// ai_pipeline_events
+
+/// A row in the `ai_pipeline_events` table: one event in a pipeline's own
+/// append-only log.
+///
+/// `payload` is a json-encoded event, the same json-encoded-text
+/// convention `ai_messages.content` already uses rather than a native
+/// json column. The unique index on `(pipeline_id, seq)` is what makes
+/// this log append-only and gap-free -- enforced by the database itself,
+/// not merely by application code that could race.
+#[derive(Clone, Debug, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = ai_pipeline_events)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiPipelineEvent {
+    pub id: i64,
+    pub pipeline_id: i64,
+    pub seq: i32,
+    pub event_type: String,
+    pub payload: String,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable shape for `ai_pipeline_events`.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = ai_pipeline_events)]
+pub struct NewAiPipelineEvent {
+    pub pipeline_id: i64,
+    pub seq: i32,
+    pub event_type: String,
+    pub payload: String,
+    pub created_at: NaiveDateTime,
 }
