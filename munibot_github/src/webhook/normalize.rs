@@ -163,6 +163,36 @@ fn normalize_issue_comment(
     }))
 }
 
+#[derive(Deserialize)]
+struct IssueTextPayload {
+    title: String,
+    #[serde(default)]
+    body: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct IssuesEventTextPayload {
+    issue: IssueTextPayload,
+}
+
+/// The issue's own title and body, for [`munibot_vcs::TriggerMode::Keyword`]
+/// matching -- which needs real text, unlike a [`ForgeEvent`], which only
+/// ever carries a bare [`IssueRef`].
+///
+/// Only the `"issues"` event carries the issue's own title and body
+/// directly in its payload; every other event type this crate normalizes
+/// describes something that *happened on* an issue (a comment, a review)
+/// without repeating the issue's own text, so this returns `None` for
+/// those rather than a call that always fails.
+pub fn issue_text(event_type: &str, raw_body: &[u8]) -> Option<(String, String)> {
+    if event_type != "issues" {
+        return None;
+    }
+
+    let payload: IssuesEventTextPayload = serde_json::from_slice(raw_body).ok()?;
+    Some((payload.issue.title, payload.issue.body.unwrap_or_default()))
+}
+
 fn normalize_pull_request_review(
     raw_body: &[u8],
     bot_login: &str,
@@ -357,5 +387,25 @@ mod tests {
         let error = normalize_webhook("issues", b"not json at all", "munibot[bot]")
             .expect_err("garbage json should be a payload error");
         assert!(matches!(error, GitHubError::Payload(_)));
+    }
+
+    #[test]
+    fn test_issue_text_extracts_title_and_body_from_an_issues_event() {
+        let body = r#"{
+            "action": "opened",
+            "issue": { "number": 1, "title": "it crashes", "body": "steps to reproduce" },
+            "repository": { "name": "munibot", "owner": { "login": "musicaloft" } },
+            "sender": { "login": "someone" }
+        }"#;
+
+        let (title, issue_body) = issue_text("issues", body.as_bytes()).expect("should extract");
+        assert_eq!(title, "it crashes");
+        assert_eq!(issue_body, "steps to reproduce");
+    }
+
+    #[test]
+    fn test_issue_text_returns_none_for_other_event_types() {
+        assert_eq!(issue_text("issue_comment", b"{}"), None);
+        assert_eq!(issue_text("pull_request_review", b"{}"), None);
     }
 }

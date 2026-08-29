@@ -5,5 +5,5 @@
 mod normalize;
 mod signature;
 
-pub use normalize::normalize_webhook;
+pub use normalize::{issue_text, normalize_webhook};
 pub use signature::verify_signature;
