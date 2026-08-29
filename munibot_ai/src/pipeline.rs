@@ -13,6 +13,7 @@ mod branch;
 mod dispatch;
 mod event;
 mod executor;
+mod github_interaction;
 mod handoff;
 mod handoff_schema;
 mod interaction;
@@ -30,6 +31,7 @@ pub use event::PipelineEvent;
 pub use executor::{
     Executor, ExecutorError, ExecutorOutcome, NoSandbox, SandboxLifecycle, role_for_state,
 };
+pub use github_interaction::GitHubCommentAdapter;
 pub use handoff::{
     AgentRole, ApproveCode, ApprovePlan, ApproveTests, ArchitectureReviewerHandoff,
     BeginFinalReview, BuilderHandoff, CodeReviewerHandoff, CommitComplete, CreatePlan,
