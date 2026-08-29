@@ -44,6 +44,7 @@ redis = { workspace = true, optional = true }
 redis_pool = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
+chrono.workspace = true
 
 [dev-dependencies]
 hmac.workspace = true

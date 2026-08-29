@@ -17,6 +17,7 @@ use crate::{
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
         home::Home,
+        transcript::TranscriptViewer,
     },
 };
 
@@ -58,4 +59,6 @@ pub enum Route {
                 Chat {},
                 #[route("/chat/:conversation_id")]
                 ChatConversation { conversation_id: i64 },
+                #[route("/transcript/:conversation_id", TranscriptViewer)]
+                Transcript { conversation_id: i64 },
 }
