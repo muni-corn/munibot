@@ -61,6 +61,32 @@ diesel::table! {
 }
 
 diesel::table! {
+    ai_pipeline_events (id) {
+        id -> Bigint,
+        pipeline_id -> Bigint,
+        seq -> Integer,
+        #[max_length = 64]
+        event_type -> Varchar,
+        payload -> Longtext,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
+    ai_pipelines (id) {
+        id -> Bigint,
+        #[max_length = 16]
+        forge -> Varchar,
+        #[max_length = 255]
+        owner -> Varchar,
+        #[max_length = 255]
+        repo_name -> Varchar,
+        issue_number -> Unsigned<Bigint>,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     ai_rate_limits (id) {
         id -> Bigint,
         #[max_length = 16]
@@ -238,6 +264,7 @@ diesel::joinable!(ai_attachments -> ai_messages (message_id));
 diesel::joinable!(ai_conversations -> users (owner_user_id));
 diesel::joinable!(ai_memories -> users (user_id));
 diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
+diesel::joinable!(ai_pipeline_events -> ai_pipelines (pipeline_id));
 diesel::joinable!(ai_tool_calls -> ai_conversations (conversation_id));
 diesel::joinable!(ai_usage -> ai_conversations (conversation_id));
 diesel::joinable!(ai_usage -> users (user_id));
@@ -251,6 +278,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     ai_conversations,
     ai_memories,
     ai_messages,
+    ai_pipeline_events,
+    ai_pipelines,
     ai_rate_limits,
     ai_spend_caps,
     ai_tool_calls,
