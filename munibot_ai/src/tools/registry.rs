@@ -105,6 +105,42 @@ impl ToolRegistry {
             .map(|tool| tool.schema())
             .collect()
     }
+
+    /// Resolves `name` to a registered tool, but only if `selection` and
+    /// `granted` would actually have offered it - the same two-part check
+    /// [`Self::schemas_for`] already applies to what a provider sees, now
+    /// also applied to what a call is allowed to *dispatch*.
+    ///
+    /// Without this, a call naming a tool that exists in this registry
+    /// (registered for some other persona sharing it) but was never in
+    /// `selection`, or above `granted`, would still resolve and run: the
+    /// registry itself has no notion of "whose call this is", and a tool's
+    /// own [`crate::tools::ToolCtx::require_tier`] check - the other half
+    /// of this defense - is only as good as every tool implementation
+    /// remembering to call it. This closes the same gap unconditionally,
+    /// for every tool, tier-checking or not.
+    pub fn get_authorized(
+        &self,
+        name: &str,
+        selection: &ToolSelection,
+        granted: RiskTier,
+    ) -> Option<Arc<dyn Tool>> {
+        self.get(name)
+            .filter(|tool| tool.tier() <= granted && selection.covers(tool.name(), tool.tier()))
+    }
+
+    /// Every tool name `selection` and `granted` would actually offer - the
+    /// same filter [`Self::schemas_for`] applies, without building a full
+    /// schema for each. Used to name what *is* available when a call is
+    /// refused, without leaking the existence of a tool this call was never
+    /// authorized to even be told about.
+    pub fn names_for(&self, selection: &ToolSelection, granted: RiskTier) -> Vec<&str> {
+        self.tools
+            .values()
+            .filter(|tool| tool.tier() <= granted && selection.covers(tool.name(), tool.tier()))
+            .map(|tool| tool.name())
+            .collect()
+    }
 }
 
 #[cfg(test)]

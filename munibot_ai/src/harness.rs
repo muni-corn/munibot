@@ -523,9 +523,22 @@ impl Harness {
                 continue;
             }
 
-            match self.tools.get(name) {
+            match self
+                .tools
+                .get_authorized(name, &request.tools, request.ctx.granted_tier)
+            {
                 None => {
-                    let available = self.tools.names().join(", ");
+                    // deliberately the same message (and the same
+                    // authorized-only name list) whether `name` is
+                    // genuinely unregistered anywhere, or exists but was
+                    // never offered to this persona/tier - see
+                    // ToolRegistry::get_authorized's own doc comment for
+                    // why a call that was never authorized to know a tool
+                    // exists must never be told it does
+                    let available = self
+                        .tools
+                        .names_for(&request.tools, request.ctx.granted_tier)
+                        .join(", ");
                     pending[index] = Some(ContentBlock::tool_error(
                         call_id.clone(),
                         format!("no such tool {name:?} :< available tools are: {available}"),
@@ -1454,6 +1467,109 @@ mod tests {
         assert!(
             sent.tools.is_empty(),
             "web_search should not be offered when the invoker is only authorized for Safe"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_tool_call_outside_the_selection_is_refused_even_though_the_tier_permits_it() {
+        // proves the *dispatch*-time check, not just what schemas_for offers
+        // above: a call naming a tool this persona never selected, but that
+        // exists in the shared registry and is within the invoker's own
+        // granted tier, must still be refused - the scenario a manipulated
+        // or hallucinating model calling a tool "by name" it was never
+        // actually told about would otherwise exploit
+        use async_trait::async_trait;
+        use serde_json::{Value, json};
+
+        struct StubTool {
+            name: &'static str,
+            tier: RiskTier,
+        }
+
+        #[async_trait]
+        impl crate::tools::Tool for StubTool {
+            fn name(&self) -> &str {
+                self.name
+            }
+
+            fn description(&self) -> &str {
+                "a stub tool"
+            }
+
+            fn tier(&self) -> RiskTier {
+                self.tier
+            }
+
+            fn input_schema(&self) -> Value {
+                json!({"type": "object", "properties": {}})
+            }
+
+            async fn invoke(&self, _input: Value, _ctx: &ToolCtx) -> crate::tools::ToolOutcome {
+                crate::tools::ToolOutcome::ok("should never run")
+            }
+        }
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Arc::new(StubTool {
+            name: "web_search",
+            tier: RiskTier::NetworkRead,
+        }));
+        // registered in the same shared registry, and actually offered to
+        // this persona - proves the refusal above names what this persona
+        // *can* use, not just that it names nothing at all
+        registry.register(Arc::new(StubTool {
+            name: "current_time",
+            tier: RiskTier::Safe,
+        }));
+
+        let provider: Arc<MockProvider> = Arc::new(
+            MockProvider::new()
+                .respond_tool_use("c1", "web_search", json!({}))
+                .respond_text("gave up"),
+        );
+        let harness = Harness::new(provider.clone(), Arc::new(registry));
+
+        let mut turn_request = request();
+        // this persona was never given web_search at all - "current_time"
+        // is a stand-in for whatever it actually was offered
+        turn_request.tools = ToolSelection::named(["current_time"]);
+        // NetworkRead is more than enough tier for web_search - only the
+        // selection is what should refuse this call
+        turn_request.ctx = ctx(RiskTier::NetworkRead);
+
+        let outcome = harness
+            .run_turn(turn_request)
+            .await
+            .expect("a refused tool call must not be fatal");
+
+        assert_eq!(
+            outcome.text.as_deref(),
+            Some("gave up"),
+            "the model should see the call refused and be able to carry on"
+        );
+
+        let second_request = &provider.requests()[1];
+        let last_message = second_request.history.iter().last().unwrap();
+        let ContentBlock::ToolResult {
+            content, is_error, ..
+        } = &last_message.content[0]
+        else {
+            panic!("expected the appended message to carry a tool result block");
+        };
+        assert!(*is_error, "the call should be reported as refused");
+        let available = content
+            .split("available tools are: ")
+            .nth(1)
+            .expect("the refusal should name what is actually available");
+        assert!(
+            !available.contains("web_search"),
+            "the available-tools list must not confirm web_search exists at all, even though the \
+             refusal echoes back the name the model itself asked for: {content:?}"
+        );
+        assert!(
+            available.contains("current_time"),
+            "the available-tools list should still show what this persona actually can use: \
+             {content:?}"
         );
     }
 
