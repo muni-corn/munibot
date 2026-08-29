@@ -847,6 +847,68 @@ async fn test_record_tool_call_after_the_conversation_is_archived_still_succeeds
         .expect("record failed");
 }
 
+#[tokio::test]
+async fn test_list_tool_calls_for_conversation_with_none_is_empty() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+
+    let calls = ai::list_tool_calls_for_conversation(&db.pool, conversation.id)
+        .await
+        .expect("list failed");
+    assert!(calls.is_empty());
+}
+
+#[tokio::test]
+async fn test_list_tool_calls_for_conversation_returns_them_oldest_first() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+
+    ai::record_tool_call(&db.pool, NewAiToolCall {
+        tool_name: "first".to_string(),
+        created_at: Utc::now().naive_utc() - chrono::Duration::seconds(10),
+        ..tool_call_row(Some(conversation.id), "ok")
+    })
+    .await
+    .expect("record failed");
+    ai::record_tool_call(&db.pool, NewAiToolCall {
+        tool_name: "second".to_string(),
+        ..tool_call_row(Some(conversation.id), "ok")
+    })
+    .await
+    .expect("record failed");
+
+    let calls = ai::list_tool_calls_for_conversation(&db.pool, conversation.id)
+        .await
+        .expect("list failed");
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].tool_name, "first");
+    assert_eq!(calls[1].tool_name, "second");
+}
+
+#[tokio::test]
+async fn test_list_tool_calls_for_conversation_is_scoped_to_that_conversation() {
+    let db = TestDb::new().await;
+    let conversation_a = ai::get_or_create_conversation(&db.pool, "web", "a", "companion", None)
+        .await
+        .unwrap();
+    let conversation_b = ai::get_or_create_conversation(&db.pool, "web", "b", "companion", None)
+        .await
+        .unwrap();
+
+    ai::record_tool_call(&db.pool, tool_call_row(Some(conversation_a.id), "ok"))
+        .await
+        .expect("record failed");
+
+    let calls_b = ai::list_tool_calls_for_conversation(&db.pool, conversation_b.id)
+        .await
+        .expect("list failed");
+    assert!(calls_b.is_empty());
+}
+
 // --- memory ---
 
 #[tokio::test]

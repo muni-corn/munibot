@@ -15,6 +15,7 @@ mod event;
 mod memory;
 mod message;
 mod persona;
+mod transcript;
 mod usage;
 
 pub use attachment::{ALLOWED_MEDIA_TYPES, AttachmentSummary, MAX_ATTACHMENT_BYTES};
@@ -24,4 +25,5 @@ pub use event::{ChatEvent, ChatFailureKind};
 pub use memory::{MemoryEntry, MemorySettings};
 pub use message::{ChatMessage, ChatRole};
 pub use persona::PersonaSummary;
+pub use transcript::{AiTranscript, TranscriptMessage, TranscriptToolCall};
 pub use usage::{SpendCapStatus, UsageSummary, UsageTotals};
