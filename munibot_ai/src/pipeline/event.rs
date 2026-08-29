@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::pipeline::{
     ApproveCode, ApprovePlan, ApproveTests, BeginFinalReview, CommitComplete, CreatePlan,
-    IssueAnalysis, ProjectComplete, PullRequestReady, RequestBuildHelp, RequestCodeChanges,
-    RequestPlanChanges, RequestPlanHelp, RequestTestChanges, ResearchComplete, StartTaskTests,
-    SubmitCode, SubmitTests,
+    FixSubtask, IssueAnalysis, ProjectComplete, PullRequestReady, RequestBuildHelp,
+    RequestCodeChanges, RequestPlanChanges, RequestPlanHelp, RequestTestChanges, ResearchComplete,
+    StartTaskTests, SubmitCode, SubmitTests,
 };
 
 /// One thing that happened over a pipeline's lifetime, in the order it
@@ -33,6 +33,10 @@ pub enum PipelineEvent {
     PlanChangesRequested(RequestPlanChanges),
     SubtaskTestsStarted(StartTaskTests),
     FinalReviewStarted(BeginFinalReview),
+    /// The project manager synthesized a fix subtask in response to the
+    /// final reviewer's own feedback -- see the fix subtask synthesis
+    /// commit.
+    FixSubtaskSynthesized(FixSubtask),
     TestsSubmitted(SubmitTests),
     TestsApproved(ApproveTests),
     TestChangesRequested(RequestTestChanges),
@@ -72,6 +76,7 @@ impl PipelineEvent {
             PipelineEvent::PlanChangesRequested(_) => "PlanChangesRequested",
             PipelineEvent::SubtaskTestsStarted(_) => "SubtaskTestsStarted",
             PipelineEvent::FinalReviewStarted(_) => "FinalReviewStarted",
+            PipelineEvent::FixSubtaskSynthesized(_) => "FixSubtaskSynthesized",
             PipelineEvent::TestsSubmitted(_) => "TestsSubmitted",
             PipelineEvent::TestsApproved(_) => "TestsApproved",
             PipelineEvent::TestChangesRequested(_) => "TestChangesRequested",

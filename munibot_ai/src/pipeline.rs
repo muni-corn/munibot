@@ -36,7 +36,7 @@ pub use github_interaction::GitHubCommentAdapter;
 pub use handoff::{
     AgentRole, ApproveCode, ApprovePlan, ApproveTests, ArchitectureReviewerHandoff,
     BeginFinalReview, BuilderHandoff, CodeReviewerHandoff, CommitComplete, CreatePlan,
-    FinalCodeReviewerHandoff, IssueAnalysis, IssueClassification, ProjectComplete,
+    FinalCodeReviewerHandoff, FixSubtask, IssueAnalysis, IssueClassification, ProjectComplete,
     ProjectManagerHandoff, PullRequestReady, RecommendedAction, ReproductionStatus,
     RequestBuildHelp, RequestCodeChanges, RequestPlanChanges, RequestPlanHelp, RequestTestChanges,
     ResearchComplete, SoftwareArchitectHandoff, StartTaskTests, SubmitCode, SubmitTests,

@@ -163,13 +163,28 @@ pub struct StartTaskTests {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct BeginFinalReview {}
 
-/// [`AgentRole::ProjectManager`]'s handoff: start the next subtask, or
-/// begin the final review once every subtask is committed.
+/// A subtask the project manager synthesizes in response to the final
+/// reviewer's own feedback -- carries a full draft, not just an id,
+/// since this subtask does not exist anywhere in the plan yet.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct FixSubtask {
+    /// The final reviewer's own feedback this subtask exists to address.
+    pub review_feedback: String,
+    /// Which already-committed subtask the reviewer's feedback was about.
+    pub parent_subtask_id: SubtaskId,
+    pub subtask: SubtaskDraft,
+}
+
+/// [`AgentRole::ProjectManager`]'s handoff: start the next subtask, begin
+/// the final review once every subtask is committed, or -- only when
+/// invoked from `AwaitingFixSubtask` -- synthesize a fix subtask from the
+/// final reviewer's own feedback.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(tag = "action")]
 pub enum ProjectManagerHandoff {
     StartTaskTests(StartTaskTests),
     BeginFinalReview(BeginFinalReview),
+    FixSubtask(FixSubtask),
 }
 
 /// [`AgentRole::TestEngineer`]'s handoff: tests written and confirmed to
@@ -391,6 +406,32 @@ mod tests {
             handoff,
             ProjectManagerHandoff::BeginFinalReview(_)
         ));
+    }
+
+    #[test]
+    fn test_project_manager_handoff_tags_fix_subtask_by_action() {
+        let payload = json!({
+            "action": "FixSubtask",
+            "review_feedback": "subtask 2 broke subtask 4's tests",
+            "parent_subtask_id": "task-2",
+            "subtask": {
+                "id": "task-5",
+                "title": "fix the regression in subtask 4",
+                "description": "d",
+                "instructions": "i",
+                "commit_message": "fix: repair subtask 4's regression",
+                "files_affected": [],
+                "dependencies": [],
+            },
+        });
+        let handoff: ProjectManagerHandoff = serde_json::from_value(payload).unwrap();
+        match handoff {
+            ProjectManagerHandoff::FixSubtask(fix) => {
+                assert_eq!(fix.parent_subtask_id, SubtaskId("task-2".to_string()));
+                assert_eq!(fix.subtask.id, SubtaskId("task-5".to_string()));
+            }
+            other => panic!("expected FixSubtask, got {other:?}"),
+        }
     }
 
     #[test]

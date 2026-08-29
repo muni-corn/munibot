@@ -128,11 +128,11 @@ pub fn advance(state: PipelineState, event: &PipelineEvent) -> Result<PipelineSt
         (S::FinalReview, E::CodeChangesRequested(_)) => Ok(S::AwaitingFixSubtask),
         (S::FinalReview, E::ProjectCompleted(_)) => Ok(S::WritingPr),
 
-        // the project manager synthesizes a fix subtask and re-enters the
-        // ordinary test-and-build cycle for it -- see the fix subtask
-        // synthesis commit
-        (S::AwaitingFixSubtask, E::SubtaskTestsStarted(start)) => Ok(S::TestWriting {
-            subtask: start.subtask_id.clone(),
+        // the project manager synthesizes a fix subtask, carrying its own
+        // full draft since it does not exist in the plan yet, and the
+        // pipeline re-enters the ordinary test-and-build cycle for it
+        (S::AwaitingFixSubtask, E::FixSubtaskSynthesized(fix)) => Ok(S::TestWriting {
+            subtask: fix.subtask.id.clone(),
         }),
 
         (S::WritingPr, E::PullRequestAuthored(_)) => Ok(S::Complete),
@@ -148,10 +148,10 @@ mod tests {
     use super::*;
     use crate::pipeline::{
         ApproveCode, ApprovePlan, ApproveTests, BeginFinalReview, CommitComplete, CreatePlan,
-        InteractionRequest, IssueAnalysis, IssueClassification, ProjectComplete, PullRequestReady,
-        ReproductionStatus, RequestBuildHelp, RequestCodeChanges, RequestPlanChanges,
-        RequestPlanHelp, RequestTestChanges, ResearchComplete, StartTaskTests, SubmitCode,
-        SubmitTests, SubtaskId,
+        FixSubtask, InteractionRequest, IssueAnalysis, IssueClassification, ProjectComplete,
+        PullRequestReady, ReproductionStatus, RequestBuildHelp, RequestCodeChanges,
+        RequestPlanChanges, RequestPlanHelp, RequestTestChanges, ResearchComplete, StartTaskTests,
+        SubmitCode, SubmitTests, SubtaskDraft, SubtaskId,
     };
 
     fn subtask() -> SubtaskId {
@@ -423,13 +423,26 @@ mod tests {
     }
 
     #[test]
-    fn test_subtask_tests_started_from_awaiting_fix_subtask_re_enters_test_writing() {
-        let event = PipelineEvent::SubtaskTestsStarted(StartTaskTests {
-            subtask_id: subtask(),
+    fn test_fix_subtask_synthesized_from_awaiting_fix_subtask_re_enters_test_writing() {
+        let fix_subtask_id = SubtaskId("task-5".to_string());
+        let event = PipelineEvent::FixSubtaskSynthesized(FixSubtask {
+            review_feedback: "subtask 2 broke subtask 4's tests".to_string(),
+            parent_subtask_id: SubtaskId("task-2".to_string()),
+            subtask: SubtaskDraft {
+                id: fix_subtask_id.clone(),
+                title: "fix the regression".to_string(),
+                description: "d".to_string(),
+                instructions: "i".to_string(),
+                commit_message: "fix: repair the regression".to_string(),
+                files_affected: vec![],
+                dependencies: vec![],
+            },
         });
         assert_eq!(
             advance(PipelineState::AwaitingFixSubtask, &event).unwrap(),
-            PipelineState::TestWriting { subtask: subtask() }
+            PipelineState::TestWriting {
+                subtask: fix_subtask_id
+            }
         );
     }
 

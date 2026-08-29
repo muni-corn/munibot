@@ -173,6 +173,7 @@ fn event_from_handoff(role: AgentRole, handoff: Value) -> Result<PipelineEvent, 
             ProjectManagerHandoff::BeginFinalReview(begin) => {
                 PipelineEvent::FinalReviewStarted(begin)
             }
+            ProjectManagerHandoff::FixSubtask(fix) => PipelineEvent::FixSubtaskSynthesized(fix),
         },
         AgentRole::TestEngineer => PipelineEvent::TestsSubmitted(parse(role, handoff)?),
         AgentRole::TestReviewer => match parse(role, handoff)? {
@@ -258,7 +259,21 @@ fn task_brief(role: AgentRole, state: &PipelineState, events: &[PipelineEvent]) 
             .unwrap_or_default();
             format!("Review this plan: {summary}")
         }
-        AgentRole::ProjectManager => "Decide what to work on next.".to_string(),
+        AgentRole::ProjectManager => {
+            if matches!(state, PipelineState::AwaitingFixSubtask) {
+                let feedback = last(events, |event| match event {
+                    PipelineEvent::CodeChangesRequested(request) => Some(request.feedback.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+                format!(
+                    "The final reviewer requested changes: {feedback}. Synthesize a fix subtask \
+                     for it."
+                )
+            } else {
+                "Decide what to work on next.".to_string()
+            }
+        }
         AgentRole::TestEngineer => {
             let subtask = subtask_of(state);
             format!("Write tests for subtask {subtask:?}.")
@@ -906,5 +921,95 @@ mod tests {
         let final_state = executor.run_with_interaction(id, &adapter).await.unwrap();
         assert_eq!(final_state, PipelineState::Complete);
         assert_eq!(adapter.requests().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_executor_re_enters_test_writing_after_a_synthesized_fix_subtask() {
+        use crate::pipeline::{RequestCodeChanges, SubmitTests, SubtaskId};
+
+        let store = Arc::new(InMemoryPipelineStore::new());
+        let id = store.create_pipeline(&issue()).await.unwrap();
+        for event in [
+            PipelineEvent::Triggered { issue: issue() },
+            PipelineEvent::IssueAnalyzed(IssueAnalysis {
+                classification: IssueClassification::Bug,
+                reproduction_status: ReproductionStatus::Reproduced,
+                summary: "s".to_string(),
+                reproduction_details: String::new(),
+                recommended_action: RecommendedAction::Proceed,
+                relevant_files: vec![],
+            }),
+            PipelineEvent::ResearchCompleted(ResearchComplete {
+                summary: "s".to_string(),
+                relevant_files: vec![],
+            }),
+            PipelineEvent::PlanCreated(CreatePlan {
+                summary: "s".to_string(),
+                subtasks: vec![],
+            }),
+            PipelineEvent::PlanApproved(ApprovePlan {
+                strengths: "s".to_string(),
+                feedback: "f".to_string(),
+            }),
+            PipelineEvent::FinalReviewStarted(BeginFinalReview {}),
+            PipelineEvent::CodeChangesRequested(RequestCodeChanges {
+                feedback: "subtask 2 broke subtask 4's tests".to_string(),
+            }),
+        ] {
+            store.append_event(id, event).await.unwrap();
+        }
+        assert_eq!(
+            store.replay(id).await.unwrap(),
+            PipelineState::AwaitingFixSubtask
+        );
+
+        let dispatcher = Arc::new(
+            MockAgentDispatcher::new()
+                .respond(ok_output(serde_json::json!({
+                    "action": "FixSubtask",
+                    "review_feedback": "subtask 2 broke subtask 4's tests",
+                    "parent_subtask_id": "task-2",
+                    "subtask": {
+                        "id": "task-5",
+                        "title": "fix the regression",
+                        "description": "d",
+                        "instructions": "i",
+                        "commit_message": "fix: repair the regression",
+                        "files_affected": [],
+                        "dependencies": [],
+                    },
+                })))
+                .respond(ok_output(
+                    serde_json::to_value(SubmitTests {
+                        subtask_id: SubtaskId("task-5".to_string()),
+                        summary: "tests for the fix".to_string(),
+                        assumptions: "none".to_string(),
+                    })
+                    .unwrap(),
+                ))
+                .respond(ok_output(
+                    serde_json::json!({"action": "ApproveTests", "feedback": "good"}),
+                ))
+                .respond(ok_output(serde_json::json!({
+                    "action": "RequestBuildHelp",
+                    "question": "which module owns this regression?",
+                }))),
+        );
+        let sandbox = Arc::new(NoSandbox::new(Arc::new(ToolRegistry::new())));
+        let executor = Executor::new(store.clone(), dispatcher, sandbox);
+
+        let outcome = executor.run(id).await.unwrap();
+        assert!(matches!(
+            outcome,
+            ExecutorOutcome::Paused(PipelineState::AwaitingUserInput { .. })
+        ));
+
+        let events = store.events(id).await.unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event.label() == "FixSubtaskSynthesized"),
+            "the fix subtask synthesis event should have been persisted"
+        );
     }
 }
