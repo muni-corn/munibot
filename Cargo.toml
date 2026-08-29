@@ -43,12 +43,14 @@ futures = "0.3"
 globset = "0.4"
 grep-regex = "0.1"
 grep-searcher = "0.1"
+hmac = "0.13"
 http = "1.4"
 html2text = "0.17"
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
 ignore = "0.4"
 jsonschema = "0.49"
+jsonwebtoken = "11.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
   "env-filter",
@@ -56,6 +58,7 @@ tracing-subscriber = { version = "0.3", features = [
   "tracing-log",
 ] }
 num-format = "0.4"
+octocrab = "0.54"
 once_cell = "1.18"
 poise = { version = "0.6", features = ["cache"] }
 rand = { version = "0.10.1", features = ["std_rng"] }
@@ -69,6 +72,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"
 strum = { version = "0.28", features = ["derive"] }
+subtle = "2.6"
 thiserror = "2.0"
 tokio = { version = "1.22", features = ["full"] }
 tokio-util = "0.7"
