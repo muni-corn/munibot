@@ -11,3 +11,7 @@
 //! belongs here, ever -- that is exactly what keeps a second forge a matter
 //! of writing one more crate against these traits, rather than a rewrite of
 //! the pipeline that consumes them.
+
+mod reference;
+
+pub use reference::{Comment, Forge, Issue, IssueRef, IssueState, RepoRef};
