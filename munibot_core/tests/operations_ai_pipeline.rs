@@ -158,3 +158,29 @@ async fn test_deleting_a_pipeline_cascades_to_its_events() {
         "cascading delete should remove the events too"
     );
 }
+
+#[tokio::test]
+async fn test_list_pipeline_ids_lists_every_created_pipeline() {
+    let db = TestDb::new().await;
+    let first = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 1)
+        .await
+        .expect("create failed");
+    let second = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 2)
+        .await
+        .expect("create failed");
+
+    let mut ids = ai::list_pipeline_ids(&db.pool).await.expect("query failed");
+    ids.sort();
+    assert_eq!(ids, vec![first.id, second.id]);
+}
+
+#[tokio::test]
+async fn test_list_pipeline_ids_is_empty_for_a_fresh_database() {
+    let db = TestDb::new().await;
+    assert!(
+        ai::list_pipeline_ids(&db.pool)
+            .await
+            .expect("query failed")
+            .is_empty()
+    );
+}

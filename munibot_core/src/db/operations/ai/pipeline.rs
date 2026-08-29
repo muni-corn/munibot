@@ -59,6 +59,16 @@ pub async fn get_pipeline(pool: &DbPool, pipeline_id: i64) -> QueryResult<Option
         .optional()
 }
 
+/// Every pipeline ever created, in no particular order -- what resuming
+/// after a restart starts from.
+pub async fn list_pipeline_ids(pool: &DbPool) -> QueryResult<Vec<i64>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_pipelines::table
+        .select(ai_pipelines::id)
+        .load(&mut conn)
+        .await
+}
+
 /// Appends one event, assigning it the next sequence number in this
 /// pipeline's own log.
 ///

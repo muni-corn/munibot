@@ -385,7 +385,14 @@ impl Executor {
                 return Ok(ExecutorOutcome::Finished(state));
             }
 
-            if matches!(state, PipelineState::Researching) && sandbox_tools.is_none() {
+            // provisioned the first time a run reaches any state past
+            // Triaging (in the ordinary flow, that is Researching) --
+            // phrased this way rather than "exactly Researching" so that
+            // resuming a run that had already moved past it re-provisions
+            // immediately, instead of never provisioning at all because
+            // this particular call to run() never actually passes through
+            // Researching itself
+            if !matches!(state, PipelineState::Triaging) && sandbox_tools.is_none() {
                 sandbox_tools = Some(self.sandbox.provision().await?);
             }
 

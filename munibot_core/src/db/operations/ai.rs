@@ -21,7 +21,9 @@ pub use limits::{
     get_rate_limit, get_spend_cap, increment_rate_limit, increment_spend, reset_rate_limit_window,
     upsert_spend_cap,
 };
-pub use pipeline::{append_pipeline_event, create_pipeline, get_pipeline, list_pipeline_events};
+pub use pipeline::{
+    append_pipeline_event, create_pipeline, get_pipeline, list_pipeline_events, list_pipeline_ids,
+};
 pub use usage::{UsageTotals, sum_usage_for_user, sum_usage_global};
 
 use crate::db::{

@@ -11,7 +11,7 @@ use std::{
 
 use async_trait::async_trait;
 use munibot_core::db::{DbPool, operations::ai as core_ai};
-use munibot_vcs::IssueRef;
+use munibot_vcs::{Forge, IssueRef, RepoRef};
 use thiserror::Error;
 
 use super::advance::advance;
@@ -77,6 +77,29 @@ pub trait PipelineStore: Send + Sync {
     async fn replay(&self, pipeline_id: PipelineId) -> Result<PipelineState, PipelineStoreError> {
         fold(&self.events(pipeline_id).await?)
     }
+
+    /// The issue a pipeline was created for -- what a resumed run needs to
+    /// rebuild the forge-specific dispatcher and sandbox its own executor
+    /// requires, since neither is itself part of the persisted event log.
+    async fn issue_for(&self, pipeline_id: PipelineId) -> Result<IssueRef, PipelineStoreError>;
+
+    /// Every pipeline this store has ever created, in no particular
+    /// order -- what resuming after a restart starts from.
+    async fn all_pipeline_ids(&self) -> Result<Vec<PipelineId>, PipelineStoreError>;
+
+    /// Every pipeline whose own event log has not yet resolved to a
+    /// terminal state -- what actually needs resuming after a restart.
+    /// A default method: replaying each candidate is enough to answer
+    /// this generically, so no implementation needs its own version.
+    async fn non_terminal_pipeline_ids(&self) -> Result<Vec<PipelineId>, PipelineStoreError> {
+        let mut non_terminal = Vec::new();
+        for pipeline_id in self.all_pipeline_ids().await? {
+            if !self.replay(pipeline_id).await?.is_terminal() {
+                non_terminal.push(pipeline_id);
+            }
+        }
+        Ok(non_terminal)
+    }
 }
 
 /// An in-memory [`PipelineStore`], for tests -- see
@@ -85,7 +108,7 @@ pub trait PipelineStore: Send + Sync {
 #[derive(Default)]
 pub struct InMemoryPipelineStore {
     next_id: AtomicI64,
-    pipelines: Mutex<HashMap<PipelineId, Vec<PipelineEvent>>>,
+    pipelines: Mutex<HashMap<PipelineId, (IssueRef, Vec<PipelineEvent>)>>,
 }
 
 impl InMemoryPipelineStore {
@@ -96,12 +119,12 @@ impl InMemoryPipelineStore {
 
 #[async_trait]
 impl PipelineStore for InMemoryPipelineStore {
-    async fn create_pipeline(&self, _issue: &IssueRef) -> Result<PipelineId, PipelineStoreError> {
+    async fn create_pipeline(&self, issue: &IssueRef) -> Result<PipelineId, PipelineStoreError> {
         let id = PipelineId(self.next_id.fetch_add(1, Ordering::SeqCst) + 1);
         self.pipelines
             .lock()
             .expect("pipeline store lock poisoned")
-            .insert(id, Vec::new());
+            .insert(id, (issue.clone(), Vec::new()));
         Ok(id)
     }
 
@@ -111,7 +134,7 @@ impl PipelineStore for InMemoryPipelineStore {
         event: PipelineEvent,
     ) -> Result<(), PipelineStoreError> {
         let mut pipelines = self.pipelines.lock().expect("pipeline store lock poisoned");
-        let events = pipelines
+        let (_, events) = pipelines
             .get_mut(&pipeline_id)
             .ok_or(PipelineStoreError::NotFound(pipeline_id))?;
         events.push(event);
@@ -126,8 +149,27 @@ impl PipelineStore for InMemoryPipelineStore {
             .lock()
             .expect("pipeline store lock poisoned")
             .get(&pipeline_id)
-            .cloned()
+            .map(|(_, events)| events.clone())
             .ok_or(PipelineStoreError::NotFound(pipeline_id))
+    }
+
+    async fn issue_for(&self, pipeline_id: PipelineId) -> Result<IssueRef, PipelineStoreError> {
+        self.pipelines
+            .lock()
+            .expect("pipeline store lock poisoned")
+            .get(&pipeline_id)
+            .map(|(issue, _)| issue.clone())
+            .ok_or(PipelineStoreError::NotFound(pipeline_id))
+    }
+
+    async fn all_pipeline_ids(&self) -> Result<Vec<PipelineId>, PipelineStoreError> {
+        Ok(self
+            .pipelines
+            .lock()
+            .expect("pipeline store lock poisoned")
+            .keys()
+            .copied()
+            .collect())
     }
 }
 
@@ -187,6 +229,36 @@ impl PipelineStore for DieselPipelineStore {
                     .map_err(|error| PipelineStoreError::Serialization(error.to_string()))
             })
             .collect()
+    }
+
+    async fn issue_for(&self, pipeline_id: PipelineId) -> Result<IssueRef, PipelineStoreError> {
+        let row = core_ai::get_pipeline(&self.pool, pipeline_id.0)
+            .await
+            .map_err(|error| PipelineStoreError::Other(error.to_string()))?
+            .ok_or(PipelineStoreError::NotFound(pipeline_id))?;
+
+        let forge = match row.forge.as_str() {
+            "github" => Forge::GitHub,
+            other => {
+                return Err(PipelineStoreError::Other(format!(
+                    "unknown forge {other:?} stored for pipeline {pipeline_id:?}"
+                )));
+            }
+        };
+
+        Ok(IssueRef::new(
+            RepoRef::new(forge, row.owner, row.repo_name),
+            row.issue_number,
+        ))
+    }
+
+    async fn all_pipeline_ids(&self) -> Result<Vec<PipelineId>, PipelineStoreError> {
+        Ok(core_ai::list_pipeline_ids(&self.pool)
+            .await
+            .map_err(|error| PipelineStoreError::Other(error.to_string()))?
+            .into_iter()
+            .map(PipelineId)
+            .collect())
     }
 }
 
@@ -389,5 +461,59 @@ mod tests {
             .await
             .expect_err("should not find a pipeline that was never created");
         assert!(matches!(error, PipelineStoreError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_issue_for_returns_the_issue_a_pipeline_was_created_for() {
+        let store = InMemoryPipelineStore::new();
+        let id = store.create_pipeline(&issue()).await.unwrap();
+        assert_eq!(store.issue_for(id).await.unwrap(), issue());
+    }
+
+    #[tokio::test]
+    async fn test_issue_for_an_unknown_pipeline_is_not_found() {
+        let store = InMemoryPipelineStore::new();
+        let error = store
+            .issue_for(PipelineId(999))
+            .await
+            .expect_err("should not find a pipeline that was never created");
+        assert!(matches!(error, PipelineStoreError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_all_pipeline_ids_lists_every_created_pipeline() {
+        let store = InMemoryPipelineStore::new();
+        let first = store.create_pipeline(&issue()).await.unwrap();
+        let second = store.create_pipeline(&issue()).await.unwrap();
+
+        let mut ids = store.all_pipeline_ids().await.unwrap();
+        ids.sort_by_key(|id| id.0);
+        assert_eq!(ids, vec![first, second]);
+    }
+
+    #[tokio::test]
+    async fn test_non_terminal_pipeline_ids_excludes_completed_runs() {
+        let store = InMemoryPipelineStore::new();
+        let completed = store.create_pipeline(&issue()).await.unwrap();
+        store
+            .append_event(completed, PipelineEvent::Triggered { issue: issue() })
+            .await
+            .unwrap();
+        store
+            .append_event(
+                completed,
+                PipelineEvent::IssueAnalyzed(analysis(RecommendedAction::Skip)),
+            )
+            .await
+            .unwrap();
+
+        let still_running = store.create_pipeline(&issue()).await.unwrap();
+        store
+            .append_event(still_running, PipelineEvent::Triggered { issue: issue() })
+            .await
+            .unwrap();
+
+        let non_terminal = store.non_terminal_pipeline_ids().await.unwrap();
+        assert_eq!(non_terminal, vec![still_running]);
     }
 }
