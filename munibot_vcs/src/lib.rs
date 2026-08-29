@@ -14,6 +14,8 @@
 
 mod event;
 mod reference;
+mod trigger;
 
 pub use event::ForgeEvent;
 pub use reference::{Comment, Forge, Issue, IssueRef, IssueState, RepoRef};
+pub use trigger::{RepoTriggerConfig, TriggerMode};
