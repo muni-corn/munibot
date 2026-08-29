@@ -12,10 +12,16 @@
 //! of writing one more crate against these traits, rather than a rewrite of
 //! the pipeline that consumes them.
 
+mod error;
 mod event;
 mod reference;
+mod source;
+mod target;
 mod trigger;
 
+pub use error::VcsError;
 pub use event::ForgeEvent;
 pub use reference::{Comment, Forge, Issue, IssueRef, IssueState, RepoRef};
+pub use source::IssueSource;
+pub use target::PullRequestTarget;
 pub use trigger::{RepoTriggerConfig, TriggerMode};
