@@ -53,7 +53,9 @@ munibot_gui/src/
 munibot_api/src/
   lib.rs            module declarations
   auth.rs           shared types: UserData, AuthError/AuthResult
-  auth/server.rs    (server only) Authentication/HasPermission impls, session User type
+  auth/server.rs    (server only) Authentication/HasPermission impls, session User type -- see
+                     docs/notes/permission-system.md for how HasPermission is actually resolved
+  auth/operator.rs  (server only) require_operator, the gate every operator-only page uses
   guilds.rs         shared type: GuildSummary
   oauth.rs          (server only) module declaration
   oauth/discord.rs  (server only) discord oauth2 client (token exchange, identity, guilds)
@@ -132,9 +134,6 @@ has `MANAGE_GUILD` on (`DiscordGuild::is_administered_by_user`).
   back to a sign-in prompt -- signing in again fixes it.
   Tracking: bump `linked_accounts.access_token`/`refresh_token` using `token_expires_at` and the
   stored `refresh_token` when it's close to expiring.
-- **No permission system.** `HasPermission` in `munibot_api/src/auth/server.rs` always returns
-  `false`; the old gui had a `BotAdmin` concept that's worth revisiting once the gui needs any
-  admin-gated views.
 - **Twitch sign-in isn't implemented yet** (github and email both are, as of milestone 6), though the
   `linked_accounts` schema and the `oauth` module structure are meant to make adding it mostly
   additive: a new `oauth/twitch.rs` client, new routes added to `oauth/routes.rs`, and reusing
