@@ -9,9 +9,10 @@ use crate::db::schema::{
 pub mod ai;
 
 pub use ai::{
-    AiAttachment, AiAttachmentMeta, AiConversation, AiMemory, AiMessage, AiRateLimit, AiSpendCap,
-    AiToolCall, AiUsage, AiUserSettings, NewAiAttachment, NewAiConversation, NewAiMemory,
-    NewAiMessage, NewAiRateLimit, NewAiSpendCap, NewAiToolCall, NewAiUsage, NewAiUserSettings,
+    AiAttachment, AiAttachmentMeta, AiConversation, AiMemory, AiMessage, AiPipeline,
+    AiPipelineEvent, AiRateLimit, AiSpendCap, AiToolCall, AiUsage, AiUserSettings, NewAiAttachment,
+    NewAiConversation, NewAiMemory, NewAiMessage, NewAiPipeline, NewAiPipelineEvent,
+    NewAiRateLimit, NewAiSpendCap, NewAiToolCall, NewAiUsage, NewAiUserSettings,
 };
 
 // guild_configs
