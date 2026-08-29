@@ -8,6 +8,16 @@
 //! `munibot_github` -- the pipeline is forge-agnostic by construction, the
 //! same way the harness itself is provider-agnostic.
 
+mod handoff;
 mod state;
 
+pub use handoff::{
+    AgentRole, ApproveCode, ApprovePlan, ApproveTests, ArchitectureReviewerHandoff,
+    BeginFinalReview, BuilderHandoff, CodeReviewerHandoff, CommitComplete, CreatePlan,
+    FinalCodeReviewerHandoff, IssueAnalysis, IssueClassification, ProjectComplete,
+    ProjectManagerHandoff, PullRequestReady, RecommendedAction, ReproductionStatus,
+    RequestBuildHelp, RequestCodeChanges, RequestPlanChanges, RequestPlanHelp, RequestTestChanges,
+    ResearchComplete, SoftwareArchitectHandoff, StartTaskTests, SubmitCode, SubmitTests,
+    SubtaskDraft, TestReviewerHandoff,
+};
 pub use state::{InteractionRequest, PipelineId, PipelineState, SubtaskId};
