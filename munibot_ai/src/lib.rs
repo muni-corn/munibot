@@ -22,6 +22,7 @@ pub mod harness;
 pub mod limits;
 pub mod memory;
 pub mod persona;
+pub mod pipeline;
 pub mod provider;
 pub mod sandbox;
 pub mod service;
