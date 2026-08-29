@@ -59,6 +59,7 @@ mod tests {
             memory: Default::default(),
             sandbox: Default::default(),
             delegable: false,
+            moderation_policy: munibot_ai::moderation::ModerationPolicy::FailOpen,
         }
     }
 
