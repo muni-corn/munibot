@@ -20,6 +20,7 @@ mod interaction;
 mod plan;
 mod state;
 mod store;
+mod web_chat_interaction;
 
 pub use advance::{AdvanceError, advance};
 pub use branch::resolve_branch_name;
@@ -48,3 +49,4 @@ pub use interaction::{
 pub use plan::{Plan, Subtask, SubtaskStatus};
 pub use state::{InteractionRequest, PipelineId, PipelineState, SubtaskId};
 pub use store::{DieselPipelineStore, InMemoryPipelineStore, PipelineStore, PipelineStoreError};
+pub use web_chat_interaction::{PendingReplyRegistry, WebChatAdapter};
