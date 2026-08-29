@@ -23,6 +23,7 @@ use tracing::info;
 use crate::app::App;
 
 mod attachments;
+mod webhooks;
 
 /// Builds and serves the gui's axum app: the dioxus fullstack app, the
 /// discord oauth routes, and the redis-backed session/auth layers.
@@ -54,6 +55,20 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
     )
     .await?;
 
+    // GITHUB_WEBHOOK_SECRET absent means the autonomous pipeline's forge
+    // integration is simply off on this deployment, the same convention
+    // `ai` itself already follows -- see `webhooks::WebhookConfig`'s own
+    // doc comment.
+    let webhook_config = Arc::new(webhooks::WebhookConfig {
+        webhook_secret: std::env::var("GITHUB_WEBHOOK_SECRET").ok(),
+        bot_login: std::env::var("GITHUB_BOT_LOGIN").unwrap_or_else(|_| "munibot[bot]".to_string()),
+        // no repository has a trigger configured yet, and no pipeline is
+        // registered to dispatch to -- both arrive with the pipeline
+        // itself (see docs/plans/ai/milestone-5-autonomous.md phase 21)
+        triggers: Vec::new(),
+        dispatch: None,
+    });
+
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), App)
@@ -62,6 +77,7 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
         // else
         .merge(munibot_api::oauth::routes::router())
         .merge(attachments::router())
+        .merge(webhooks::router())
         .layer(
             AuthSessionLayer::<User, String, SessionRedisPool, _>::new(Some(pool.clone()))
                 .with_config(AuthConfig::<String>::default()),
@@ -69,7 +85,8 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
         .layer(SessionLayer::new(session_store))
         .layer(Extension(pool))
         .layer(Extension(discord_config))
-        .layer(Extension(ai));
+        .layer(Extension(ai))
+        .layer(Extension(webhook_config));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "listening");

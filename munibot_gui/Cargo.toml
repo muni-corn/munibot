@@ -31,15 +31,24 @@ dioxus-desktop = { workspace = true, optional = true }
 # of this can compile for wasm32
 munibot_core = { path = "../munibot_core", optional = true }
 munibot_ai = { path = "../munibot_ai", optional = true }
+munibot_vcs = { path = "../munibot_vcs", optional = true }
+munibot_github = { path = "../munibot_github", optional = true }
 anyhow = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 axum_session = { workspace = true, optional = true }
 axum_session_auth = { workspace = true, optional = true }
 axum_session_redispool = { workspace = true, optional = true }
+bytes = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
 redis_pool = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+hmac.workspace = true
+sha2.workspace = true
+tower = { workspace = true, features = ["util"] }
 
 [features]
 default = []
@@ -50,11 +59,15 @@ server = [
   "munibot_api/server",
   "dep:munibot_core",
   "dep:munibot_ai",
+  "dep:munibot_vcs",
+  "dep:munibot_github",
   "dep:anyhow",
+  "dep:async-trait",
   "dep:axum",
   "dep:axum_session",
   "dep:axum_session_auth",
   "dep:axum_session_redispool",
+  "dep:bytes",
   "dep:redis",
   "dep:redis_pool",
   "dep:tokio",
