@@ -12,6 +12,7 @@ use axum::{
     routing::{get, post},
 };
 use munibot_core::db::DbPool;
+use rand::RngExt;
 use serde::Deserialize;
 use tracing::{error, warn};
 
@@ -19,6 +20,46 @@ use crate::{
     auth::server::AuthSession,
     oauth::{LinkOrSignIn, discord, email, github},
 };
+
+/// The session key an authorize-step CSRF state token is stashed under,
+/// until the matching callback consumes it - see [`generate_csrf_state`]
+/// and [`verify_csrf_state`].
+const CSRF_STATE_SESSION_KEY: &str = "oauth_csrf_state";
+
+/// Generates a fresh CSRF state token, stashes it in the session (which
+/// already exists, and is already tracked via a cookie, before anyone
+/// signs in - `axum_session` issues one to every visitor regardless), and
+/// returns it for embedding in a provider's authorize URL.
+///
+/// `docs/gui.md:132` names the gap this closes: without a `state` round
+/// trip, nothing stops a forged callback (an attacker's own authorization
+/// code, delivered to a victim's browser) from being accepted as if the
+/// victim had actually completed the flow themselves.
+fn generate_csrf_state(auth: &AuthSession) -> String {
+    let mut bytes = [0u8; 32];
+    rand::rng().fill(&mut bytes);
+    let state = bytes
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    auth.session.set(CSRF_STATE_SESSION_KEY, &state);
+    state
+}
+
+/// Verifies a callback's `state` query parameter against what
+/// [`generate_csrf_state`] stashed for this same session, removing it
+/// from the session either way - single-use, so a state value can never
+/// be replayed against a second callback even if the first one somehow
+/// leaked.
+fn verify_csrf_state(auth: &AuthSession, provided: Option<&str>) -> bool {
+    let expected: Option<String> = auth.session.get(CSRF_STATE_SESSION_KEY);
+    auth.session.remove(CSRF_STATE_SESSION_KEY);
+
+    match (expected, provided) {
+        (Some(expected), Some(provided)) => expected == provided,
+        _ => false,
+    }
+}
 
 /// Turns a [`LinkOrSignIn`] into the redirect a callback handler shows,
 /// logging the session in for a fresh sign-in but leaving an
@@ -66,13 +107,14 @@ fn not_configured(provider: &str) -> impl IntoResponse {
 }
 
 /// Redirects to discord's consent screen.
-async fn authorize_discord() -> impl IntoResponse {
+async fn authorize_discord(auth: AuthSession) -> impl IntoResponse {
     match (
         std::env::var("MUNIBOT_BASE_URL"),
         std::env::var("DISCORD_APPLICATION_ID"),
     ) {
         (Ok(base_url), Ok(client_id)) => {
-            Redirect::to(&discord::authorize_url(&base_url, &client_id)).into_response()
+            let state = generate_csrf_state(&auth);
+            Redirect::to(&discord::authorize_url(&base_url, &client_id, &state)).into_response()
         }
         _ => not_configured("discord").into_response(),
     }
@@ -82,6 +124,7 @@ async fn authorize_discord() -> impl IntoResponse {
 struct CallbackParams {
     code: Option<String>,
     error: Option<String>,
+    state: Option<String>,
 }
 
 /// Handles discord's redirect back after the user accepts or declines.
@@ -94,6 +137,10 @@ async fn callback_discord(
     Query(params): Query<CallbackParams>,
     Extension(pool): Extension<DbPool>,
 ) -> Redirect {
+    if !verify_csrf_state(&auth, params.state.as_deref()) {
+        warn!("discord oauth callback failed csrf state verification");
+        return Redirect::to("/");
+    }
     let Some(code) = params.code else {
         warn!(error = ?params.error, "discord oauth callback without a code");
         return Redirect::to("/");
@@ -142,13 +189,14 @@ async fn complete_discord(
 }
 
 /// Redirects to GitHub's consent screen.
-async fn authorize_github() -> impl IntoResponse {
+async fn authorize_github(auth: AuthSession) -> impl IntoResponse {
     match (
         std::env::var("MUNIBOT_BASE_URL"),
         std::env::var("GITHUB_OAUTH_CLIENT_ID"),
     ) {
         (Ok(base_url), Ok(client_id)) => {
-            Redirect::to(&github::authorize_url(&base_url, &client_id)).into_response()
+            let state = generate_csrf_state(&auth);
+            Redirect::to(&github::authorize_url(&base_url, &client_id, &state)).into_response()
         }
         _ => not_configured("github sign-in").into_response(),
     }
@@ -163,6 +211,10 @@ async fn callback_github(
     Query(params): Query<CallbackParams>,
     Extension(pool): Extension<DbPool>,
 ) -> Redirect {
+    if !verify_csrf_state(&auth, params.state.as_deref()) {
+        warn!("github oauth callback failed csrf state verification");
+        return Redirect::to("/");
+    }
     let Some(code) = params.code else {
         warn!(error = ?params.error, "github oauth callback without a code");
         return Redirect::to("/");

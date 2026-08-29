@@ -103,9 +103,12 @@ invoked in, so the tailwind input, its `@source` scan, and the generated output 
 
 1. The home page and account status component link to `/auth/discord/authorize` (a plain `<a>` tag,
    not a dioxus `Link` -- this needs a real browser navigation, not a client-side route change).
-2. `GET /auth/discord/authorize` (`munibot_api/src/oauth/routes.rs`) redirects to discord's consent
-   screen, with `identify guilds` scopes and a `redirect_uri` built from `MUNIBOT_BASE_URL`.
-3. Discord redirects back to `GET /auth/discord/callback?code=...`. That handler:
+2. `GET /auth/discord/authorize` (`munibot_api/src/oauth/routes.rs`) generates a CSRF `state` token,
+   stashes it in the (already-cookied, pre-login) session, and redirects to discord's consent screen
+   with it, `identify guilds` scopes, and a `redirect_uri` built from `MUNIBOT_BASE_URL`.
+3. Discord redirects back to `GET /auth/discord/callback?code=...&state=...`. That handler:
+   - verifies `state` against the session's stashed value first, refusing (and clearing it either
+     way) before touching discord's api at all if it's missing or doesn't match
    - exchanges the code for an access/refresh token (`munibot_api/src/oauth/discord.rs::exchange_code`)
    - fetches the discord identity (`get_current_user`)
    - calls `munibot_core::db::operations::get_or_create_user_from_linked_account`, which finds the
@@ -129,14 +132,13 @@ has `MANAGE_GUILD` on (`DiscordGuild::is_administered_by_user`).
   back to a sign-in prompt -- signing in again fixes it.
   Tracking: bump `linked_accounts.access_token`/`refresh_token` using `token_expires_at` and the
   stored `refresh_token` when it's close to expiring.
-- **No CSRF `state` parameter** on the oauth authorize/callback round trip.
 - **No permission system.** `HasPermission` in `munibot_api/src/auth/server.rs` always returns
   `false`; the old gui had a `BotAdmin` concept that's worth revisiting once the gui needs any
   admin-gated views.
-- **Twitch/github sign-in aren't implemented yet**, though the `linked_accounts` schema and the
-  `oauth` module structure are meant to make adding them mostly additive: a new `oauth/<provider>.rs`
-  client, new routes in a `oauth/routes.rs`-shaped module (or added to the existing one), and reusing
-  `get_or_create_user_from_linked_account` with `provider = "twitch"`/`"github"`.
+- **Twitch sign-in isn't implemented yet** (github and email both are, as of milestone 6), though the
+  `linked_accounts` schema and the `oauth` module structure are meant to make adding it mostly
+  additive: a new `oauth/twitch.rs` client, new routes added to `oauth/routes.rs`, and reusing
+  `get_or_create_user_from_linked_account` with `provider = "twitch"`.
 
 ## Local dev workflow
 

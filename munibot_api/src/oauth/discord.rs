@@ -33,14 +33,21 @@ pub fn redirect_uri(base_url: &str) -> String {
 }
 
 /// Builds the URL to redirect a user to for discord's consent screen.
-pub fn authorize_url(base_url: &str, client_id: &str) -> String {
+///
+/// `state` is an opaque, unguessable value the caller generated and
+/// stored server-side (see `oauth::routes`'s own CSRF state helpers) -
+/// discord returns it verbatim on the callback, letting that handler
+/// confirm the request actually originated from a real authorize
+/// redirect this server issued, not a forged callback.
+pub fn authorize_url(base_url: &str, client_id: &str, state: &str) -> String {
     let mut url =
         reqwest::Url::parse("https://discord.com/oauth2/authorize").expect("static url is valid");
     url.query_pairs_mut()
         .append_pair("client_id", client_id)
         .append_pair("response_type", "code")
         .append_pair("redirect_uri", &redirect_uri(base_url))
-        .append_pair("scope", SCOPES);
+        .append_pair("scope", SCOPES)
+        .append_pair("state", state);
     url.into()
 }
 
