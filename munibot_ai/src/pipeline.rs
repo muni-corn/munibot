@@ -11,6 +11,7 @@
 mod advance;
 mod event;
 mod handoff;
+mod handoff_schema;
 mod plan;
 mod state;
 mod store;
@@ -26,6 +27,7 @@ pub use handoff::{
     ResearchComplete, SoftwareArchitectHandoff, StartTaskTests, SubmitCode, SubmitTests,
     SubtaskDraft, TestReviewerHandoff,
 };
+pub use handoff_schema::{handoff_schema_for, persona_for, persona_id_for};
 pub use plan::{Plan, Subtask, SubtaskStatus};
 pub use state::{InteractionRequest, PipelineId, PipelineState, SubtaskId};
 pub use store::{DieselPipelineStore, InMemoryPipelineStore, PipelineStore, PipelineStoreError};
