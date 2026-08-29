@@ -14,6 +14,10 @@ pub enum GitHubError {
     /// installation access token, failed.
     #[error("couldn't authenticate with github: {0}")]
     Auth(String),
+    /// A webhook delivery's body couldn't be parsed as the shape its own
+    /// `X-GitHub-Event` header promised.
+    #[error("couldn't parse webhook payload: {0}")]
+    Payload(String),
 }
 
 #[cfg(test)]
@@ -30,5 +34,11 @@ mod tests {
     fn test_auth_error_names_the_underlying_failure() {
         let error = GitHubError::Auth("401 unauthorized".to_string());
         assert!(error.to_string().contains("401 unauthorized"));
+    }
+
+    #[test]
+    fn test_payload_error_names_the_parse_failure() {
+        let error = GitHubError::Payload("missing field `issue`".to_string());
+        assert!(error.to_string().contains("missing field `issue`"));
     }
 }
