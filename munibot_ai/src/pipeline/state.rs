@@ -42,17 +42,43 @@ pub enum PipelineState {
     Researching,
     Planning,
     ReviewingPlan,
-    TestWriting { subtask: SubtaskId },
-    TestReviewing { subtask: SubtaskId },
-    Building { subtask: SubtaskId },
-    ReviewingCode { subtask: SubtaskId },
-    Committing { subtask: SubtaskId },
+    /// The project manager is deciding what happens next: which subtask to
+    /// start, or (once every subtask is committed) that it's time for the
+    /// final review. Reached after `ApprovePlan` and after every
+    /// `CommitComplete` -- the diagram draws "Project Manager" as its own
+    /// box for exactly this reason, even though it isn't its own listed
+    /// state in the milestone plan's own summary table.
+    Scheduling,
+    TestWriting {
+        subtask: SubtaskId,
+    },
+    TestReviewing {
+        subtask: SubtaskId,
+    },
+    Building {
+        subtask: SubtaskId,
+    },
+    ReviewingCode {
+        subtask: SubtaskId,
+    },
+    Committing {
+        subtask: SubtaskId,
+    },
     FinalReview,
     AwaitingFixSubtask,
     WritingPr,
-    AwaitingUserInput { request: InteractionRequest },
+    /// Paused on a question a human needs to answer. `resume` is the state
+    /// to fold back into once that answer arrives (`UserInputReceived`),
+    /// so a paused pipeline doesn't need a second, parallel mechanism for
+    /// remembering where it was -- the pause carries its own way back.
+    AwaitingUserInput {
+        request: InteractionRequest,
+        resume: Box<PipelineState>,
+    },
     Complete,
-    Failed { reason: String },
+    Failed {
+        reason: String,
+    },
 }
 
 impl PipelineState {
@@ -100,11 +126,17 @@ mod tests {
     }
 
     #[test]
+    fn test_scheduling_is_not_terminal() {
+        assert!(!PipelineState::Scheduling.is_terminal());
+    }
+
+    #[test]
     fn test_awaiting_user_input_is_not_terminal() {
         let state = PipelineState::AwaitingUserInput {
             request: InteractionRequest {
                 prompt: "which database should this use?".to_string(),
             },
+            resume: Box::new(PipelineState::Planning),
         };
         assert!(!state.is_terminal());
     }
@@ -130,6 +162,7 @@ mod tests {
             PipelineState::Researching,
             PipelineState::Planning,
             PipelineState::ReviewingPlan,
+            PipelineState::Scheduling,
             PipelineState::TestWriting {
                 subtask: subtask.clone(),
             },
@@ -152,6 +185,7 @@ mod tests {
                 request: InteractionRequest {
                     prompt: "?".to_string(),
                 },
+                resume: Box::new(PipelineState::Planning),
             },
             PipelineState::Complete,
             PipelineState::Failed {
