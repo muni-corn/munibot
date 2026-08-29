@@ -4,9 +4,11 @@ use async_trait::async_trait;
 use munibot_ai::{
     Ai, AiTurnRequest,
     memory::ConversationScope,
+    persona::PersonaId,
     tools::{Platform, RiskTier},
 };
-use poise::serenity_prelude::{Context, FullEvent, UserId};
+use munibot_core::db::operations;
+use poise::serenity_prelude::{ChannelId, Context, FullEvent, UserId};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -80,8 +82,49 @@ impl DiscordEventHandler for AiChatHandler {
             return Ok(());
         }
 
+        let db = framework.user_data().await.access().db().clone();
+
+        // per-guild gating (milestone 6 phase 23): a dm has no guild_id and is
+        // never subject to any of this - a guild's own settings only ever
+        // govern that guild's own channels, never munibot's dms
+        let mut guild_default_persona = None;
+        if let Some(guild_id) = msg.guild_id {
+            let guild_id_i64 = guild_id.get() as i64;
+            let config = operations::get_guild_config(&db, guild_id_i64)
+                .await
+                .map_err(|error| DiscordHandlerError::from_display(self.name(), error))?;
+
+            if !config.as_ref().is_some_and(|config| config.ai_enabled) {
+                return Ok(());
+            }
+
+            if config
+                .as_ref()
+                .map(|config| config.ai_channel_mode.as_str())
+                == Some("allowlist")
+            {
+                let allowed = allowed_by_channel_allowlist(&db, guild_id_i64, msg.channel_id)
+                    .await
+                    .map_err(|error| DiscordHandlerError::from_display(self.name(), error))?;
+                if !allowed {
+                    return Ok(());
+                }
+            }
+
+            guild_default_persona = config.and_then(|config| config.ai_default_persona);
+        }
+
         let pinned_personas = &framework.user_data().await.pinned_personas;
-        let Some(persona_id) = pinned_personas.effective(msg.channel_id, &self.ai).await else {
+        let persona_id = match pinned_personas.get(msg.channel_id).await {
+            Some(pinned) => Some(pinned),
+            // a guild's own default (set on its ai settings page) takes
+            // precedence over the service-wide one, but never over an
+            // explicit per-channel pin above
+            None => guild_default_persona
+                .map(PersonaId::new)
+                .or_else(|| self.ai.default_persona_id().cloned()),
+        };
+        let Some(persona_id) = persona_id else {
             warn!("ai chat triggered, but no default_persona is configured");
             msg.channel_id
                 .say(
@@ -135,6 +178,19 @@ impl DiscordEventHandler for AiChatHandler {
 /// whitespace after it, so the model sees "what's the weather" rather than
 /// "<@123456789012345678> what's the weather" - Discord clients insert this
 /// token automatically when a message starts with typing the bot's name.
+/// Whether `channel_id` is in `guild_id`'s ai channel allowlist - only ever
+/// consulted when that guild's `ai_channel_mode` is `"allowlist"` in the
+/// first place; a guild left on the default `"all"` mode never reaches
+/// this at all.
+async fn allowed_by_channel_allowlist(
+    db: &munibot_core::db::DbPool,
+    guild_id: i64,
+    channel_id: ChannelId,
+) -> diesel::QueryResult<bool> {
+    let allowlist = operations::ai::list_ai_channel_allowlist(db, guild_id).await?;
+    Ok(allowlist.contains(&(channel_id.get() as i64)))
+}
+
 fn strip_leading_mention(content: &str, bot_id: UserId) -> &str {
     let with_bang = format!("<@!{bot_id}>");
     let without_bang = format!("<@{bot_id}>");
