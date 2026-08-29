@@ -8,19 +8,30 @@ mod common;
 use chrono::Utc;
 use common::TestDb;
 use munibot_core::db::{
-    models::{AutoDeleteTimerRow, GuildConfig},
+    models::{AutoDeleteTimerRow, DEFAULT_AI_CHANNEL_MODE, GuildConfig},
     operations,
 };
+
+/// A `GuildConfig` with `guild_id` and `logging_channel` set and every ai
+/// field at munibot's own defaults - what a hand-built literal in these
+/// tests would have looked like before those columns existed, kept as one
+/// helper so adding a config field in the future means updating this one
+/// place, not every test that builds a `GuildConfig` from scratch.
+fn guild_config(guild_id: i64, logging_channel: Option<i64>) -> GuildConfig {
+    GuildConfig {
+        guild_id,
+        logging_channel,
+        ai_enabled: false,
+        ai_default_persona: None,
+        ai_channel_mode: DEFAULT_AI_CHANNEL_MODE.to_string(),
+    }
+}
 
 #[tokio::test]
 async fn test_upsert_and_get_guild_config() {
     let db = TestDb::new().await;
 
-    let config = GuildConfig {
-        guild_id: 1001,
-        logging_channel: Some(9999),
-    };
-    let saved = operations::upsert_guild_config(&db.pool, config)
+    let saved = operations::upsert_guild_config(&db.pool, guild_config(1001, Some(9999)))
         .await
         .expect("upsert failed");
 
@@ -40,19 +51,13 @@ async fn test_upsert_and_get_guild_config() {
 async fn test_upsert_guild_config_overwrites_existing() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1002,
-        logging_channel: Some(111),
-    })
-    .await
-    .expect("first upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1002, Some(111)))
+        .await
+        .expect("first upsert failed");
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1002,
-        logging_channel: Some(222),
-    })
-    .await
-    .expect("second upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1002, Some(222)))
+        .await
+        .expect("second upsert failed");
 
     let fetched = operations::get_guild_config(&db.pool, 1002)
         .await
@@ -79,12 +84,9 @@ async fn test_get_guild_config_missing_returns_none() {
 async fn test_delete_guild_config() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1003,
-        logging_channel: None,
-    })
-    .await
-    .expect("upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1003, None))
+        .await
+        .expect("upsert failed");
 
     let deleted = operations::delete_guild_config(&db.pool, 1003)
         .await
@@ -95,6 +97,72 @@ async fn test_delete_guild_config() {
         .await
         .expect("get failed");
     assert!(after.is_none(), "config should be gone after delete");
+}
+
+#[tokio::test]
+async fn test_set_guild_logging_channel_leaves_existing_ai_settings_untouched() {
+    let db = TestDb::new().await;
+
+    operations::set_guild_ai_settings(
+        &db.pool,
+        2001,
+        true,
+        Some("researcher".to_string()),
+        "allowlist".to_string(),
+    )
+    .await
+    .expect("ai settings save failed");
+
+    let saved = operations::set_guild_logging_channel(&db.pool, 2001, Some(555))
+        .await
+        .expect("logging save failed");
+
+    assert_eq!(saved.logging_channel, Some(555));
+    assert!(
+        saved.ai_enabled,
+        "a logging-only save must not silently disable ai for this guild"
+    );
+    assert_eq!(saved.ai_default_persona, Some("researcher".to_string()));
+    assert_eq!(saved.ai_channel_mode, "allowlist");
+}
+
+#[tokio::test]
+async fn test_set_guild_ai_settings_leaves_existing_logging_channel_untouched() {
+    let db = TestDb::new().await;
+
+    operations::set_guild_logging_channel(&db.pool, 2002, Some(777))
+        .await
+        .expect("logging save failed");
+
+    let saved = operations::set_guild_ai_settings(
+        &db.pool,
+        2002,
+        true,
+        Some("companion".to_string()),
+        "all".to_string(),
+    )
+    .await
+    .expect("ai settings save failed");
+
+    assert_eq!(
+        saved.logging_channel,
+        Some(777),
+        "an ai-only save must not silently clear the guild's logging channel"
+    );
+    assert!(saved.ai_enabled);
+    assert_eq!(saved.ai_default_persona, Some("companion".to_string()));
+}
+
+#[tokio::test]
+async fn test_set_guild_ai_settings_for_a_brand_new_guild_defaults_logging_to_unset() {
+    let db = TestDb::new().await;
+
+    let saved = operations::set_guild_ai_settings(&db.pool, 2003, true, None, "all".to_string())
+        .await
+        .expect("ai settings save failed");
+
+    assert_eq!(saved.logging_channel, None);
+    assert!(saved.ai_enabled);
 }
 
 #[tokio::test]

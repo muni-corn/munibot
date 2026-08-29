@@ -1213,3 +1213,85 @@ async fn test_deleting_a_message_cascades_to_its_attachments() {
         "an attachment should not outlive the message it was linked to"
     );
 }
+
+// ai_channel_allowlist
+
+#[tokio::test]
+async fn test_list_ai_channel_allowlist_for_a_guild_with_none_is_empty() {
+    let db = TestDb::new().await;
+    let channels = ai::list_ai_channel_allowlist(&db.pool, 999_999)
+        .await
+        .expect("list failed");
+    assert!(channels.is_empty());
+}
+
+#[tokio::test]
+async fn test_set_then_list_ai_channel_allowlist_round_trips() {
+    let db = TestDb::new().await;
+
+    ai::set_ai_channel_allowlist(&db.pool, 3001, &[111, 222, 333])
+        .await
+        .expect("set failed");
+
+    let mut channels = ai::list_ai_channel_allowlist(&db.pool, 3001)
+        .await
+        .expect("list failed");
+    channels.sort();
+    assert_eq!(channels, vec![111, 222, 333]);
+}
+
+#[tokio::test]
+async fn test_set_ai_channel_allowlist_replaces_the_previous_set_entirely() {
+    let db = TestDb::new().await;
+
+    ai::set_ai_channel_allowlist(&db.pool, 3002, &[111, 222])
+        .await
+        .expect("first set failed");
+    ai::set_ai_channel_allowlist(&db.pool, 3002, &[333])
+        .await
+        .expect("second set failed");
+
+    let channels = ai::list_ai_channel_allowlist(&db.pool, 3002)
+        .await
+        .expect("list failed");
+    assert_eq!(
+        channels,
+        vec![333],
+        "a fresh save should replace the old set, not add to it"
+    );
+}
+
+#[tokio::test]
+async fn test_set_ai_channel_allowlist_to_empty_clears_it() {
+    let db = TestDb::new().await;
+
+    ai::set_ai_channel_allowlist(&db.pool, 3003, &[111])
+        .await
+        .expect("first set failed");
+    ai::set_ai_channel_allowlist(&db.pool, 3003, &[])
+        .await
+        .expect("clearing set failed");
+
+    let channels = ai::list_ai_channel_allowlist(&db.pool, 3003)
+        .await
+        .expect("list failed");
+    assert!(channels.is_empty());
+}
+
+#[tokio::test]
+async fn test_ai_channel_allowlist_is_independent_per_guild() {
+    let db = TestDb::new().await;
+
+    ai::set_ai_channel_allowlist(&db.pool, 3004, &[111])
+        .await
+        .expect("set failed for guild a");
+    ai::set_ai_channel_allowlist(&db.pool, 3005, &[222])
+        .await
+        .expect("set failed for guild b");
+
+    let guild_a = ai::list_ai_channel_allowlist(&db.pool, 3004).await.unwrap();
+    let guild_b = ai::list_ai_channel_allowlist(&db.pool, 3005).await.unwrap();
+
+    assert_eq!(guild_a, vec![111]);
+    assert_eq!(guild_b, vec![222]);
+}

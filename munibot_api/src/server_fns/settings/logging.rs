@@ -41,7 +41,7 @@ pub async fn set_guild_logging_settings(
     guild_id: String,
     settings: GuildLoggingSettings,
 ) -> SettingsResult<GuildLoggingSettings> {
-    use munibot_core::db::{models::GuildConfig, operations};
+    use munibot_core::db::operations;
 
     use crate::{auth::guild::require_guild_admin, oauth::discord::bot};
 
@@ -75,11 +75,7 @@ pub async fn set_guild_logging_settings(
         .transpose()
         .map_err(|e| anyhow::anyhow!("invalid channel id: {e}"))?;
 
-    operations::upsert_guild_config(&pool, GuildConfig {
-        guild_id: guild_id_i64,
-        logging_channel: channel_id_i64,
-    })
-    .await?;
+    operations::set_guild_logging_channel(&pool, guild_id_i64, channel_id_i64).await?;
 
     Ok(settings)
 }

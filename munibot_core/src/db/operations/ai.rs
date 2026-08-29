@@ -8,6 +8,7 @@
 
 pub mod abuse;
 pub mod attachment;
+pub mod guild_settings;
 pub mod limits;
 pub mod pipeline;
 pub mod safety;
@@ -20,6 +21,7 @@ pub use attachment::{
 };
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+pub use guild_settings::{list_ai_channel_allowlist, set_ai_channel_allowlist};
 pub use limits::{
     get_rate_limit, get_spend_cap, increment_rate_limit, increment_spend, reset_rate_limit_window,
     upsert_spend_cap,

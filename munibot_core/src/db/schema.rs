@@ -30,6 +30,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    ai_channel_allowlist (id) {
+        id -> Bigint,
+        guild_id -> Bigint,
+        channel_id -> Bigint,
+        created_at -> Datetime,
+    }
+}
+
+diesel::table! {
     ai_conversations (id) {
         id -> Bigint,
         #[max_length = 32]
@@ -224,6 +233,11 @@ diesel::table! {
     guild_configs (guild_id) {
         guild_id -> Bigint,
         logging_channel -> Nullable<Bigint>,
+        ai_enabled -> Bool,
+        #[max_length = 64]
+        ai_default_persona -> Nullable<Varchar>,
+        #[max_length = 16]
+        ai_channel_mode -> Varchar,
     }
 }
 
@@ -318,6 +332,7 @@ diesel::joinable!(user_permissions -> users (user_id));
 diesel::allow_tables_to_appear_in_same_query!(
     ai_abuse_cooldowns,
     ai_attachments,
+    ai_channel_allowlist,
     ai_conversations,
     ai_memories,
     ai_messages,

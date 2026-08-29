@@ -9,8 +9,8 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::db::schema::{
-    ai_abuse_cooldowns, ai_attachments, ai_conversations, ai_memories, ai_messages,
-    ai_pipeline_events, ai_pipelines, ai_rate_limits, ai_safety_events, ai_spend_caps,
+    ai_abuse_cooldowns, ai_attachments, ai_channel_allowlist, ai_conversations, ai_memories,
+    ai_messages, ai_pipeline_events, ai_pipelines, ai_rate_limits, ai_safety_events, ai_spend_caps,
     ai_tool_calls, ai_usage, ai_user_settings,
 };
 
@@ -374,6 +374,30 @@ pub struct NewAiAbuseCooldown {
     pub cooldown_until: NaiveDateTime,
     pub last_reason: String,
     pub last_tripped_at: NaiveDateTime,
+}
+
+// ai_channel_allowlist
+
+/// A row in the `ai_channel_allowlist` table: one channel a guild has
+/// explicitly allowed munibot's ai surface to operate in, consulted only
+/// when that guild's `guild_configs.ai_channel_mode` is `"allowlist"`.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = ai_channel_allowlist)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiChannelAllowlistEntry {
+    pub id: i64,
+    pub guild_id: i64,
+    pub channel_id: i64,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable shape for `ai_channel_allowlist`.
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = ai_channel_allowlist)]
+pub struct NewAiChannelAllowlistEntry {
+    pub guild_id: i64,
+    pub channel_id: i64,
+    pub created_at: NaiveDateTime,
 }
 
 // ai_safety_events

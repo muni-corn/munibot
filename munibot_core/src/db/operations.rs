@@ -8,9 +8,10 @@ pub mod ai;
 use crate::db::{
     DbPool,
     models::{
-        AutoDeleteTimerRow, CommunityLink, EmailSigninToken, GuildConfig, GuildPayout, GuildWallet,
-        LinkedAccount, NewCommunityLink, NewEmailSigninToken, NewGuildPayout, NewGuildWallet,
-        NewLinkedAccount, NewQuote, NewUser, NewUserPermission, Quote, UpdateAutoDeleteTimer, User,
+        AutoDeleteTimerRow, CommunityLink, DEFAULT_AI_CHANNEL_MODE, EmailSigninToken, GuildConfig,
+        GuildPayout, GuildWallet, LinkedAccount, NewCommunityLink, NewEmailSigninToken,
+        NewGuildPayout, NewGuildWallet, NewLinkedAccount, NewQuote, NewUser, NewUserPermission,
+        Quote, UpdateAutoDeleteTimer, User,
     },
     schema::{
         autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
@@ -28,10 +29,17 @@ diesel::define_sql_function!(fn last_insert_id() -> diesel::sql_types::Unsigned<
 ///
 /// Uses MySQL's `INSERT ... ON DUPLICATE KEY UPDATE` rather than
 /// `REPLACE INTO`. `REPLACE INTO` deletes the existing row and reinserts it,
-/// which would null out every column not present in `config` -- as soon as
-/// `guild_configs` gains a second setting, a write to one column would
-/// silently erase the other. `ON DUPLICATE KEY UPDATE` only touches the
-/// columns named in the changeset.
+/// which would null out every column not present in `config`.
+/// `ON DUPLICATE KEY UPDATE` only touches the columns named in the
+/// changeset - but `GuildConfig` derives `AsChangeset` over its **whole**
+/// struct, so every field is always in that changeset regardless. Now that
+/// this row carries both logging and ai settings, calling this directly
+/// with only one concern's fields populated correctly would silently reset
+/// the other concern back to its Rust-side default on every save - prefer
+/// [`set_guild_logging_channel`] or [`set_guild_ai_settings`], which read
+/// the existing row first and can never do that. This function stays
+/// public for the handful of callers (tests, and those two setters
+/// themselves) that already have a complete, correct `GuildConfig` in hand.
 pub async fn upsert_guild_config(pool: &DbPool, config: GuildConfig) -> QueryResult<GuildConfig> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
     diesel::insert_into(guild_configs::table)
@@ -46,6 +54,53 @@ pub async fn upsert_guild_config(pool: &DbPool, config: GuildConfig) -> QueryRes
         .select(GuildConfig::as_select())
         .first(&mut conn)
         .await
+}
+
+/// Sets a guild's logging channel (or clears it, with `None`), leaving
+/// whatever ai settings it already has untouched - reads the existing row
+/// first (or falls back to munibot's own defaults for a guild with no row
+/// yet) rather than trusting a caller that only ever thinks about logging
+/// to also supply correct ai values. See [`upsert_guild_config`]'s own doc
+/// comment for why this indirection exists at all.
+pub async fn set_guild_logging_channel(
+    pool: &DbPool,
+    guild_id: i64,
+    logging_channel: Option<i64>,
+) -> QueryResult<GuildConfig> {
+    let existing = get_guild_config(pool, guild_id).await?;
+    upsert_guild_config(pool, GuildConfig {
+        guild_id,
+        logging_channel,
+        ai_enabled: existing.as_ref().is_some_and(|config| config.ai_enabled),
+        ai_default_persona: existing
+            .as_ref()
+            .and_then(|config| config.ai_default_persona.clone()),
+        ai_channel_mode: existing
+            .map(|config| config.ai_channel_mode)
+            .unwrap_or_else(|| DEFAULT_AI_CHANNEL_MODE.to_string()),
+    })
+    .await
+}
+
+/// Sets a guild's ai settings, leaving its logging channel untouched - the
+/// same read-then-merge reasoning [`set_guild_logging_channel`] documents,
+/// from the other side.
+pub async fn set_guild_ai_settings(
+    pool: &DbPool,
+    guild_id: i64,
+    ai_enabled: bool,
+    ai_default_persona: Option<String>,
+    ai_channel_mode: String,
+) -> QueryResult<GuildConfig> {
+    let existing = get_guild_config(pool, guild_id).await?;
+    upsert_guild_config(pool, GuildConfig {
+        guild_id,
+        logging_channel: existing.and_then(|config| config.logging_channel),
+        ai_enabled,
+        ai_default_persona,
+        ai_channel_mode,
+    })
+    .await
 }
 
 /// Retrieves a guild config by guild ID, returning `None` if not found.

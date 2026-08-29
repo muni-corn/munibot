@@ -9,23 +9,52 @@ use crate::db::schema::{
 pub mod ai;
 
 pub use ai::{
-    AiAbuseCooldown, AiAttachment, AiAttachmentMeta, AiConversation, AiMemory, AiMessage,
-    AiPipeline, AiPipelineEvent, AiRateLimit, AiSafetyEvent, AiSpendCap, AiToolCall, AiUsage,
-    AiUserSettings, NewAiAbuseCooldown, NewAiAttachment, NewAiConversation, NewAiMemory,
-    NewAiMessage, NewAiPipeline, NewAiPipelineEvent, NewAiRateLimit, NewAiSafetyEvent,
-    NewAiSpendCap, NewAiToolCall, NewAiUsage, NewAiUserSettings,
+    AiAbuseCooldown, AiAttachment, AiAttachmentMeta, AiChannelAllowlistEntry, AiConversation,
+    AiMemory, AiMessage, AiPipeline, AiPipelineEvent, AiRateLimit, AiSafetyEvent, AiSpendCap,
+    AiToolCall, AiUsage, AiUserSettings, NewAiAbuseCooldown, NewAiAttachment,
+    NewAiChannelAllowlistEntry, NewAiConversation, NewAiMemory, NewAiMessage, NewAiPipeline,
+    NewAiPipelineEvent, NewAiRateLimit, NewAiSafetyEvent, NewAiSpendCap, NewAiToolCall, NewAiUsage,
+    NewAiUserSettings,
 };
 
 // guild_configs
 
 /// A row in the `guild_configs` table.
+///
+/// Two settings' worth of columns share this one row (logging and, as of
+/// milestone 6, ai) - see `operations::set_guild_logging_channel` and
+/// `operations::set_guild_ai_settings`'s own doc comments for why every
+/// write must go through one of those rather than constructing this
+/// struct directly and calling `operations::upsert_guild_config` with it.
 #[derive(Clone, Debug, Queryable, Insertable, AsChangeset, Selectable)]
 #[diesel(table_name = guild_configs)]
 #[diesel(check_for_backend(diesel::mysql::Mysql))]
 pub struct GuildConfig {
     pub guild_id: i64,
     pub logging_channel: Option<i64>,
+    /// Whether munibot's discord ai surface (mentions, replies, dms) is
+    /// enabled at all for this guild. Defaults to `false`: a guild that
+    /// existed before this column did must not wake up ai-enabled just
+    /// because a row for it already existed.
+    pub ai_enabled: bool,
+    /// A persona id, overriding the service-wide default for this guild
+    /// specifically. `None` falls back to whatever `Ai::default_persona_id`
+    /// resolves to.
+    pub ai_default_persona: Option<String>,
+    /// `"all"` (every channel) or `"allowlist"` (only channels in
+    /// `ai_channel_allowlist`) - a plain string rather than a Rust enum at
+    /// this layer, the same stringly-typed convention
+    /// `munibot_ai::limits::Scope::scope_type` already uses for a database
+    /// column with a small, fixed set of values.
+    pub ai_channel_mode: String,
 }
+
+/// The channel mode a guild's ai settings use before anyone has ever saved
+/// them - matching this column's own `DEFAULT 'all'` in the migration:
+/// every channel, since a guild's ai surface enabling at all is already a
+/// deliberate, opt-in decision, and an allowlist on top of that opt-in is
+/// a second decision no one has made yet.
+pub const DEFAULT_AI_CHANNEL_MODE: &str = "all";
 
 // autodelete_timers
 

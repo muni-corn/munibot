@@ -1,7 +1,4 @@
-use munibot_core::{
-    db::{models::GuildConfig, operations},
-    error::MuniBotError as CoreError,
-};
+use munibot_core::{db::operations, error::MuniBotError as CoreError};
 use poise::{
     CreateReply,
     serenity_prelude::{ChannelId, Mentionable, MessageBuilder},
@@ -62,10 +59,11 @@ async fn set_log_channel(
 
     let reply_content = if let Some(guild_id) = ctx.guild_id() {
         let channel_id = channel.unwrap_or_else(|| ctx.channel_id());
-        operations::upsert_guild_config(db, GuildConfig {
-            guild_id: guild_id.get() as i64,
-            logging_channel: Some(channel_id.get() as i64),
-        })
+        operations::set_guild_logging_channel(
+            db,
+            guild_id.get() as i64,
+            Some(channel_id.get() as i64),
+        )
         .await
         .map_err(|e| CoreError::Other(format!("error saving log channel: {e}")))?;
 
@@ -108,12 +106,9 @@ async fn stop_logging(ctx: DiscordContext<'_>) -> Result<(), MunibotDiscordError
             // clear just the logging column rather than deleting the whole
             // row -- guild_configs may carry other settings that shouldn't
             // be wiped out by turning logging off
-            operations::upsert_guild_config(db, GuildConfig {
-                guild_id: guild_id_i64,
-                logging_channel: None,
-            })
-            .await
-            .map_err(|e| CoreError::Other(format!("error clearing log channel: {e}")))?;
+            operations::set_guild_logging_channel(db, guild_id_i64, None)
+                .await
+                .map_err(|e| CoreError::Other(format!("error clearing log channel: {e}")))?;
             "done! logging has been disabled for this server."
         } else {
             "no logging channel is set for this server! nothing was done."
