@@ -44,12 +44,17 @@ pub fn redirect_uri(base_url: &str) -> String {
 }
 
 /// Builds the URL to redirect a user to for GitHub's consent screen.
-pub fn authorize_url(base_url: &str, client_id: &str) -> String {
+///
+/// `state` is an opaque, unguessable value the caller generated and
+/// stored server-side - see `oauth::discord::authorize_url`'s own doc
+/// comment for the full CSRF reasoning, which applies identically here.
+pub fn authorize_url(base_url: &str, client_id: &str, state: &str) -> String {
     let mut url = reqwest::Url::parse(AUTHORIZE_URL).expect("static url is valid");
     url.query_pairs_mut()
         .append_pair("client_id", client_id)
         .append_pair("redirect_uri", &redirect_uri(base_url))
-        .append_pair("scope", SCOPE);
+        .append_pair("scope", SCOPE)
+        .append_pair("state", state);
     url.into()
 }
 
@@ -148,14 +153,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_authorize_url_carries_client_id_redirect_and_scope() {
-        let url = authorize_url("https://munibot.example.com", "abc123");
+    fn test_authorize_url_carries_client_id_redirect_scope_and_state() {
+        let url = authorize_url("https://munibot.example.com", "abc123", "csrf-state-value");
         let parsed = reqwest::Url::parse(&url).expect("should be a valid url");
         let pairs: std::collections::HashMap<_, _> = parsed.query_pairs().collect();
 
         assert!(url.starts_with(AUTHORIZE_URL));
         assert_eq!(pairs.get("client_id").map(|v| v.as_ref()), Some("abc123"));
         assert_eq!(pairs.get("scope").map(|v| v.as_ref()), Some(SCOPE));
+        assert_eq!(
+            pairs.get("state").map(|v| v.as_ref()),
+            Some("csrf-state-value")
+        );
         assert_eq!(
             pairs.get("redirect_uri").map(|v| v.as_ref()),
             Some(redirect_uri("https://munibot.example.com").as_str())
