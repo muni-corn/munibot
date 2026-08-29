@@ -31,7 +31,10 @@ pub use pipeline::{
     list_pipelines,
 };
 pub use safety::{list_safety_events, record_safety_event};
-pub use usage::{UsageTotals, sum_usage_for_user, sum_usage_global};
+pub use usage::{
+    UsageTotals, sum_usage_by_model, sum_usage_by_persona, sum_usage_by_user, sum_usage_daily,
+    sum_usage_for_user, sum_usage_global,
+};
 
 use crate::db::{
     DbPool,

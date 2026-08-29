@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use munibot_api::{
-    chat::{SpendCapStatus, UsageSummary},
-    server_fns::chat::usage::{get_global_usage, get_my_usage},
+    chat::{SpendCapStatus, UsageBreakdownEntry, UsageSummary},
+    server_fns::chat::usage::{get_global_usage, get_my_usage, get_usage_breakdown},
 };
 
 use crate::components::{Spinner, settings::SettingsSection};
@@ -18,6 +18,7 @@ use crate::components::{Spinner, settings::SettingsSection};
 pub fn Usage() -> Element {
     let mine = use_resource(get_my_usage);
     let global = use_resource(get_global_usage);
+    let breakdown = use_resource(get_usage_breakdown);
 
     let mine_content = match &*mine.read() {
         Some(Ok(summary)) => rsx! {
@@ -32,13 +33,45 @@ pub fn Usage() -> Element {
     };
 
     // a NotOperator refusal here is expected for almost everyone, not an
-    // error worth showing - this section just never appears for them
+    // error worth showing - this section (and the breakdown below) just
+    // never appears for them
     let global_content = match &*global.read() {
         Some(Ok(summary)) => rsx! {
             SettingsSection {
                 title: "service-wide".to_string(),
                 description: Some("every user, combined.".to_string()),
                 UsageCard { summary: summary.clone() }
+            }
+        },
+        _ => rsx! {},
+    };
+
+    let breakdown_content = match &*breakdown.read() {
+        Some(Ok(breakdown)) => rsx! {
+            SettingsSection {
+                title: "breakdown".to_string(),
+                description: Some(
+                    "the same service-wide total above, split by where it's actually going."
+                        .to_string(),
+                ),
+                div { class: "grid grid-cols-1 gap-4 md:grid-cols-2",
+                    BreakdownTable {
+                        title: "by persona".to_string(),
+                        entries: breakdown.by_persona.clone(),
+                    }
+                    BreakdownTable {
+                        title: "by model".to_string(),
+                        entries: breakdown.by_model.clone(),
+                    }
+                    BreakdownTable {
+                        title: "by user".to_string(),
+                        entries: breakdown.by_user.clone(),
+                    }
+                    BreakdownTable {
+                        title: "last 30 days".to_string(),
+                        entries: breakdown.daily.clone(),
+                    }
+                }
             }
         },
         _ => rsx! {},
@@ -54,6 +87,38 @@ pub fn Usage() -> Element {
                 {mine_content}
             }
             {global_content}
+            {breakdown_content}
+        }
+    }
+}
+
+#[component]
+fn BreakdownTable(title: String, entries: Vec<UsageBreakdownEntry>) -> Element {
+    if entries.is_empty() {
+        return rsx! {};
+    }
+
+    rsx! {
+        div { class: "flex flex-col gap-2 rounded-box bg-slate-950/40 p-3",
+            h4 { class: "text-sm font-semibold text-slate-300", {title} }
+            table { class: "table table-sm",
+                thead {
+                    tr {
+                        th { "" }
+                        th { class: "text-right", "spent" }
+                        th { class: "text-right", "turns" }
+                    }
+                }
+                tbody {
+                    for entry in entries {
+                        tr { key: "{entry.label}",
+                            td { class: "font-mono text-xs", "{entry.label}" }
+                            td { class: "text-right", "{format_cost(entry.totals.cost_micros)}" }
+                            td { class: "text-right", "{entry.totals.turn_count}" }
+                        }
+                    }
+                }
+            }
         }
     }
 }

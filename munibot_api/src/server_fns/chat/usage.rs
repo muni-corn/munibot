@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::chat::{ChatResult, UsageSummary};
+use crate::chat::{ChatResult, UsageBreakdown, UsageSummary};
 
 /// The signed-in user's own usage: all-time totals, and (if a per-user
 /// spend cap is configured) their current spend against it.
@@ -60,4 +60,32 @@ pub async fn get_global_usage() -> ChatResult<UsageSummary> {
         totals: totals.into(),
         spend_cap,
     })
+}
+
+/// Global usage broken down by persona, model, user, and day - the view
+/// that catches a problem across everyone at once, alongside
+/// `get_global_usage`'s own flat totals.
+///
+/// A trailing 30-day window for the daily breakdown: long enough to see a
+/// trend, short enough that the query never has to scan a month-over-month
+/// growing table's full history to answer it.
+#[server(
+    auth: crate::auth::server::AuthSession,
+    pool: axum::extract::Extension<munibot_core::db::DbPool>,
+)]
+pub async fn get_usage_breakdown() -> ChatResult<UsageBreakdown> {
+    use munibot_core::db::operations::ai;
+
+    const DAILY_WINDOW_DAYS: i64 = 30;
+
+    crate::auth::operator::require_operator(&auth).await?;
+
+    let by_persona = ai::sum_usage_by_persona(&pool).await?;
+    let by_model = ai::sum_usage_by_model(&pool).await?;
+    let by_user = ai::sum_usage_by_user(&pool).await?;
+    let daily = ai::sum_usage_daily(&pool, DAILY_WINDOW_DAYS).await?;
+
+    Ok(UsageBreakdown::assemble(
+        by_persona, by_model, by_user, daily,
+    ))
 }

@@ -792,6 +792,184 @@ async fn test_sum_usage_global_totals_across_every_user() {
     assert_eq!(totals.turn_count, 3);
 }
 
+fn usage_row_with(
+    user_id: Option<i64>,
+    persona_id: &str,
+    provider: &str,
+    model: &str,
+) -> NewAiUsage {
+    NewAiUsage {
+        persona_id: persona_id.to_string(),
+        provider: provider.to_string(),
+        model: model.to_string(),
+        ..usage_row(None, user_id, true)
+    }
+}
+
+#[tokio::test]
+async fn test_sum_usage_by_persona_groups_correctly() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    ai::record_usage(
+        &db.pool,
+        usage_row_with(Some(user), "companion", "anthropic", "claude-opus-5"),
+    )
+    .await
+    .unwrap();
+    ai::record_usage(
+        &db.pool,
+        usage_row_with(Some(user), "companion", "anthropic", "claude-opus-5"),
+    )
+    .await
+    .unwrap();
+    ai::record_usage(
+        &db.pool,
+        usage_row_with(Some(user), "researcher", "anthropic", "claude-opus-5"),
+    )
+    .await
+    .unwrap();
+
+    let totals = ai::sum_usage_by_persona(&db.pool)
+        .await
+        .expect("sum failed");
+    let companion = totals
+        .iter()
+        .find(|(persona, _)| persona == "companion")
+        .expect("companion should have a row");
+    let researcher = totals
+        .iter()
+        .find(|(persona, _)| persona == "researcher")
+        .expect("researcher should have a row");
+
+    assert_eq!(companion.1.turn_count, 2);
+    assert_eq!(researcher.1.turn_count, 1);
+}
+
+#[tokio::test]
+async fn test_sum_usage_by_persona_sorts_highest_cost_first() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    ai::record_usage(
+        &db.pool,
+        usage_row_with(Some(user), "quiet-persona", "anthropic", "claude-opus-5"),
+    )
+    .await
+    .unwrap();
+    // three identical rows are cheaper to write than a bespoke high-cost row,
+    // and turn_count alone is enough to prove the ordering
+    for _ in 0..3 {
+        ai::record_usage(
+            &db.pool,
+            usage_row_with(Some(user), "busy-persona", "anthropic", "claude-opus-5"),
+        )
+        .await
+        .unwrap();
+    }
+
+    let totals = ai::sum_usage_by_persona(&db.pool)
+        .await
+        .expect("sum failed");
+    assert_eq!(
+        totals[0].0, "busy-persona",
+        "the higher-cost persona should sort first"
+    );
+}
+
+#[tokio::test]
+async fn test_sum_usage_by_model_groups_by_provider_and_model() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    ai::record_usage(
+        &db.pool,
+        usage_row_with(Some(user), "companion", "anthropic", "claude-opus-5"),
+    )
+    .await
+    .unwrap();
+    ai::record_usage(
+        &db.pool,
+        usage_row_with(Some(user), "companion", "openai", "gpt-5"),
+    )
+    .await
+    .unwrap();
+
+    let totals = ai::sum_usage_by_model(&db.pool).await.expect("sum failed");
+    assert!(
+        totals
+            .iter()
+            .any(|((provider, model), _)| provider == "anthropic" && model == "claude-opus-5")
+    );
+    assert!(
+        totals
+            .iter()
+            .any(|((provider, model), _)| provider == "openai" && model == "gpt-5")
+    );
+}
+
+#[tokio::test]
+async fn test_sum_usage_by_user_groups_per_user() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let other = a_user(&db.pool).await;
+    ai::record_usage(&db.pool, usage_row(None, Some(user), true))
+        .await
+        .unwrap();
+    ai::record_usage(&db.pool, usage_row(None, Some(other), true))
+        .await
+        .unwrap();
+    ai::record_usage(&db.pool, usage_row(None, Some(other), true))
+        .await
+        .unwrap();
+
+    let totals = ai::sum_usage_by_user(&db.pool).await.expect("sum failed");
+    let user_row = totals
+        .iter()
+        .find(|(id, _)| *id == Some(user))
+        .expect("user should have a row");
+    let other_row = totals
+        .iter()
+        .find(|(id, _)| *id == Some(other))
+        .expect("other should have a row");
+
+    assert_eq!(user_row.1.turn_count, 1);
+    assert_eq!(other_row.1.turn_count, 2);
+}
+
+#[tokio::test]
+async fn test_sum_usage_daily_groups_by_day_within_the_window() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    ai::record_usage(&db.pool, usage_row(None, Some(user), true))
+        .await
+        .unwrap();
+
+    let totals = ai::sum_usage_daily(&db.pool, 7).await.expect("sum failed");
+    assert_eq!(
+        totals.len(),
+        1,
+        "today's usage should show as one day's row"
+    );
+    assert_eq!(totals[0].0, Utc::now().date_naive());
+    assert_eq!(totals[0].1.turn_count, 1);
+}
+
+#[tokio::test]
+async fn test_sum_usage_daily_excludes_usage_outside_the_window() {
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    ai::record_usage(&db.pool, NewAiUsage {
+        created_at: (Utc::now() - chrono::Duration::days(30)).naive_utc(),
+        ..usage_row(None, Some(user), true)
+    })
+    .await
+    .unwrap();
+
+    let totals = ai::sum_usage_daily(&db.pool, 7).await.expect("sum failed");
+    assert!(
+        totals.is_empty(),
+        "usage from 30 days ago shouldn't appear in a 7-day window"
+    );
+}
+
 // --- tool call auditing ---
 
 use munibot_core::db::models::NewAiToolCall;

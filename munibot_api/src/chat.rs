@@ -26,4 +26,4 @@ pub use memory::{MemoryEntry, MemorySettings};
 pub use message::{ChatMessage, ChatRole};
 pub use persona::PersonaSummary;
 pub use transcript::{AiTranscript, TranscriptMessage, TranscriptToolCall};
-pub use usage::{SpendCapStatus, UsageSummary, UsageTotals};
+pub use usage::{SpendCapStatus, UsageBreakdown, UsageBreakdownEntry, UsageSummary, UsageTotals};

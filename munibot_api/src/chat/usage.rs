@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+mod breakdown;
+
+pub use breakdown::{UsageBreakdown, UsageBreakdownEntry};
+
 /// Aggregate totals over some slice of `ai_usage` - either the signed-in
 /// user's own history, or the whole service's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
