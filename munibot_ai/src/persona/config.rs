@@ -154,6 +154,67 @@ impl SpendCapConfig {
     }
 }
 
+/// The TOML-deserializable shape of `[ai.abuse]`: escalating-cooldown and
+/// detection tuning, all optional - an operator overrides only what they
+/// actually want tuned, the same ergonomic-config-then-resolve shape
+/// [`RateLimitConfig`] already uses.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct AbuseConfig {
+    #[serde(default, with = "humantime_serde::option")]
+    pub cooldown_base: Option<Duration>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub cooldown_max: Option<Duration>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub cooldown_reset_after: Option<Duration>,
+    #[serde(default)]
+    pub duplicate_threshold: Option<u32>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub duplicate_window: Option<Duration>,
+    #[serde(default)]
+    pub persona_switch_threshold: Option<u32>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub persona_switch_window: Option<Duration>,
+}
+
+impl AbuseConfig {
+    /// Resolves to a real [`crate::abuse::CooldownPolicy`] and
+    /// [`crate::abuse::DetectionThresholds`], falling back to each type's
+    /// own `Default` for anything left unset.
+    pub fn resolve(
+        &self,
+    ) -> (
+        crate::abuse::CooldownPolicy,
+        crate::abuse::DetectionThresholds,
+    ) {
+        let cooldown_default = crate::abuse::CooldownPolicy::default();
+        let cooldown = crate::abuse::CooldownPolicy {
+            base: self.cooldown_base.unwrap_or(cooldown_default.base),
+            max: self.cooldown_max.unwrap_or(cooldown_default.max),
+            reset_after: self
+                .cooldown_reset_after
+                .unwrap_or(cooldown_default.reset_after),
+        };
+
+        let thresholds_default = crate::abuse::DetectionThresholds::default();
+        let thresholds = crate::abuse::DetectionThresholds {
+            duplicate_threshold: self
+                .duplicate_threshold
+                .unwrap_or(thresholds_default.duplicate_threshold),
+            duplicate_window: self
+                .duplicate_window
+                .unwrap_or(thresholds_default.duplicate_window),
+            persona_switch_threshold: self
+                .persona_switch_threshold
+                .unwrap_or(thresholds_default.persona_switch_threshold),
+            persona_switch_window: self
+                .persona_switch_window
+                .unwrap_or(thresholds_default.persona_switch_window),
+        };
+
+        (cooldown, thresholds)
+    }
+}
+
 /// The TOML-deserializable shape of one persona, before its prompt file has
 /// been read or its model checked against a configured provider.
 ///
@@ -243,6 +304,13 @@ pub struct AiConfig {
     /// existed at all.
     #[serde(default)]
     pub spend_caps: SpendCapConfig,
+    /// Abuse-detection and escalating-cooldown tuning. Built-in defaults
+    /// apply even with no `[ai.abuse]` section at all - unlike rate limits
+    /// and spend caps, abuse detection is always on once `ai.enabled` is,
+    /// since there is no sensible "off" behaviour for it the way an unset
+    /// limit means "unlimited".
+    #[serde(default)]
+    pub abuse: AbuseConfig,
     /// How many levels deep a chain of delegations may go before the
     /// `delegate` tool refuses rather than starting another nested turn -
     /// see `ToolCtx::delegation_depth`. A companion delegating to a
@@ -280,6 +348,7 @@ impl Default for AiConfig {
             crisis_resources: Vec::new(),
             rate_limits: RateLimitConfig::default(),
             spend_caps: SpendCapConfig::default(),
+            abuse: AbuseConfig::default(),
             max_delegation_depth: default_max_delegation_depth(),
         }
     }

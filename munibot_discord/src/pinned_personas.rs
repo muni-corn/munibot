@@ -90,6 +90,7 @@ mod tests {
             crisis_resources: Vec::new(),
             rate_limits: munibot_ai::persona::RateLimitConfig::default(),
             spend_caps: munibot_ai::persona::SpendCapConfig::default(),
+            abuse: munibot_ai::persona::AbuseConfig::default(),
             max_delegation_depth: 2,
             personas,
         };

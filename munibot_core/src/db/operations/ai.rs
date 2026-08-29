@@ -6,11 +6,13 @@
 //! submodule rather than growing this file further - see that module's own
 //! doc comment.
 
+pub mod abuse;
 pub mod attachment;
 pub mod limits;
 pub mod pipeline;
 pub mod usage;
 
+pub use abuse::{get_abuse_cooldown, upsert_abuse_cooldown};
 pub use attachment::{
     create_attachment, get_attachment, get_attachment_meta, link_attachment_to_message,
     list_attachments_for_message,

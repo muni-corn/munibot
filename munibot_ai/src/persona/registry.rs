@@ -465,6 +465,7 @@ mod tests {
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
+            abuse: crate::persona::config::AbuseConfig::default(),
             max_delegation_depth: 2,
             personas: personas
                 .into_iter()

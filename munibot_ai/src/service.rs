@@ -14,6 +14,7 @@ use futures::{StreamExt, stream::BoxStream};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    abuse::AbuseDetector,
     audit::ToolAuditor,
     crisis::{CrisisClassifier, CrisisSeverity},
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
@@ -190,6 +191,11 @@ pub struct Ai {
     /// it, no turn is ever refused for having spent too much - exactly the
     /// behaviour every turn had before this existed.
     spend_cap_enforcer: Option<Arc<SpendCapEnforcer>>,
+    /// `None` until [`Self::with_abuse_detector`] enables it. Without it,
+    /// no turn is ever refused for its *behaviour* (repeated near-identical
+    /// prompts, a known injection phrasing, rapid persona switching) -
+    /// exactly the behaviour every turn had before this existed.
+    abuse_detector: Option<Arc<AbuseDetector>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -315,6 +321,7 @@ impl Ai {
             title_generator: None,
             rate_limiter: None,
             spend_cap_enforcer: None,
+            abuse_detector: None,
         }
     }
 
@@ -406,6 +413,19 @@ impl Ai {
     /// spend cap; see [`crate::limits::SpendCapPolicies`]'s own doc comment).
     pub fn with_spend_cap_enforcer(mut self, enforcer: Arc<SpendCapEnforcer>) -> Self {
         self.spend_cap_enforcer = Some(enforcer);
+        self
+    }
+
+    /// Enables screening every turn's message and persona choice for
+    /// abusive usage patterns before it starts, refusing (with an
+    /// escalating cooldown) once one trips.
+    ///
+    /// Checked only against the invoking user's own scope - see
+    /// [`crate::abuse::AbuseDetector`]'s own doc comment for why this is
+    /// never checked at guild or global scope the way rate limits and
+    /// spend caps are.
+    pub fn with_abuse_detector(mut self, detector: Arc<AbuseDetector>) -> Self {
+        self.abuse_detector = Some(detector);
         self
     }
 
@@ -731,6 +751,16 @@ impl Ai {
                         limit: error.to_string(),
                     })?;
             }
+        }
+
+        // checked last of the three, and only against the invoking user's
+        // own scope - see AbuseDetector's own doc comment for why this is
+        // never a guild or global concern the way cost is
+        if let Some(detector) = &self.abuse_detector {
+            detector
+                .check(Scope::User(req.user_id), &req.message, &req.persona_id)
+                .await
+                .map_err(|error| AiError::Refused(error.to_string()))?;
         }
 
         let mut conversation = self
@@ -1203,6 +1233,7 @@ mod tests {
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
+            abuse: crate::persona::config::AbuseConfig::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1247,6 +1278,7 @@ mod tests {
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
+            abuse: crate::persona::config::AbuseConfig::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1287,6 +1319,7 @@ mod tests {
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
+            abuse: crate::persona::config::AbuseConfig::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1332,6 +1365,7 @@ mod tests {
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
+            abuse: crate::persona::config::AbuseConfig::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1376,6 +1410,7 @@ mod tests {
             crisis_resources: Vec::new(),
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
+            abuse: crate::persona::config::AbuseConfig::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };

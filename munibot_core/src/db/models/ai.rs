@@ -9,8 +9,9 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::db::schema::{
-    ai_attachments, ai_conversations, ai_memories, ai_messages, ai_pipeline_events, ai_pipelines,
-    ai_rate_limits, ai_spend_caps, ai_tool_calls, ai_usage, ai_user_settings,
+    ai_abuse_cooldowns, ai_attachments, ai_conversations, ai_memories, ai_messages,
+    ai_pipeline_events, ai_pipelines, ai_rate_limits, ai_spend_caps, ai_tool_calls, ai_usage,
+    ai_user_settings,
 };
 
 // ai_conversations
@@ -337,6 +338,42 @@ pub struct NewAiSpendCap {
     pub limit_micros: i64,
     pub current_micros: i64,
     pub reset_at: NaiveDateTime,
+}
+
+// ai_abuse_cooldowns
+
+/// A row in the `ai_abuse_cooldowns` table: one scope's escalating-cooldown
+/// state, as tracked by `munibot_ai::abuse::AbuseDetector`.
+///
+/// The same `(scope_type, scope_id)` convention [`AiRateLimit`] documents;
+/// no `Identifiable` derive for the same reason that type has none.
+/// Deliberately carries no message content at all - `last_reason` is one of
+/// a small, stable set of strings (see
+/// `munibot_ai::abuse::AbuseSignal::reason`), enough to tune the detector
+/// without this table becoming a second place user text ends up stored.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = ai_abuse_cooldowns)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct AiAbuseCooldown {
+    pub id: i64,
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub strike_count: i32,
+    pub cooldown_until: NaiveDateTime,
+    pub last_reason: String,
+    pub last_tripped_at: NaiveDateTime,
+}
+
+/// Insertable and upsertable shape for `ai_abuse_cooldowns`.
+#[derive(Clone, Debug, Insertable, AsChangeset)]
+#[diesel(table_name = ai_abuse_cooldowns)]
+pub struct NewAiAbuseCooldown {
+    pub scope_type: String,
+    pub scope_id: Option<i64>,
+    pub strike_count: i32,
+    pub cooldown_until: NaiveDateTime,
+    pub last_reason: String,
+    pub last_tripped_at: NaiveDateTime,
 }
 
 // ai_pipelines

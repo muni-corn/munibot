@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use munibot_ai::{
     Ai,
+    abuse::{AbuseDetector, DieselAbuseStore},
     audit::DieselToolAuditor,
     crisis::{CrisisClassifier, CrisisPersona},
     limits::{DieselRateLimitStore, DieselSpendCapStore, RateLimiter, SpendCapEnforcer},
@@ -113,12 +114,19 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
         Arc::new(DieselSpendCapStore::new(pool.clone())),
         config.spend_caps.resolve(),
     );
+    let (cooldown_policy, detection_thresholds) = config.abuse.resolve();
+    let abuse_detector = AbuseDetector::with_thresholds(
+        Arc::new(DieselAbuseStore::new(pool.clone())),
+        cooldown_policy,
+        detection_thresholds,
+    );
     ai = ai
         .with_memory_store(memory_store)
         .with_usage_recorder(Arc::new(DieselUsageRecorder::new(pool.clone())))
         .with_tool_auditor(Arc::new(DieselToolAuditor::new(pool.clone())))
         .with_rate_limiter(Arc::new(rate_limiter))
-        .with_spend_cap_enforcer(Arc::new(spend_cap_enforcer));
+        .with_spend_cap_enforcer(Arc::new(spend_cap_enforcer))
+        .with_abuse_detector(Arc::new(abuse_detector));
 
     let providers = ProviderResolver::new();
     match default_persona_model(config) {

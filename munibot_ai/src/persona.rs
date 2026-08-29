@@ -14,7 +14,7 @@ pub mod template;
 pub mod types;
 
 pub use config::{
-    AiConfig, BudgetConfig, CrisisResourceConfig, PersonaConfig, RateLimitConfig,
+    AbuseConfig, AiConfig, BudgetConfig, CrisisResourceConfig, PersonaConfig, RateLimitConfig,
     RateLimitPolicyConfig, SpendCapConfig, SpendCapPolicyConfig,
 };
 pub use output_filter::{OutputLimits, filter_output};

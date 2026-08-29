@@ -1,6 +1,20 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    ai_abuse_cooldowns (id) {
+        id -> Bigint,
+        #[max_length = 16]
+        scope_type -> Varchar,
+        scope_id -> Nullable<Bigint>,
+        strike_count -> Integer,
+        cooldown_until -> Datetime,
+        #[max_length = 64]
+        last_reason -> Varchar,
+        last_tripped_at -> Datetime,
+    }
+}
+
+diesel::table! {
     ai_attachments (id) {
         id -> Bigint,
         conversation_id -> Bigint,
@@ -274,6 +288,7 @@ diesel::joinable!(quotes -> community_links (community_id));
 diesel::joinable!(user_permissions -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    ai_abuse_cooldowns,
     ai_attachments,
     ai_conversations,
     ai_memories,

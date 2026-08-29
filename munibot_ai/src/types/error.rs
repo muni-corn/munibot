@@ -36,6 +36,16 @@ pub enum AiError {
         limit: String,
     },
 
+    /// The turn was refused for a reason other than budget: an abuse
+    /// cooldown (`crate::abuse::AbuseDetector`), or a moderation check that
+    /// failed closed. Distinct from [`Self::BudgetExceeded`] since a caller
+    /// may reasonably want to react differently - neither of these is about
+    /// cost, and unlike a budget limit, both are inherently temporary or
+    /// content-specific rather than something retrying the same request
+    /// unchanged could ever get past.
+    #[error("that got refused :< {0}")]
+    Refused(String),
+
     /// A tool failed in a way the model cannot recover from by retrying.
     #[error("a tool failed :< {0}")]
     Tool(String),
