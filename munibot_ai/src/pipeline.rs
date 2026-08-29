@@ -9,6 +9,7 @@
 //! same way the harness itself is provider-agnostic.
 
 mod handoff;
+mod plan;
 mod state;
 
 pub use handoff::{
@@ -20,4 +21,5 @@ pub use handoff::{
     ResearchComplete, SoftwareArchitectHandoff, StartTaskTests, SubmitCode, SubmitTests,
     SubtaskDraft, TestReviewerHandoff,
 };
+pub use plan::{Plan, Subtask, SubtaskStatus};
 pub use state::{InteractionRequest, PipelineId, PipelineState, SubtaskId};
