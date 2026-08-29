@@ -148,12 +148,25 @@ impl Harness {
                 completion_request = completion_request.with_system(system.clone());
             }
 
-            let response = race_cancellation(
+            let response = match race_provider(
                 &request.ctx.cancellation,
+                tracker.remaining().max_wall_clock,
                 Err(AiError::Cancelled),
+                |remaining| Err(wall_clock_exceeded(remaining)),
                 self.provider.complete(completion_request),
             )
-            .await?;
+            .await
+            {
+                Ok(response) => response,
+                // a hung call has no new text of its own to offer, but an
+                // earlier iteration's last_text might still exist - the
+                // same graceful, partial-answer path the check at the top
+                // of this loop already takes, not a hard failure
+                Err(reason @ AiError::BudgetExceeded { .. }) => {
+                    return Ok(Self::truncated_outcome(last_text, tracker, &reason));
+                }
+                Err(other) => return Err(other),
+            };
             tracker.record(
                 response.usage,
                 estimate_cost(&request.model, &response.usage),
@@ -281,9 +294,11 @@ impl Harness {
                     completion_request = completion_request.with_system(system.clone());
                 }
 
-                let stream_result = race_cancellation(
+                let stream_result = race_provider(
                     &request.ctx.cancellation,
+                    tracker.remaining().max_wall_clock,
                     Err(AiError::Cancelled),
+                    |remaining| Err(wall_clock_exceeded(remaining)),
                     self.provider.stream(completion_request),
                 )
                 .await;
@@ -306,9 +321,11 @@ impl Harness {
                 let mut stop_reason = StopReason::EndTurn;
 
                 loop {
-                    let next = race_cancellation(
+                    let next = race_provider(
                         &request.ctx.cancellation,
+                        tracker.remaining().max_wall_clock,
                         Some(Err(AiError::Cancelled)),
+                        |remaining| Some(Err(wall_clock_exceeded(remaining))),
                         inner.next(),
                     )
                     .await;
@@ -832,6 +849,48 @@ async fn race_cancellation<T>(
         biased;
         () = cancellation.cancelled() => on_cancel,
         value = future => value,
+    }
+}
+
+/// Races `future` against cancellation and, when the turn's budget has a
+/// wall-clock limit, whatever time is still left on it.
+///
+/// Every call site that awaits a real [`crate::provider::Provider`] round
+/// trip (a non-streaming completion, opening a stream, or waiting on the
+/// next event from one already open) uses this rather than
+/// [`race_cancellation`] alone. Without it, a provider that hangs rather
+/// than erroring would block forever, since nothing else in the loop ever
+/// gets a chance to notice the wall clock has run out while stuck awaiting
+/// a single call that never returns. `remaining` is computed fresh at each
+/// call site, immediately before this is called, so a stream stalling
+/// partway through still gets bounded by what is actually left, not what
+/// was left when the stream first opened.
+async fn race_provider<T>(
+    cancellation: &tokio_util::sync::CancellationToken,
+    remaining: Option<std::time::Duration>,
+    on_cancel: T,
+    on_timeout: impl FnOnce(std::time::Duration) -> T,
+    future: impl Future<Output = T>,
+) -> T {
+    let Some(remaining) = remaining else {
+        return race_cancellation(cancellation, on_cancel, future).await;
+    };
+
+    tokio::select! {
+        biased;
+        () = cancellation.cancelled() => on_cancel,
+        () = tokio::time::sleep(remaining) => on_timeout(remaining),
+        value = future => value,
+    }
+}
+
+/// The [`AiError`] a provider call times out with - the same shape
+/// [`BudgetTracker::check`] itself uses for a wall-clock overrun noticed
+/// between iterations, so a caller sees one consistent error regardless of
+/// which of the two ways it was actually caught.
+fn wall_clock_exceeded(max: std::time::Duration) -> AiError {
+    AiError::BudgetExceeded {
+        limit: format!("{max:?} wall clock (a provider call exceeded it)"),
     }
 }
 
@@ -2133,6 +2192,42 @@ mod tests {
         assert!(
             started.elapsed() < std::time::Duration::from_secs(1),
             "cancellation should interrupt the wait almost immediately, not after the full delay"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_hanging_provider_is_bounded_by_the_wall_clock_budget_even_with_nothing_ever_cancelling_it()
+     {
+        // no cancellation token is ever triggered in this test at all - the
+        // only thing that could possibly end this turn is the wall clock
+        // budget itself, proving it bounds a real, never-resolving provider
+        // call, not just the gap *between* calls
+        let provider = Arc::new(SlowProvider {
+            delay: std::time::Duration::from_secs(3600),
+        });
+        let harness = Harness::new(provider, Arc::new(ToolRegistry::new()));
+
+        let mut turn_request = request();
+        turn_request.budget = Budget {
+            max_wall_clock: Some(std::time::Duration::from_millis(20)),
+            ..Budget::default()
+        };
+
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            harness.run_turn(turn_request),
+        )
+        .await
+        .expect("the turn must return well before the provider's own hour-long delay")
+        .expect("a wall-clock timeout must not be fatal");
+
+        assert!(
+            outcome
+                .text
+                .as_deref()
+                .unwrap_or_default()
+                .contains("wall clock"),
+            "the truncated outcome should name the wall clock as why it ended, got {outcome:?}"
         );
     }
 
