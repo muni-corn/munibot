@@ -1,0 +1,24 @@
+[package]
+name = "munibot_github"
+description = "github app integration for munibot's autonomous pipeline"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+munibot_vcs = { path = "../munibot_vcs" }
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+hmac.workspace = true
+jsonwebtoken.workspace = true
+octocrab.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
