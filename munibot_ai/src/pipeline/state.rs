@@ -1,6 +1,7 @@
 //! The pipeline's own state machine's states -- see [`super::advance`] (a
 //! later commit) for the pure transition function that moves between them.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// A stable identifier for one pipeline run, assigned by the pipeline
@@ -12,7 +13,7 @@ pub struct PipelineId(pub i64);
 /// A stable identifier for one subtask within a pipeline's own plan,
 /// assigned by the software architect when the plan is created -- see
 /// `crate::pipeline::plan::Subtask`, which this identifies.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(transparent)]
 pub struct SubtaskId(pub String);
 
