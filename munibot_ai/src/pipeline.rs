@@ -9,6 +9,7 @@
 //! same way the harness itself is provider-agnostic.
 
 mod advance;
+mod branch;
 mod dispatch;
 mod event;
 mod handoff;
@@ -18,6 +19,7 @@ mod state;
 mod store;
 
 pub use advance::{AdvanceError, advance};
+pub use branch::resolve_branch_name;
 pub use dispatch::{
     AgentContext, AgentDispatcher, AgentOutput, DispatchError, HarnessDispatcher,
     MockAgentDispatcher,
