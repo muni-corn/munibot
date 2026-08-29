@@ -38,12 +38,20 @@ pub enum DispatchError {
 /// Everything one agent invocation needs beyond which role it's running
 /// as: the task brief (the turn's entire input, the same
 /// "no invoking history" boundary `Delegator::delegate` already draws),
-/// and the identifiers a nested tool call gets audited and cancelled
-/// under.
+/// the identifiers a nested tool call gets audited and cancelled under,
+/// and, once a sandbox exists for this run, the tool registry a sandboxed
+/// role should use instead of whatever base registry the dispatcher would
+/// otherwise reach for.
 pub struct AgentContext {
     pub task: String,
     pub conversation_id: ConversationId,
     pub cancellation: CancellationToken,
+    /// The executor's own sandbox lifecycle (see `crate::pipeline::executor`)
+    /// owns provisioning a sandbox and layering its tools on -- this is
+    /// how that reaches a dispatcher that otherwise has no idea a sandbox
+    /// exists, without the dispatcher having to manage sandbox state
+    /// itself.
+    pub tools: Option<Arc<ToolRegistry>>,
 }
 
 impl AgentContext {
@@ -52,7 +60,15 @@ impl AgentContext {
             task: task.into(),
             conversation_id,
             cancellation: CancellationToken::new(),
+            tools: None,
         }
+    }
+
+    /// Uses `tools` instead of the dispatcher's own base registry for this
+    /// one invocation.
+    pub fn with_tools(mut self, tools: Arc<ToolRegistry>) -> Self {
+        self.tools = Some(tools);
+        self
     }
 }
 
@@ -166,7 +182,8 @@ impl AgentDispatcher for HarnessDispatcher {
             request = request.with_handoff(handoff);
         }
 
-        let harness = Harness::new(provider, self.tools.clone());
+        let tools = context.tools.unwrap_or_else(|| self.tools.clone());
+        let harness = Harness::new(provider, tools);
         let outcome = harness
             .run_turn(request)
             .await

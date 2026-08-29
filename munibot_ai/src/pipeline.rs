@@ -12,6 +12,7 @@ mod advance;
 mod branch;
 mod dispatch;
 mod event;
+mod executor;
 mod handoff;
 mod handoff_schema;
 mod plan;
@@ -25,6 +26,9 @@ pub use dispatch::{
     MockAgentDispatcher,
 };
 pub use event::PipelineEvent;
+pub use executor::{
+    Executor, ExecutorError, ExecutorOutcome, NoSandbox, SandboxLifecycle, role_for_state,
+};
 pub use handoff::{
     AgentRole, ApproveCode, ApprovePlan, ApproveTests, ArchitectureReviewerHandoff,
     BeginFinalReview, BuilderHandoff, CodeReviewerHandoff, CommitComplete, CreatePlan,
