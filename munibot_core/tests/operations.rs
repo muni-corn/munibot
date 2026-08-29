@@ -890,3 +890,253 @@ async fn test_a_second_request_for_the_same_email_replaces_the_first_tokens_hash
         .expect("the second token should be valid");
     assert_eq!(second_attempt, "person@example.com");
 }
+
+// linked_accounts: linking, listing, unlinking
+
+#[tokio::test]
+async fn test_link_account_to_user_creates_a_new_link() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-1",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let outcome = operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "link-test-github-1",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("link failed");
+    assert_eq!(outcome, operations::LinkAccountOutcome::Linked);
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(accounts.len(), 2);
+    assert!(accounts.iter().any(|a| a.provider == "github"));
+}
+
+#[tokio::test]
+async fn test_link_account_to_user_refreshes_a_repeat_link_to_the_same_user() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-2",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "link-test-github-2",
+        "old-username",
+        "old-token",
+        None,
+        None,
+    )
+    .await
+    .expect("first link failed");
+
+    let outcome = operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "link-test-github-2",
+        "new-username",
+        "new-token",
+        None,
+        None,
+    )
+    .await
+    .expect("second link failed");
+    assert_eq!(outcome, operations::LinkAccountOutcome::Linked);
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    let github = accounts
+        .iter()
+        .find(|a| a.provider == "github")
+        .expect("should still have exactly one github link");
+    assert_eq!(github.username, "new-username");
+}
+
+#[tokio::test]
+async fn test_link_account_to_user_refuses_an_account_linked_elsewhere() {
+    let db = TestDb::new().await;
+    let first_user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-3a",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+    let second_user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-3b",
+        "someone-else",
+        "someone-else",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    operations::link_account_to_user(
+        &db.pool,
+        first_user.id,
+        "github",
+        "link-test-github-3",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("first link failed");
+
+    let outcome = operations::link_account_to_user(
+        &db.pool,
+        second_user.id,
+        "github",
+        "link-test-github-3",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("query should not error, even though it refuses");
+    assert_eq!(
+        outcome,
+        operations::LinkAccountOutcome::AlreadyLinkedElsewhere
+    );
+}
+
+#[tokio::test]
+async fn test_unlink_linked_account_removes_it_when_another_remains() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "unlink-test-discord-1",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+    operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "unlink-test-github-1",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("link failed");
+
+    let outcome = operations::unlink_linked_account(&db.pool, user.id, "github")
+        .await
+        .expect("unlink failed");
+    assert_eq!(outcome, operations::UnlinkAccountOutcome::Unlinked);
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].provider, "discord");
+}
+
+#[tokio::test]
+async fn test_unlink_linked_account_refuses_to_remove_the_last_one() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "unlink-test-discord-2",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let outcome = operations::unlink_linked_account(&db.pool, user.id, "discord")
+        .await
+        .expect("query should not error, even though it refuses");
+    assert_eq!(
+        outcome,
+        operations::UnlinkAccountOutcome::LastRemainingAccount
+    );
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(accounts.len(), 1, "the only account must still be there");
+}
+
+#[tokio::test]
+async fn test_unlink_linked_account_for_an_unlinked_provider_is_not_found() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "unlink-test-discord-3",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let outcome = operations::unlink_linked_account(&db.pool, user.id, "github")
+        .await
+        .expect("query should not error");
+    assert_eq!(outcome, operations::UnlinkAccountOutcome::NotFound);
+}

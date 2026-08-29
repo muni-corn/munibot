@@ -36,6 +36,8 @@ pub fn AccountStatus() -> Element {
                 " · "
                 Link { to: Route::Pipelines {}, "pipelines" }
                 " · "
+                Link { to: Route::Account {}, "account" }
+                " · "
                 a { href: "/auth/logout", "sign out" }
             }
         }

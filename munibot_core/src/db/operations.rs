@@ -590,6 +590,140 @@ pub async fn find_user_by_linked_account(
         .optional()
 }
 
+/// Every provider account linked to a user, for an account settings page
+/// and for `unlink_linked_account`'s own "not the last one" check.
+pub async fn list_linked_accounts(pool: &DbPool, user_id: i64) -> QueryResult<Vec<LinkedAccount>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    linked_accounts::table
+        .filter(linked_accounts::user_id.eq(user_id))
+        .select(LinkedAccount::as_select())
+        .load(&mut conn)
+        .await
+}
+
+/// What [`link_account_to_user`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkAccountOutcome {
+    /// Linked (or, for a repeat link of the same provider account to the
+    /// same user - re-authorizing a scope, say - refreshed in place).
+    Linked,
+    /// This provider account is already linked to a *different* munibot
+    /// user. Refused rather than silently moved, merged, or overwritten -
+    /// see [`link_account_to_user`]'s own doc comment.
+    AlreadyLinkedElsewhere,
+}
+
+/// Links a provider account to `user_id` - the "I'm already signed in,
+/// attach another provider to this same account" counterpart to
+/// [`get_or_create_user_from_linked_account`], which instead signs in as
+/// (or creates) whichever user a provider account already maps to.
+///
+/// Refuses (returning [`LinkAccountOutcome::AlreadyLinkedElsewhere`])
+/// rather than reassigning the link when `(provider, provider_user_id)`
+/// already belongs to a different user - silently merging two accounts
+/// because their owner happened to click "link" while signed in as the
+/// wrong one would be exactly the kind of surprising, hard-to-undo
+/// behaviour an account settings page must never produce.
+#[allow(clippy::too_many_arguments)]
+pub async fn link_account_to_user(
+    pool: &DbPool,
+    user_id: i64,
+    provider: &str,
+    provider_user_id: &str,
+    username: &str,
+    access_token: &str,
+    refresh_token: Option<&str>,
+    token_expires_at: Option<NaiveDateTime>,
+) -> QueryResult<LinkAccountOutcome> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    let now = chrono::Utc::now().naive_utc();
+
+    let existing = linked_accounts::table
+        .filter(linked_accounts::provider.eq(provider))
+        .filter(linked_accounts::provider_user_id.eq(provider_user_id))
+        .select(LinkedAccount::as_select())
+        .first(&mut conn)
+        .await
+        .optional()?;
+
+    match existing {
+        Some(link) if link.user_id == user_id => {
+            diesel::update(linked_accounts::table.find(link.id))
+                .set((
+                    linked_accounts::username.eq(username),
+                    linked_accounts::access_token.eq(access_token),
+                    linked_accounts::refresh_token.eq(refresh_token),
+                    linked_accounts::token_expires_at.eq(token_expires_at),
+                    linked_accounts::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+                .await?;
+            Ok(LinkAccountOutcome::Linked)
+        }
+        Some(_) => Ok(LinkAccountOutcome::AlreadyLinkedElsewhere),
+        None => {
+            diesel::insert_into(linked_accounts::table)
+                .values(NewLinkedAccount {
+                    user_id,
+                    provider: provider.to_owned(),
+                    provider_user_id: provider_user_id.to_owned(),
+                    username: username.to_owned(),
+                    access_token: access_token.to_owned(),
+                    refresh_token: refresh_token.map(str::to_owned),
+                    token_expires_at,
+                    created_at: now,
+                    updated_at: now,
+                })
+                .execute(&mut conn)
+                .await?;
+            Ok(LinkAccountOutcome::Linked)
+        }
+    }
+}
+
+/// What [`unlink_linked_account`] refused to do, or actually did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnlinkAccountOutcome {
+    Unlinked,
+    /// `user_id` has no other linked account - unlinking this one would
+    /// leave them with no way to ever sign in again. Refused rather than
+    /// allowed and hoped nobody hits it: the memory-wipe promise (a
+    /// consistent `users.id` across every provider) is worthless to
+    /// someone who can no longer reach their own `users.id` at all.
+    LastRemainingAccount,
+    /// No linked account for `user_id` on that provider - not an error,
+    /// the same reasoning `forget_memory`'s own doc comment documents for
+    /// forgetting a memory that never existed.
+    NotFound,
+}
+
+/// Removes `provider`'s linked account from `user_id`, refusing if it is
+/// the only one they have - see [`UnlinkAccountOutcome::LastRemainingAccount`].
+pub async fn unlink_linked_account(
+    pool: &DbPool,
+    user_id: i64,
+    provider: &str,
+) -> QueryResult<UnlinkAccountOutcome> {
+    let accounts = list_linked_accounts(pool, user_id).await?;
+    if !accounts.iter().any(|account| account.provider == provider) {
+        return Ok(UnlinkAccountOutcome::NotFound);
+    }
+    if accounts.len() <= 1 {
+        return Ok(UnlinkAccountOutcome::LastRemainingAccount);
+    }
+
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::delete(
+        linked_accounts::table
+            .filter(linked_accounts::user_id.eq(user_id))
+            .filter(linked_accounts::provider.eq(provider)),
+    )
+    .execute(&mut conn)
+    .await?;
+
+    Ok(UnlinkAccountOutcome::Unlinked)
+}
+
 // user_permissions
 
 /// Grants `permission` (a `crate::permission::Permission`'s string form) to

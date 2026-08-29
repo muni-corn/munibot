@@ -4,10 +4,13 @@ use thiserror::Error;
 
 #[cfg(feature = "server")]
 pub mod guild;
+pub mod linked_account;
 #[cfg(feature = "server")]
 pub mod operator;
 #[cfg(feature = "server")]
 pub mod server;
+
+pub use linked_account::LinkedAccountSummary;
 
 /// User data safe to send to and render on the client.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -22,6 +25,15 @@ pub enum AuthError {
     #[error("no auth session available")]
     NoAuthSession,
 
+    /// Attempted to link a provider account already linked to a
+    /// *different* munibot user.
+    #[error("that account is already linked to a different munibot user")]
+    AlreadyLinkedElsewhere,
+
+    /// Attempted to unlink a user's only remaining sign-in method.
+    #[error("you can't unlink your last remaining sign-in method")]
+    LastRemainingAccount,
+
     /// Wraps a generic server function error so `AuthResult` propagates
     /// cleanly.
     #[error(transparent)]
@@ -32,6 +44,7 @@ impl AsStatusCode for AuthError {
     fn as_status_code(&self) -> StatusCode {
         match self {
             Self::NoAuthSession => StatusCode::UNAUTHORIZED,
+            Self::AlreadyLinkedElsewhere | Self::LastRemainingAccount => StatusCode::CONFLICT,
             Self::ServerFnError(e) => e.as_status_code(),
         }
     }

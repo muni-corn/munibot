@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 use crate::{
     layouts::home::HomeLayout,
     pages::{
+        account::Account,
         chat::{Chat, ChatLayout, conversation::ChatConversation},
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
@@ -69,6 +70,8 @@ pub enum Route {
                 #[route("/chat/:conversation_id")]
                 ChatConversation { conversation_id: i64 },
             #[end_layout]
+            #[route("/account")]
+            Account {},
             #[route("/memory")]
             Memory {},
             #[route("/personas")]

@@ -11,14 +11,32 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
 };
-use munibot_core::db::{DbPool, operations};
+use munibot_core::db::DbPool;
 use serde::Deserialize;
 use tracing::{error, warn};
 
 use crate::{
     auth::server::AuthSession,
-    oauth::{discord, email, github},
+    oauth::{LinkOrSignIn, discord, email, github},
 };
+
+/// Turns a [`LinkOrSignIn`] into the redirect a callback handler shows,
+/// logging the session in for a fresh sign-in but leaving an
+/// already-signed-in session untouched for a link (there is nothing to
+/// change - the same person is still signed in as themself either way).
+fn redirect_for(auth: &AuthSession, outcome: LinkOrSignIn, provider: &str) -> Redirect {
+    match outcome {
+        LinkOrSignIn::SignedIn(user_id) => {
+            auth.login_user(user_id.to_string());
+            Redirect::to("/dashboard")
+        }
+        LinkOrSignIn::Linked => Redirect::to("/account"),
+        LinkOrSignIn::AlreadyLinkedElsewhere => {
+            warn!("attempted to link a {provider} account already linked to a different user");
+            Redirect::to("/account?error=already_linked")
+        }
+    }
+}
 
 /// Mounts every provider's `/auth/<provider>/authorize` and
 /// `/auth/<provider>/callback` (email's own shape is a form POST plus a
@@ -67,6 +85,10 @@ struct CallbackParams {
 }
 
 /// Handles discord's redirect back after the user accepts or declines.
+///
+/// Signed in already (linking another provider to the current account) or
+/// not (a normal sign-in) is decided from the session itself, at the top
+/// of this handler - see [`LinkOrSignIn`]'s own doc comment.
 async fn callback_discord(
     auth: AuthSession,
     Query(params): Query<CallbackParams>,
@@ -76,12 +98,10 @@ async fn callback_discord(
         warn!(error = ?params.error, "discord oauth callback without a code");
         return Redirect::to("/");
     };
+    let existing_user_id = auth.current_user.as_ref().map(|user| user.id);
 
-    match sign_in_with_discord(&pool, &code).await {
-        Ok(user_id) => {
-            auth.login_user(user_id.to_string());
-            Redirect::to("/dashboard")
-        }
+    match complete_discord(&pool, &code, existing_user_id).await {
+        Ok(outcome) => redirect_for(&auth, outcome, "discord"),
         Err(e) => {
             error!(error = %e, "discord sign-in failed");
             Redirect::to("/")
@@ -89,9 +109,13 @@ async fn callback_discord(
     }
 }
 
-/// Exchanges the code, fetches the discord identity, and finds or creates
-/// the corresponding munibot user. Returns the signed-in user's id.
-async fn sign_in_with_discord(pool: &DbPool, code: &str) -> anyhow::Result<i64> {
+/// Exchanges the code, fetches the discord identity, and either signs in
+/// as (or creates) its matching user, or links it to `existing_user_id`.
+async fn complete_discord(
+    pool: &DbPool,
+    code: &str,
+    existing_user_id: Option<i64>,
+) -> anyhow::Result<LinkOrSignIn> {
     let base_url = std::env::var("MUNIBOT_BASE_URL")?;
     let client_id = std::env::var("DISCORD_APPLICATION_ID")?;
     let client_secret = std::env::var("DISCORD_CLIENT_SECRET")?;
@@ -102,8 +126,9 @@ async fn sign_in_with_discord(pool: &DbPool, code: &str) -> anyhow::Result<i64> 
     let token_expires_at =
         chrono::Utc::now().naive_utc() + chrono::Duration::seconds(token.expires_in);
 
-    let user = operations::get_or_create_user_from_linked_account(
+    LinkOrSignIn::resolve(
         pool,
+        existing_user_id,
         "discord",
         &discord_user.id,
         &discord_user.username,
@@ -113,9 +138,7 @@ async fn sign_in_with_discord(pool: &DbPool, code: &str) -> anyhow::Result<i64> 
         Some(&token.refresh_token),
         Some(token_expires_at),
     )
-    .await?;
-
-    Ok(user.id)
+    .await
 }
 
 /// Redirects to GitHub's consent screen.
@@ -132,6 +155,9 @@ async fn authorize_github() -> impl IntoResponse {
 }
 
 /// Handles GitHub's redirect back after the user accepts or declines.
+///
+/// Signed in already or not is decided from the session itself - see
+/// `callback_discord`'s own doc comment for the same reasoning.
 async fn callback_github(
     auth: AuthSession,
     Query(params): Query<CallbackParams>,
@@ -141,12 +167,10 @@ async fn callback_github(
         warn!(error = ?params.error, "github oauth callback without a code");
         return Redirect::to("/");
     };
+    let existing_user_id = auth.current_user.as_ref().map(|user| user.id);
 
-    match sign_in_with_github(&pool, &code).await {
-        Ok(user_id) => {
-            auth.login_user(user_id.to_string());
-            Redirect::to("/dashboard")
-        }
+    match complete_github(&pool, &code, existing_user_id).await {
+        Ok(outcome) => redirect_for(&auth, outcome, "github"),
         Err(e) => {
             error!(error = %e, "github sign-in failed");
             Redirect::to("/")
@@ -154,14 +178,18 @@ async fn callback_github(
     }
 }
 
-/// Exchanges the code, fetches the GitHub identity, and finds or creates the
-/// corresponding munibot user. Returns the signed-in user's id.
+/// Exchanges the code, fetches the GitHub identity, and either signs in as
+/// (or creates) its matching user, or links it to `existing_user_id`.
 ///
 /// `provider_user_id` is GitHub's numeric account id (stable across a
 /// username change), not `login` - the same reasoning `GitHubUser`'s own
 /// doc comment documents. No refresh token: GitHub OAuth App tokens don't
 /// expire, unlike discord's.
-async fn sign_in_with_github(pool: &DbPool, code: &str) -> anyhow::Result<i64> {
+async fn complete_github(
+    pool: &DbPool,
+    code: &str,
+    existing_user_id: Option<i64>,
+) -> anyhow::Result<LinkOrSignIn> {
     let base_url = std::env::var("MUNIBOT_BASE_URL")?;
     let client_id = std::env::var("GITHUB_OAUTH_CLIENT_ID")?;
     let client_secret = std::env::var("GITHUB_OAUTH_CLIENT_SECRET")?;
@@ -169,8 +197,9 @@ async fn sign_in_with_github(pool: &DbPool, code: &str) -> anyhow::Result<i64> {
     let token = github::exchange_code(code, &base_url, &client_id, &client_secret).await?;
     let github_user = github::get_current_user(&token.access_token).await?;
 
-    let user = operations::get_or_create_user_from_linked_account(
+    LinkOrSignIn::resolve(
         pool,
+        existing_user_id,
         "github",
         &github_user.id.to_string(),
         &github_user.login,
@@ -180,9 +209,7 @@ async fn sign_in_with_github(pool: &DbPool, code: &str) -> anyhow::Result<i64> {
         None,
         None,
     )
-    .await?;
-
-    Ok(user.id)
+    .await
 }
 
 #[derive(Deserialize)]
@@ -233,6 +260,10 @@ async fn request_email(
 }
 
 /// Handles a magic link's callback.
+///
+/// Signed in already (in the same browser that requested the link) or not
+/// is decided from the session itself - see `callback_discord`'s own doc
+/// comment for the same reasoning.
 async fn callback_email(
     auth: AuthSession,
     Query(params): Query<EmailCallbackParams>,
@@ -242,12 +273,10 @@ async fn callback_email(
         warn!("email sign-in callback without a token");
         return Redirect::to("/");
     };
+    let existing_user_id = auth.current_user.as_ref().map(|user| user.id);
 
-    match email::verify_signin(&pool, &token).await {
-        Ok(Some(user_id)) => {
-            auth.login_user(user_id.to_string());
-            Redirect::to("/dashboard")
-        }
+    match email::verify_signin(&pool, &token, existing_user_id).await {
+        Ok(Some(outcome)) => redirect_for(&auth, outcome, "email"),
         Ok(None) => {
             warn!("an email sign-in link was invalid, already used, or expired");
             Redirect::to("/")
