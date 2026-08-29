@@ -132,6 +132,13 @@ mod tests {
     use super::*;
     use crate::{persona::AiConfig, provider::ProviderRegistry, types::ModelRef};
 
+    fn config_with_default_model() -> AiConfig {
+        AiConfig {
+            default_model: Some(ModelRef::new("anthropic", "claude-opus-5")),
+            ..AiConfig::default()
+        }
+    }
+
     const EVERY_ROLE: [AgentRole; 12] = [
         AgentRole::IssueAnalyst,
         AgentRole::CodebaseResearcher,
@@ -205,8 +212,7 @@ mod tests {
 
     #[test]
     fn test_persona_id_for_every_role_matches_the_embedded_roster() {
-        let mut config = AiConfig::default();
-        config.default_model = Some(ModelRef::new("anthropic", "claude-opus-5"));
+        let config = config_with_default_model();
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
 
@@ -220,8 +226,7 @@ mod tests {
 
     #[test]
     fn test_persona_for_attaches_the_matching_handoff_schema() {
-        let mut config = AiConfig::default();
-        config.default_model = Some(ModelRef::new("anthropic", "claude-opus-5"));
+        let config = config_with_default_model();
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
 
@@ -236,8 +241,7 @@ mod tests {
 
     #[test]
     fn test_persona_for_keeps_the_base_personas_own_tools_and_sandbox_policy() {
-        let mut config = AiConfig::default();
-        config.default_model = Some(ModelRef::new("anthropic", "claude-opus-5"));
+        let config = config_with_default_model();
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let registry = PersonaRegistry::load(&config, &providers).expect("should resolve");
 
