@@ -12,6 +12,8 @@
 //! of writing one more crate against these traits, rather than a rewrite of
 //! the pipeline that consumes them.
 
+mod event;
 mod reference;
 
+pub use event::ForgeEvent;
 pub use reference::{Comment, Forge, Issue, IssueRef, IssueState, RepoRef};
