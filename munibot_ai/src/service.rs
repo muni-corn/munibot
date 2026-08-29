@@ -311,6 +311,15 @@ impl Ai {
     }
 
     /// Runs one full turn, returning only once it has finished.
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            persona = %req.persona_id,
+            user_id = req.user_id,
+            guild_id = ?req.guild_id,
+            platform = req.scope.platform.as_key(),
+        )
+    )]
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = self.prepare(&req).await?;
         let conversation_id = prepared.conversation_id;
@@ -323,21 +332,18 @@ impl Ai {
         }
         let (result, turn_usage) = harness.run_turn_recording_usage(prepared.request).await;
 
-        write_usage(
-            &self.usage_recorder,
-            UsageRecord {
-                conversation_id: Some(conversation_id),
-                user_id: Some(req.user_id),
-                guild_id: req.guild_id,
-                provider: model.provider().to_string(),
-                model: model.model().to_string(),
-                persona_id,
-                usage: turn_usage.usage,
-                cost: turn_usage.cost,
-                iterations: turn_usage.iterations,
-                succeeded: result.is_ok(),
-            },
-        )
+        write_usage(&self.usage_recorder, UsageRecord {
+            conversation_id: Some(conversation_id),
+            user_id: Some(req.user_id),
+            guild_id: req.guild_id,
+            provider: model.provider().to_string(),
+            model: model.model().to_string(),
+            persona_id,
+            usage: turn_usage.usage,
+            cost: turn_usage.cost,
+            iterations: turn_usage.iterations,
+            succeeded: result.is_ok(),
+        })
         .await;
 
         // recorded on failure too, the same reasoning as write_usage's own:
@@ -372,6 +378,22 @@ impl Ai {
     /// reference, since the harness has no persona type of its own to name
     /// instead; this replaces it with the persona's display name, which is
     /// what an adapter actually wants to show a user.
+    ///
+    /// The span this carries covers only the synchronous setup below
+    /// (persona resolution, rate limiting, context assembly) - the stream
+    /// it returns keeps running well after this function itself returns,
+    /// and `tracing`'s own `Instrument` has no `Stream` support to extend
+    /// the span across that (only `Future`), unlike every `tokio::spawn`
+    /// call site in this crate.
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            persona = %req.persona_id,
+            user_id = req.user_id,
+            guild_id = ?req.guild_id,
+            platform = req.scope.platform.as_key(),
+        )
+    )]
     pub async fn turn_streamed(
         &self,
         req: AiTurnRequest,
@@ -586,10 +608,10 @@ impl Ai {
             .await?;
 
         // stored regardless of the persona's memory policy: a durable per-scope
-        // record is harmless to keep even for a persona that does not read it back,
-        // and a later policy change should not start from a conversation with a gap
-        // in it. skipped when the caller has already persisted the message
-        // themselves, so it is never stored twice
+        // record is harmless to keep even for a persona that does not read it
+        // back, and a later policy change should not start from a conversation
+        // with a gap in it. skipped when the caller has already persisted the
+        // message themselves, so it is never stored twice
         if !req.already_persisted {
             self.sessions
                 .append(conversation.id, Message::user(req.message.clone()))
@@ -611,9 +633,10 @@ impl Ai {
                     {
                         Ok(Some(new_summary)) => conversation.summary = Some(new_summary),
                         Ok(None) => {}
-                        // best-effort: a failed compaction should not break the turn - the
-                        // conversation simply stays uncompacted and gets another chance once it
-                        // grows past the threshold again next time
+                        // best-effort: a failed compaction should not break the
+                        // turn - the conversation simply stays uncompacted and
+                        // gets another chance once it grows past the threshold
+                        // again next time
                         Err(error) => {
                             tracing::warn!(
                                 %error,
@@ -877,9 +900,9 @@ mod tests {
             prompt_dir: None,
             personas: HashMap::new(),
         };
-        config.personas.insert(
-            PersonaId::new("companion"),
-            PersonaConfig {
+        config
+            .personas
+            .insert(PersonaId::new("companion"), PersonaConfig {
                 model: ModelRef::new("anthropic", "claude-opus-5"),
                 prompt: "companion.md".to_string(),
                 display_name: Some("Companion".to_string()),
@@ -889,8 +912,7 @@ mod tests {
                 budget: crate::persona::BudgetConfig::default(),
                 memory: MemoryPolicy::None,
                 sandbox: crate::persona::SandboxPolicy::default(),
-            },
-        );
+            });
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
 
@@ -915,9 +937,9 @@ mod tests {
             prompt_dir: None,
             personas: HashMap::new(),
         };
-        config.personas.insert(
-            PersonaId::new("companion"),
-            PersonaConfig {
+        config
+            .personas
+            .insert(PersonaId::new("companion"), PersonaConfig {
                 model: ModelRef::new("anthropic", "claude-opus-5"),
                 prompt: "companion.md".to_string(),
                 display_name: Some("Companion".to_string()),
@@ -927,8 +949,7 @@ mod tests {
                 budget: crate::persona::BudgetConfig::default(),
                 memory,
                 sandbox: crate::persona::SandboxPolicy::default(),
-            },
-        );
+            });
 
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         PersonaRegistry::load(&config, &providers).expect("should resolve")
@@ -1169,8 +1190,8 @@ mod tests {
             .collect()
             .await;
 
-        // a follow-up turn should see the streamed reply in its history, proving
-        // turn_streamed persisted it even though it never calls turn()
+        // a follow-up turn should see the streamed reply in its history,
+        // proving turn_streamed persisted it even though it never calls turn()
         let _events2: Vec<HarnessEvent> = ai
             .turn_streamed(request("companion", "and then?"))
             .await
@@ -1289,8 +1310,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_a_conversation_is_left_alone_without_a_summariser() {
-        // regression guard: every other test in this module builds an Ai with no
-        // summariser wired, so this is really asserting the default is inert
+        // regression guard: every other test in this module builds an Ai with
+        // no summariser wired, so this is really asserting the default is inert
         let provider = Arc::new(
             MockProvider::new()
                 .respond_text("first")
@@ -1329,8 +1350,9 @@ mod tests {
             },
         );
 
-        // first turn: only one message exists once the user's text is appended, which
-        // is never more than keep_recent_messages - nothing to compact yet
+        // first turn: only one message exists once the user's text is appended,
+        // which is never more than keep_recent_messages - nothing to compact
+        // yet
         ai.turn(request("companion", "message one"))
             .await
             .expect("should succeed");
@@ -1340,8 +1362,8 @@ mod tests {
             "a single message must never be summarised away"
         );
 
-        // second turn: history now has three messages (the first exchange, plus this
-        // turn's new user message), comfortably over both thresholds
+        // second turn: history now has three messages (the first exchange, plus
+        // this turn's new user message), comfortably over both thresholds
         ai.turn(request("companion", "message two"))
             .await
             .expect("should succeed");
@@ -1464,8 +1486,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_without_a_usage_recorder_wired_nothing_breaks() {
-        // regression guard: every other test in this module wires no recorder at
-        // all, so this only makes that default explicit
+        // regression guard: every other test in this module wires no recorder
+        // at all, so this only makes that default explicit
         let provider = Arc::new(MockProvider::new().respond_text("hi"));
         let ai = ai_with(MemoryPolicy::None, provider);
 
