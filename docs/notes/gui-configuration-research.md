@@ -54,15 +54,24 @@ precedent a GUI equivalent must mirror.
 
 ## Authorization gap
 
-`HasPermission::has` (`munibot_api/src/auth/server.rs:63-70`) always returns
-`false` -- there is no permission system. `DiscordGuild::is_administered_by_user`
-(`oauth/discord.rs`) is currently used only as a **display filter** in
-`get_guilds`, never as an authorization check. No server function today
-verifies that the calling user actually administers the guild whose settings
-it's about to read or write. Any settings server function needs its own
-`require_guild_admin`-style check: linked account -> `get_current_user_guilds`
--> `is_administered_by_user`, done fresh (or short-TTL cached) per request,
-since there's no local cache of guild membership to check against instead.
+**Resolved.** This section described a real gap at the time this research was
+written, but `HasPermission::has` now checks a real, session-loaded
+permission set (`User::permissions`, populated from `user_permissions` by
+`Authentication::load_user`) rather than always returning `false` - see
+`docs/notes/permission-system.md` for the full design.
+`munibot_api/src/auth/operator.rs::require_operator` is the operator-gated
+counterpart to the guild-admin check below, for the administrative pages
+(the safety/usage dashboards, the transcript viewer) that gate on it.
+
+The rest of this section is still accurate: `DiscordGuild::is_administered_by_user`
+(`oauth/discord.rs`) remains a **display filter** in `get_guilds`, never an
+authorization check on its own, and every guild-scoped settings server
+function still needs its own `require_guild_admin`-style check: linked
+account -> `get_current_user_guilds` -> `is_administered_by_user`, done fresh
+(or short-TTL cached) per request, since there's no local cache of guild
+membership to check against instead. The operator permission and the
+guild-admin check are two different authorities, gating two different kinds
+of page, and neither substitutes for the other.
 
 ## Getting a channel list: the bot token, not the user's oauth token
 
