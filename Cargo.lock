@@ -4985,6 +4985,7 @@ dependencies = [
  "axum",
  "chrono",
  "hmac 0.13.0",
+ "http",
  "jsonwebtoken",
  "munibot_vcs",
  "octocrab",

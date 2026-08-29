@@ -7,8 +7,10 @@
 
 mod auth;
 mod error;
+mod forge;
 mod webhook;
 
 pub use auth::{InstallationTokenCache, OctocrabTokenMinter, TokenMinter};
 pub use error::GitHubError;
+pub use forge::GitHubForge;
 pub use webhook::{normalize_webhook, verify_signature};

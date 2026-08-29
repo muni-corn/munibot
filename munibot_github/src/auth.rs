@@ -63,6 +63,22 @@ impl OctocrabTokenMinter {
             .map_err(|error| GitHubError::Config(format!("couldn't build app client: {error}")))?;
         Ok(Self { app_client })
     }
+
+    /// Builds an `Octocrab` client scoped to one installation, for making
+    /// ordinary REST calls (fetching an issue, posting a comment, opening a
+    /// pull request) -- see [`crate::forge::GitHubForge`].
+    ///
+    /// Cheap and does no network I/O of its own: `octocrab` mints and
+    /// caches this client's own token lazily, the first time it actually
+    /// makes a request.
+    pub fn installation_client(
+        &self,
+        installation_id: InstallationId,
+    ) -> Result<Octocrab, GitHubError> {
+        self.app_client
+            .installation(installation_id)
+            .map_err(|error| GitHubError::Auth(error.to_string()))
+    }
 }
 
 #[async_trait]
