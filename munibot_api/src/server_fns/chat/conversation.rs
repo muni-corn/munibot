@@ -47,6 +47,42 @@ pub(super) async fn owned_conversation(
     Ok(conversation)
 }
 
+/// Loads a conversation for `get_ai_transcript`: the conversation's own
+/// owner may always read it, and so may any operator, for any conversation,
+/// see `Permission::Operator`'s own doc comment for what an operator is
+/// trusted with.
+///
+/// A genuinely different check from [`owned_conversation`], not a variant
+/// of it: that one is deliberately owner-only (every other
+/// conversation-scoped function - sending a message, renaming, archiving -
+/// has no business letting an operator act as someone else), while a
+/// transcript read is exactly the audit surface an operator needs.
+#[cfg(feature = "server")]
+pub(super) async fn owner_or_operator_conversation(
+    auth: &crate::auth::server::AuthSession,
+    pool: &munibot_core::db::DbPool,
+    conversation_id: i64,
+) -> ChatResult<munibot_core::db::models::AiConversation> {
+    use axum_session_auth::HasPermission;
+    use munibot_core::{Permission, db::operations::ai};
+
+    use crate::chat::ChatError;
+
+    let user = auth.current_user.clone().ok_or(ChatError::NotSignedIn)?;
+    let conversation = ai::get_conversation(pool, conversation_id)
+        .await?
+        .ok_or(ChatError::ConversationNotFound)?;
+
+    let is_owner = conversation.owner_user_id == Some(user.id);
+    let is_operator = user.has(&Permission::Operator.to_string(), &None).await;
+
+    if is_owner || is_operator {
+        Ok(conversation)
+    } else {
+        Err(ChatError::NotYourConversation)
+    }
+}
+
 #[cfg(all(test, feature = "server"))]
 mod tests {
     use super::*;

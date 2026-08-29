@@ -36,8 +36,8 @@ pub use usage::{UsageTotals, sum_usage_for_user, sum_usage_global};
 use crate::db::{
     DbPool,
     models::{
-        AiConversation, AiMemory, AiMessage, AiUserSettings, NewAiConversation, NewAiMemory,
-        NewAiMessage, NewAiToolCall, NewAiUsage, NewAiUserSettings,
+        AiConversation, AiMemory, AiMessage, AiToolCall, AiUserSettings, NewAiConversation,
+        NewAiMemory, NewAiMessage, NewAiToolCall, NewAiUsage, NewAiUserSettings,
     },
     schema::{
         ai_conversations, ai_memories, ai_messages, ai_tool_calls, ai_usage, ai_user_settings,
@@ -426,6 +426,22 @@ pub async fn record_tool_call(pool: &DbPool, tool_call: NewAiToolCall) -> QueryR
         .execute(&mut conn)
         .await?;
     Ok(())
+}
+
+/// Every tool call audited for a conversation, oldest first - the read half
+/// of [`record_tool_call`], for the transcript viewer's own tool-call
+/// timeline (see `munibot_api::server_fns::chat::transcript`).
+pub async fn list_tool_calls_for_conversation(
+    pool: &DbPool,
+    conversation_id: i64,
+) -> QueryResult<Vec<AiToolCall>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_tool_calls::table
+        .filter(ai_tool_calls::conversation_id.eq(conversation_id))
+        .order(ai_tool_calls::created_at.asc())
+        .select(AiToolCall::as_select())
+        .load(&mut conn)
+        .await
 }
 
 // ai_memories
