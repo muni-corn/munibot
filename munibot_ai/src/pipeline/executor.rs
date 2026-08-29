@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     pipeline::{
@@ -43,6 +44,8 @@ pub enum ExecutorError {
     Sandbox(String),
     #[error(transparent)]
     Interaction(#[from] InteractionError),
+    #[error("the run was aborted")]
+    Cancelled,
 }
 
 /// Where a run stopped.
@@ -327,6 +330,12 @@ pub struct Executor {
     store: Arc<dyn PipelineStore>,
     dispatcher: Arc<dyn AgentDispatcher>,
     sandbox: Arc<dyn SandboxLifecycle>,
+    /// Checked once per loop iteration, and threaded into every
+    /// `AgentContext` so an in-flight turn's own tool calls see it too --
+    /// what `PipelineRegistry::abort_pipeline` cancels to stop this run.
+    /// A fresh, never-cancelled token by default; `with_cancellation`
+    /// overrides it with one a registry actually holds onto.
+    cancellation: CancellationToken,
 }
 
 impl Executor {
@@ -339,12 +348,21 @@ impl Executor {
             store,
             dispatcher,
             sandbox,
+            cancellation: CancellationToken::new(),
         }
     }
 
+    /// Runs with `cancellation` instead of a fresh, never-cancelled token
+    /// -- what lets an external caller (in practice,
+    /// `PipelineRegistry::abort_pipeline`) actually stop this run.
+    pub fn with_cancellation(mut self, cancellation: CancellationToken) -> Self {
+        self.cancellation = cancellation;
+        self
+    }
+
     /// Runs `pipeline_id` forward from wherever its own event log
-    /// currently resolves to, until it reaches a terminal state or has
-    /// nothing left to dispatch.
+    /// currently resolves to, until it reaches a terminal state, has
+    /// nothing left to dispatch, or is cancelled.
     ///
     /// Every iteration replays the store rather than tracking state in a
     /// local variable across iterations -- more calls than strictly
@@ -355,6 +373,11 @@ impl Executor {
         let mut sandbox_tools: Option<Arc<ToolRegistry>> = None;
 
         loop {
+            if self.cancellation.is_cancelled() {
+                self.sandbox.teardown().await;
+                return Err(ExecutorError::Cancelled);
+            }
+
             let state = self.store.replay(pipeline_id).await?;
 
             if state.is_terminal() {
@@ -374,6 +397,7 @@ impl Executor {
             let events_so_far = self.store.events(pipeline_id).await?;
             let task = task_brief(role, &state, &events_so_far);
             let mut context = AgentContext::new(task, ConversationId(pipeline_id.0.unsigned_abs()));
+            context.cancellation = self.cancellation.clone();
             if let Some(tools) = &sandbox_tools {
                 context = context.with_tools(tools.clone());
             }
@@ -1010,6 +1034,55 @@ mod tests {
                 .iter()
                 .any(|event| event.label() == "FixSubtaskSynthesized"),
             "the fix subtask synthesis event should have been persisted"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_cancelled_token_stops_the_run_before_the_next_dispatch() {
+        let store = Arc::new(InMemoryPipelineStore::new());
+        let id = new_pipeline(&store).await;
+
+        // no scripted response at all -- if the executor dispatched
+        // anything, this would panic instead of returning Cancelled
+        let dispatcher = Arc::new(MockAgentDispatcher::new());
+        let sandbox = Arc::new(NoSandbox::new(Arc::new(ToolRegistry::new())));
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+        let executor =
+            Executor::new(store.clone(), dispatcher, sandbox).with_cancellation(cancellation);
+
+        let error = executor
+            .run(id)
+            .await
+            .expect_err("a pre-cancelled run should stop");
+        assert!(matches!(error, ExecutorError::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn test_cancellation_is_checked_before_dispatching_not_only_at_startup() {
+        let store = Arc::new(InMemoryPipelineStore::new());
+        let id = new_pipeline(&store).await;
+
+        // no scripted response -- a real dispatch attempt would panic,
+        // proving the cancellation check runs before ever reaching it
+        let dispatcher = Arc::new(MockAgentDispatcher::new());
+        let sandbox = Arc::new(NoSandbox::new(Arc::new(ToolRegistry::new())));
+        let cancellation = CancellationToken::new();
+        let executor = Executor::new(store.clone(), dispatcher, sandbox)
+            .with_cancellation(cancellation.clone());
+
+        cancellation.cancel();
+        let error = executor
+            .run(id)
+            .await
+            .expect_err("should stop once cancelled");
+        assert!(matches!(error, ExecutorError::Cancelled));
+
+        let events = store.events(id).await.unwrap();
+        assert_eq!(
+            events.len(),
+            1,
+            "only the original Triggered event, nothing dispatched"
         );
     }
 }

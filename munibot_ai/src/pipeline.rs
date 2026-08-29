@@ -10,6 +10,7 @@
 
 mod advance;
 mod branch;
+mod concurrency;
 mod dispatch;
 mod event;
 mod executor;
@@ -24,6 +25,7 @@ mod web_chat_interaction;
 
 pub use advance::{AdvanceError, advance};
 pub use branch::resolve_branch_name;
+pub use concurrency::{ConcurrencyConfig, PipelineRegistry};
 pub use dispatch::{
     AgentContext, AgentDispatcher, AgentOutput, DispatchError, HarnessDispatcher,
     MockAgentDispatcher,
