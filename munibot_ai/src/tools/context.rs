@@ -23,6 +23,9 @@ pub enum Platform {
     Discord,
     Twitch,
     Web,
+    /// The autonomous pipeline itself invoked this tool -- no chat surface
+    /// and no human waiting synchronously, see `crate::pipeline::dispatch`.
+    Pipeline,
 }
 
 impl Platform {
@@ -37,6 +40,7 @@ impl Platform {
             Self::Discord => "discord",
             Self::Twitch => "twitch",
             Self::Web => "web",
+            Self::Pipeline => "pipeline",
         }
     }
 
@@ -46,6 +50,7 @@ impl Platform {
             "discord" => Some(Self::Discord),
             "twitch" => Some(Self::Twitch),
             "web" => Some(Self::Web),
+            "pipeline" => Some(Self::Pipeline),
             _ => None,
         }
     }
@@ -60,6 +65,7 @@ impl std::fmt::Display for Platform {
             Self::Discord => "Discord",
             Self::Twitch => "Twitch",
             Self::Web => "the web",
+            Self::Pipeline => "GitHub",
         };
         write!(f, "{name}")
     }
