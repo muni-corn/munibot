@@ -8,13 +8,13 @@ pub mod ai;
 use crate::db::{
     DbPool,
     models::{
-        AutoDeleteTimerRow, CommunityLink, GuildConfig, GuildPayout, GuildWallet, LinkedAccount,
-        NewCommunityLink, NewGuildPayout, NewGuildWallet, NewLinkedAccount, NewQuote, NewUser,
-        NewUserPermission, Quote, UpdateAutoDeleteTimer, User,
+        AutoDeleteTimerRow, CommunityLink, EmailSigninToken, GuildConfig, GuildPayout, GuildWallet,
+        LinkedAccount, NewCommunityLink, NewEmailSigninToken, NewGuildPayout, NewGuildWallet,
+        NewLinkedAccount, NewQuote, NewUser, NewUserPermission, Quote, UpdateAutoDeleteTimer, User,
     },
     schema::{
-        autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets,
-        linked_accounts, quotes, user_permissions, users,
+        autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
+        guild_wallets, linked_accounts, quotes, user_permissions, users,
     },
 };
 
@@ -622,4 +622,72 @@ pub async fn list_user_permissions(pool: &DbPool, user_id: i64) -> QueryResult<V
         .select(user_permissions::permission)
         .load(&mut conn)
         .await
+}
+
+// email_signin_tokens
+
+/// Records a fresh magic-link request for `email`, replacing any
+/// outstanding one for that same address - one row per email, the same
+/// reasoning `upsert_guild_config` documents for its own whole-row upsert:
+/// requesting a new link makes the previous one moot, so there is no
+/// reason to keep both around.
+pub async fn upsert_email_signin_token(
+    pool: &DbPool,
+    email: &str,
+    token_hash: &str,
+    expires_at: NaiveDateTime,
+) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    let now = chrono::Utc::now().naive_utc();
+    diesel::insert_into(email_signin_tokens::table)
+        .values(NewEmailSigninToken {
+            email: email.to_owned(),
+            token_hash: token_hash.to_owned(),
+            expires_at,
+            created_at: now,
+        })
+        .on_conflict(diesel::dsl::DuplicatedKeys)
+        .do_update()
+        .set((
+            email_signin_tokens::token_hash.eq(token_hash),
+            email_signin_tokens::expires_at.eq(expires_at),
+            email_signin_tokens::created_at.eq(now),
+        ))
+        .execute(&mut conn)
+        .await?;
+    Ok(())
+}
+
+/// Consumes a magic-link token: looks it up by its hash, deletes it
+/// unconditionally if found (single-use, regardless of whether it had
+/// already expired), and returns the email it was issued for only if it
+/// had not.
+///
+/// Deleting even an expired match is deliberate: leaving a stale row
+/// behind would only ever let a *second*, differently-timed request reuse
+/// its slot via the upsert above, never anything a caller benefits from
+/// keeping.
+pub async fn consume_email_signin_token(
+    pool: &DbPool,
+    token_hash: &str,
+) -> QueryResult<Option<String>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+
+    let existing = email_signin_tokens::table
+        .filter(email_signin_tokens::token_hash.eq(token_hash))
+        .select(EmailSigninToken::as_select())
+        .first(&mut conn)
+        .await
+        .optional()?;
+
+    let Some(token) = existing else {
+        return Ok(None);
+    };
+
+    diesel::delete(email_signin_tokens::table.find(token.id))
+        .execute(&mut conn)
+        .await?;
+
+    let now = chrono::Utc::now().naive_utc();
+    Ok((token.expires_at > now).then_some(token.email))
 }

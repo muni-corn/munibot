@@ -12,6 +12,8 @@ pub mod guilds;
 pub mod pipeline;
 
 #[cfg(feature = "server")]
+pub mod mailer;
+#[cfg(feature = "server")]
 pub mod oauth;
 pub mod server_fns;
 pub mod settings;

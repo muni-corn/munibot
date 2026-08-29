@@ -796,3 +796,97 @@ async fn test_list_user_permissions_for_a_user_with_none_is_empty() {
         .expect("list failed");
     assert!(permissions.is_empty());
 }
+
+// email_signin_tokens
+
+#[tokio::test]
+async fn test_consuming_an_unknown_token_returns_none() {
+    let db = TestDb::new().await;
+
+    let email = operations::consume_email_signin_token(&db.pool, "a".repeat(64).as_str())
+        .await
+        .expect("query failed");
+
+    assert!(email.is_none());
+}
+
+#[tokio::test]
+async fn test_upsert_then_consume_round_trips_the_email_and_is_single_use() {
+    let db = TestDb::new().await;
+    let expires_at = Utc::now().naive_utc() + chrono::Duration::minutes(15);
+
+    operations::upsert_email_signin_token(
+        &db.pool,
+        "person@example.com",
+        "token-hash-1",
+        expires_at,
+    )
+    .await
+    .expect("upsert failed");
+
+    let email = operations::consume_email_signin_token(&db.pool, "token-hash-1")
+        .await
+        .expect("consume failed")
+        .expect("should be Some the first time");
+    assert_eq!(email, "person@example.com");
+
+    let second_attempt = operations::consume_email_signin_token(&db.pool, "token-hash-1")
+        .await
+        .expect("query failed");
+    assert!(
+        second_attempt.is_none(),
+        "a token must not be consumable twice"
+    );
+}
+
+#[tokio::test]
+async fn test_consuming_an_expired_token_returns_none_but_still_removes_it() {
+    let db = TestDb::new().await;
+    let already_expired = Utc::now().naive_utc() - chrono::Duration::minutes(1);
+
+    operations::upsert_email_signin_token(
+        &db.pool,
+        "person@example.com",
+        "token-hash-expired",
+        already_expired,
+    )
+    .await
+    .expect("upsert failed");
+
+    let email = operations::consume_email_signin_token(&db.pool, "token-hash-expired")
+        .await
+        .expect("query failed");
+    assert!(email.is_none(), "an expired token should never be honoured");
+}
+
+#[tokio::test]
+async fn test_a_second_request_for_the_same_email_replaces_the_first_tokens_hash() {
+    let db = TestDb::new().await;
+    let expires_at = Utc::now().naive_utc() + chrono::Duration::minutes(15);
+
+    operations::upsert_email_signin_token(&db.pool, "person@example.com", "first-hash", expires_at)
+        .await
+        .expect("first upsert failed");
+    operations::upsert_email_signin_token(
+        &db.pool,
+        "person@example.com",
+        "second-hash",
+        expires_at,
+    )
+    .await
+    .expect("second upsert failed");
+
+    let first_attempt = operations::consume_email_signin_token(&db.pool, "first-hash")
+        .await
+        .expect("query failed");
+    assert!(
+        first_attempt.is_none(),
+        "the first token should have been replaced, not left valid alongside the second"
+    );
+
+    let second_attempt = operations::consume_email_signin_token(&db.pool, "second-hash")
+        .await
+        .expect("query failed")
+        .expect("the second token should be valid");
+    assert_eq!(second_attempt, "person@example.com");
+}

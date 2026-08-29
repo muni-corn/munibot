@@ -6,10 +6,10 @@
 
 use axum::{
     Router,
-    extract::{Extension, Query},
+    extract::{Extension, Form, Query},
     http::StatusCode,
-    response::{IntoResponse, Redirect},
-    routing::get,
+    response::{Html, IntoResponse, Redirect},
+    routing::{get, post},
 };
 use munibot_core::db::{DbPool, operations};
 use serde::Deserialize;
@@ -17,17 +17,21 @@ use tracing::{error, warn};
 
 use crate::{
     auth::server::AuthSession,
-    oauth::{discord, github},
+    oauth::{discord, email, github},
 };
 
 /// Mounts every provider's `/auth/<provider>/authorize` and
-/// `/auth/<provider>/callback`, plus `/auth/logout`.
+/// `/auth/<provider>/callback` (email's own shape is a form POST plus a
+/// callback, rather than an authorize redirect - see its own handlers),
+/// plus `/auth/logout`.
 pub fn router() -> Router {
     Router::new()
         .route("/auth/discord/authorize", get(authorize_discord))
         .route("/auth/discord/callback", get(callback_discord))
         .route("/auth/github/authorize", get(authorize_github))
         .route("/auth/github/callback", get(callback_github))
+        .route("/auth/email/request", post(request_email))
+        .route("/auth/email/callback", get(callback_email))
         .route("/auth/logout", get(logout))
 }
 
@@ -179,6 +183,85 @@ async fn sign_in_with_github(pool: &DbPool, code: &str) -> anyhow::Result<i64> {
     .await?;
 
     Ok(user.id)
+}
+
+#[derive(Deserialize)]
+struct EmailRequestForm {
+    email: String,
+}
+
+/// Handles the email sign-in form's POST: sends a magic link and always
+/// shows the same "check your email" response - never revealing whether
+/// mail delivery is even configured, the address already has an account,
+/// or the request otherwise failed, the same enumeration-avoidance
+/// reasoning `email::request_signin`'s own doc comment documents. A real
+/// failure is still logged server-side, just never surfaced to the caller.
+async fn request_email(
+    Extension(pool): Extension<DbPool>,
+    Form(form): Form<EmailRequestForm>,
+) -> impl IntoResponse {
+    let checked_your_email = (
+        StatusCode::OK,
+        Html(
+            "check your email for a sign-in link! it'll work for the next 15 minutes. (if nothing \
+             arrives, mail might not be set up on this server yet.)",
+        ),
+    );
+
+    let Ok(base_url) = std::env::var("MUNIBOT_BASE_URL") else {
+        warn!("MUNIBOT_BASE_URL isn't set; can't build an email sign-in link");
+        return checked_your_email.into_response();
+    };
+
+    let mailer = match crate::mailer::Mailer::from_env() {
+        Some(Ok(mailer)) => mailer,
+        Some(Err(error)) => {
+            error!(%error, "couldn't set up the smtp mailer");
+            return checked_your_email.into_response();
+        }
+        None => {
+            warn!("SMTP_HOST isn't set; email sign-in isn't configured");
+            return checked_your_email.into_response();
+        }
+    };
+
+    if let Err(error) = email::request_signin(&pool, &mailer, &base_url, &form.email).await {
+        warn!(%error, email = %form.email, "email sign-in request failed");
+    }
+
+    checked_your_email.into_response()
+}
+
+/// Handles a magic link's callback.
+async fn callback_email(
+    auth: AuthSession,
+    Query(params): Query<EmailCallbackParams>,
+    Extension(pool): Extension<DbPool>,
+) -> Redirect {
+    let Some(token) = params.token else {
+        warn!("email sign-in callback without a token");
+        return Redirect::to("/");
+    };
+
+    match email::verify_signin(&pool, &token).await {
+        Ok(Some(user_id)) => {
+            auth.login_user(user_id.to_string());
+            Redirect::to("/dashboard")
+        }
+        Ok(None) => {
+            warn!("an email sign-in link was invalid, already used, or expired");
+            Redirect::to("/")
+        }
+        Err(error) => {
+            error!(%error, "email sign-in failed");
+            Redirect::to("/")
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct EmailCallbackParams {
+    token: Option<String>,
 }
 
 /// Logs the current session out and returns home.

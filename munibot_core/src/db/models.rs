@@ -2,8 +2,8 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::db::schema::{
-    autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets,
-    linked_accounts, quotes, user_permissions, users,
+    autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
+    guild_wallets, linked_accounts, quotes, user_permissions, users,
 };
 
 pub mod ai;
@@ -205,6 +205,33 @@ pub struct NewLinkedAccount {
     pub token_expires_at: Option<NaiveDateTime>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+}
+
+// email_signin_tokens
+
+/// A row in the `email_signin_tokens` table: one outstanding magic-link
+/// sign-in request. `token_hash` is a SHA-256 hex digest of the actual
+/// token mailed to the address, never the token itself - see the
+/// migration's own comment for why.
+#[derive(Clone, Debug, Queryable, Selectable)]
+#[diesel(table_name = email_signin_tokens)]
+#[diesel(check_for_backend(diesel::mysql::Mysql))]
+pub struct EmailSigninToken {
+    pub id: i64,
+    pub email: String,
+    pub token_hash: String,
+    pub expires_at: NaiveDateTime,
+    pub created_at: NaiveDateTime,
+}
+
+/// Insertable and upsertable shape for `email_signin_tokens`.
+#[derive(Clone, Debug, Insertable, AsChangeset)]
+#[diesel(table_name = email_signin_tokens)]
+pub struct NewEmailSigninToken {
+    pub email: String,
+    pub token_hash: String,
+    pub expires_at: NaiveDateTime,
+    pub created_at: NaiveDateTime,
 }
 
 // user_permissions

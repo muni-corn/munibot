@@ -45,15 +45,34 @@ pub fn AccountStatus() -> Element {
     }
 }
 
-/// Every "sign in with <provider>" link, shown wherever signing in is
-/// offered -- the header (via `AccountStatus`) and the dashboard's own
-/// signed-out state both use this rather than duplicating the list.
+/// Every "sign in with <provider>" link, plus the email magic-link form,
+/// shown wherever signing in is offered -- the header (via
+/// `AccountStatus`) and the dashboard's own signed-out state both use this
+/// rather than duplicating the list.
+///
+/// The email form is a plain HTML form posting to `/auth/email/request`,
+/// not a server function call: like the oauth links, this needs the
+/// browser to actually navigate (to the "check your email" response
+/// page), not a client-side fetch.
 #[component]
 pub fn SignInLinks() -> Element {
     rsx! {
-        div { class: "flex flex-wrap gap-2",
+        div { class: "flex flex-wrap items-center gap-2",
             a { class: "btn btn-primary", href: "/auth/discord/authorize", "Sign in with discord" }
             a { class: "btn btn-primary", href: "/auth/github/authorize", "Sign in with github" }
+            form {
+                class: "flex items-center gap-2",
+                method: "post",
+                action: "/auth/email/request",
+                input {
+                    class: "input input-bordered",
+                    r#type: "email",
+                    name: "email",
+                    placeholder: "you@example.com",
+                    required: true,
+                }
+                button { class: "btn btn-primary", r#type: "submit", "Sign in with email" }
+            }
         }
     }
 }

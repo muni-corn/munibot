@@ -57,6 +57,13 @@ jsonschema = "0.49"
 # munibot_github/Cargo.toml) -- jsonwebtoken::EncodingKey has to be the
 # exact same type on both sides of octocrab's own `.app()` call
 jsonwebtoken = "10.4"
+# minimal feature set: smtp delivery and the message builder only, for
+# sending an email sign-in magic link -- no imap/maildir/file transports
+lettre = { version = "0.11.23", default-features = false, features = [
+  "smtp-transport",
+  "tokio1-native-tls",
+  "builder",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
   "env-filter",

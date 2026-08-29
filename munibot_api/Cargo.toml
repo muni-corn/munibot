@@ -36,6 +36,8 @@ tokio = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
+lettre = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -58,4 +60,6 @@ server = [
   "dep:tokio-util",
   "dep:base64",
   "dep:sha2",
+  "dep:lettre",
+  "dep:rand",
 ]
