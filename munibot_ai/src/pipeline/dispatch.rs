@@ -138,6 +138,10 @@ impl HarnessDispatcher {
 
 #[async_trait]
 impl AgentDispatcher for HarnessDispatcher {
+    #[tracing::instrument(
+        skip_all,
+        fields(role = ?role, conversation_id = context.conversation_id.0)
+    )]
     async fn invoke_agent(
         &self,
         role: AgentRole,

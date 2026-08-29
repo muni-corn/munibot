@@ -12,6 +12,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use futures::{StreamExt, stream::BoxStream};
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 
 use crate::{
     abuse::AbuseDetector,
@@ -277,26 +278,33 @@ fn spawn_title_generation(
 ) {
     let Some(generator) = generator else { return };
 
-    tokio::spawn(async move {
-        match generator.generate(&user_message, &assistant_reply).await {
-            Ok(title) => {
-                if let Err(error) = sessions.set_title(conversation_id, title).await {
+    let span = tracing::info_span!(
+        "generate_conversation_title",
+        conversation_id = conversation_id.0
+    );
+    tokio::spawn(
+        async move {
+            match generator.generate(&user_message, &assistant_reply).await {
+                Ok(title) => {
+                    if let Err(error) = sessions.set_title(conversation_id, title).await {
+                        tracing::warn!(
+                            %error,
+                            conversation_id = conversation_id.0,
+                            "couldn't save a generated conversation title"
+                        );
+                    }
+                }
+                Err(error) => {
                     tracing::warn!(
                         %error,
                         conversation_id = conversation_id.0,
-                        "couldn't save a generated conversation title"
+                        "couldn't generate a conversation title"
                     );
                 }
             }
-            Err(error) => {
-                tracing::warn!(
-                    %error,
-                    conversation_id = conversation_id.0,
-                    "couldn't generate a conversation title"
-                );
-            }
         }
-    });
+        .instrument(span),
+    );
 }
 
 impl Ai {
@@ -478,6 +486,15 @@ impl Ai {
     }
 
     /// Runs one full turn, returning only once it has finished.
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            persona = %req.persona_id,
+            user_id = req.user_id,
+            guild_id = ?req.guild_id,
+            platform = req.scope.platform.as_key(),
+        )
+    )]
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = match self.prepare(&req).await? {
             // already stored by `prepare` itself; nothing left to do but hand it back
@@ -577,6 +594,22 @@ impl Ai {
     /// `TurnFinished`) rather than a special case, so a consumer built
     /// against a normal turn's stream - the chat page, in particular -
     /// needs no separate handling for either.
+    ///
+    /// The span this carries covers only the synchronous setup below
+    /// (persona resolution, rate limiting, context assembly) - the stream
+    /// it returns keeps running well after this function itself returns,
+    /// and `tracing`'s own `Instrument` has no `Stream` support to extend
+    /// the span across that (only `Future`), unlike every `tokio::spawn`
+    /// call site in this crate.
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            persona = %req.persona_id,
+            user_id = req.user_id,
+            guild_id = ?req.guild_id,
+            platform = req.scope.platform.as_key(),
+        )
+    )]
     pub async fn turn_streamed(
         &self,
         req: AiTurnRequest,
@@ -704,6 +737,11 @@ impl Ai {
                             if let Some(gate) = moderation_gate.clone() {
                                 let text = assistant_text.clone();
                                 let safety_auditor = safety_auditor.clone();
+                                let span = tracing::info_span!(
+                                    "post_hoc_moderation_check",
+                                    conversation_id = conversation_id.0,
+                                    user_id,
+                                );
                                 tokio::spawn(async move {
                                     if let Err(error) = gate.check(moderation_policy, &text).await
                                     {
@@ -718,7 +756,7 @@ impl Ai {
                                         )
                                         .await;
                                     }
-                                });
+                                }.instrument(span));
                             }
 
                             if needs_title {
@@ -1119,6 +1157,10 @@ fn delegated_prompt_context() -> HashMap<String, String> {
 
 #[async_trait::async_trait]
 impl crate::tools::Delegator for Ai {
+    #[tracing::instrument(
+        skip_all,
+        fields(persona = %persona_id, delegation_depth = ctx.delegation_depth)
+    )]
     async fn delegate(
         &self,
         persona_id: &PersonaId,

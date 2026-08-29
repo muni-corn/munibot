@@ -82,6 +82,32 @@ impl DiscordEventHandler for AiChatHandler {
             return Ok(());
         }
 
+        self.respond_to_message(context, framework, msg, bot_id)
+            .await
+    }
+}
+
+impl AiChatHandler {
+    /// Everything past the cheap "is this even meant for the bot" gate in
+    /// [`DiscordEventHandler::handle_discord_event`] - split out purely so
+    /// this carries its own span, rather than one entered (and immediately
+    /// exited) for every single discord event of any kind this handler is
+    /// ever offered.
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            guild_id = ?msg.guild_id,
+            channel_id = %msg.channel_id,
+            user_id = msg.author.id.get(),
+        )
+    )]
+    async fn respond_to_message(
+        &mut self,
+        context: &Context,
+        framework: DiscordFrameworkContext<'_>,
+        msg: &poise::serenity_prelude::Message,
+        bot_id: UserId,
+    ) -> Result<(), DiscordHandlerError> {
         let db = framework.user_data().await.access().db().clone();
 
         // per-guild gating (milestone 6 phase 23): a dm has no guild_id and is

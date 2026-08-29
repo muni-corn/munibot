@@ -356,6 +356,7 @@ impl Executor {
     /// necessary, but it means this function has exactly one source of
     /// truth for "what state is this run in", the same one a restart
     /// would use to resume it.
+    #[tracing::instrument(skip_all, fields(pipeline_id = pipeline_id.0))]
     pub async fn run(&self, pipeline_id: PipelineId) -> Result<ExecutorOutcome, ExecutorError> {
         let mut sandbox_tools: Option<Arc<ToolRegistry>> = None;
 
@@ -420,6 +421,7 @@ impl Executor {
     /// persisted `UserInputReceived`, so a crash between an answer
     /// arriving and the next `run` starting resumes exactly where the
     /// event log says it should, the same as any other iteration.
+    #[tracing::instrument(skip_all, fields(pipeline_id = pipeline_id.0))]
     pub async fn run_with_interaction(
         &self,
         pipeline_id: PipelineId,

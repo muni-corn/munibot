@@ -87,6 +87,14 @@ impl Harness {
     /// cost (an `ai_usage` row, say) needs that even when the turn itself
     /// failed. `run_turn` is a plain wrapper over this that discards the
     /// second half of the tuple, so its own behaviour is unchanged.
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            model = %request.model,
+            conversation_id = request.ctx.conversation_id.0,
+            delegation_depth = request.ctx.delegation_depth,
+        )
+    )]
     pub async fn run_turn_recording_usage(
         &self,
         request: TurnRequest,
