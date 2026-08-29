@@ -92,6 +92,7 @@ fn persona_config(
         memory: MemoryPolicy::None,
         sandbox: SandboxPolicy::default(),
         delegable,
+        moderation_fail_closed: None,
     }
 }
 

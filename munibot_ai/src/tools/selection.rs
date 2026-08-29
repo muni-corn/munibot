@@ -109,6 +109,23 @@ impl ToolSelection {
             ToolSelector::Named(name) => name == tool_name,
         })
     }
+
+    /// Whether this selection explicitly reaches for `tier` as a whole - via
+    /// `"all"` or that tier's own shorthand.
+    ///
+    /// Deliberately coarser than [`Self::covers`]: a named tool that happens
+    /// to sit at `tier` without the tier itself being listed is not detected
+    /// here, since that would need the tool registry's own tier for every
+    /// name, which this type has no access to. Good enough for a sensible
+    /// default (see `crate::moderation::ModerationPolicy::default_for`),
+    /// never a security boundary on its own.
+    pub fn covers_tier_broadly(&self, tier: RiskTier) -> bool {
+        self.0.iter().any(|selector| match selector {
+            ToolSelector::All => true,
+            ToolSelector::Tier(selected) => *selected == tier,
+            ToolSelector::Named(_) => false,
+        })
+    }
 }
 
 impl<'de> Deserialize<'de> for ToolSelection {
@@ -221,6 +238,27 @@ mod tests {
         let selection: ToolSelection =
             serde_json::from_value(serde_json::json!([])).expect("should parse");
         assert!(!selection.covers("current_time", RiskTier::Safe));
+    }
+
+    #[test]
+    fn test_covers_tier_broadly_matches_an_explicit_tier_selector() {
+        let selection = ToolSelection::tier(RiskTier::Privileged);
+        assert!(selection.covers_tier_broadly(RiskTier::Privileged));
+        assert!(!selection.covers_tier_broadly(RiskTier::Safe));
+    }
+
+    #[test]
+    fn test_covers_tier_broadly_matches_all() {
+        let selection = ToolSelection::all();
+        assert!(selection.covers_tier_broadly(RiskTier::Privileged));
+    }
+
+    #[test]
+    fn test_covers_tier_broadly_ignores_a_named_tool_at_that_tier() {
+        // a coarse heuristic, not a security boundary - see the method's
+        // own doc comment for why a named tool alone doesn't count
+        let selection = ToolSelection::named(["some_privileged_tool"]);
+        assert!(!selection.covers_tier_broadly(RiskTier::Privileged));
     }
 
     #[test]

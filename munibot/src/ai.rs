@@ -21,6 +21,7 @@ use munibot_ai::{
         DieselSessionStore, GatedMemoryStore, MemoryStore, SessionStore, Summariser,
         TitleGenerator, TitlePersona, register_memory_tools,
     },
+    moderation::OpenAiModerator,
     persona::AiConfig,
     provider::ProviderResolver,
     tools::{DelegablePersona, DelegateTool, Delegator, DelegatorCell, ToolRegistry},
@@ -127,6 +128,18 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
         .with_rate_limiter(Arc::new(rate_limiter))
         .with_spend_cap_enforcer(Arc::new(spend_cap_enforcer))
         .with_abuse_detector(Arc::new(abuse_detector));
+
+    // opt-in: moderation only ever runs where a provider actually has an
+    // endpoint for it (today, only OpenAI) - see OpenAiModerator's own doc
+    // comment. Without OPENAI_API_KEY set at all, munibot boots exactly as
+    // it did before moderation existed, the same as every other with_*
+    // capability above.
+    match OpenAiModerator::from_env() {
+        Some(moderator) => ai = ai.with_moderator(Arc::new(moderator)),
+        None => {
+            info!("OPENAI_API_KEY isn't set; provider moderation is disabled for every persona")
+        }
+    }
 
     let providers = ProviderResolver::new();
     match default_persona_model(config) {

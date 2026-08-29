@@ -22,6 +22,7 @@ pub mod crisis;
 pub mod harness;
 pub mod limits;
 pub mod memory;
+pub mod moderation;
 pub mod persona;
 pub mod pipeline;
 pub mod provider;

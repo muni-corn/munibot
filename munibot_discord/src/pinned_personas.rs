@@ -81,6 +81,7 @@ mod tests {
             memory: MemoryPolicy::default(),
             sandbox: SandboxPolicy::default(),
             delegable: false,
+            moderation_fail_closed: None,
         });
         let config = AiConfig {
             enabled: true,

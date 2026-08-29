@@ -23,6 +23,7 @@ use crate::{
         CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
         TitleGenerator, assemble_context, compact_if_needed,
     },
+    moderation::ModerationGate,
     persona::{AiConfig, CrisisResourceConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
     provider::{Provider, ProviderRegistry, ProviderResolver, estimate_cost},
     tools::{ConversationId, RiskTier, ToolCtx, ToolRegistry},
@@ -120,6 +121,10 @@ struct PreparedTurn {
     /// the whole stream) actually finishes; see that type's own doc
     /// comment for why holding it is what "tears down afterwards" means.
     sandbox: Option<crate::sandbox::provision::ProvisionedSandbox>,
+    /// This persona's own moderation policy, carried out of `prepare` so
+    /// [`Ai::turn`]'s post-check doesn't need to look the persona back up
+    /// by id.
+    moderation_policy: crate::moderation::ModerationPolicy,
 }
 
 /// What [`Ai::prepare`] produces: either a normal turn ready to run through
@@ -196,6 +201,11 @@ pub struct Ai {
     /// prompts, a known injection phrasing, rapid persona switching) -
     /// exactly the behaviour every turn had before this existed.
     abuse_detector: Option<Arc<AbuseDetector>>,
+    /// `None` until [`Self::with_moderator`] enables it. Without it, no
+    /// inbound or outbound content is ever run through a provider's
+    /// moderation endpoint - exactly the behaviour every turn had before
+    /// this existed.
+    moderation_gate: Option<Arc<ModerationGate>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -322,6 +332,7 @@ impl Ai {
             rate_limiter: None,
             spend_cap_enforcer: None,
             abuse_detector: None,
+            moderation_gate: None,
         }
     }
 
@@ -429,6 +440,20 @@ impl Ai {
         self
     }
 
+    /// Enables running every turn's inbound message, and its outbound reply
+    /// where a check can still act on it in time (see [`Self::turn`]'s own
+    /// note on why [`Self::turn_streamed`] can only audit, not block, its
+    /// own outbound check), through a provider moderation endpoint.
+    ///
+    /// Each persona's own [`crate::moderation::ModerationPolicy`] (resolved
+    /// from its configuration) decides what a moderation *check* failing to
+    /// run means for that persona - flagged content itself always refuses,
+    /// regardless of persona.
+    pub fn with_moderator(mut self, moderator: Arc<dyn crate::moderation::Moderator>) -> Self {
+        self.moderation_gate = Some(Arc::new(ModerationGate::new(moderator)));
+        self
+    }
+
     /// Runs one full turn, returning only once it has finished.
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = match self.prepare(&req).await? {
@@ -479,6 +504,14 @@ impl Ai {
         let outcome = result?;
 
         if let Some(text) = &outcome.text {
+            // the outbound half of provider moderation - possible here in a
+            // way it is not in Self::turn_streamed, since nothing has been
+            // shown to anyone yet; a flagged or unmoderatable reply is
+            // simply never stored or returned
+            if let Some(gate) = &self.moderation_gate {
+                gate.check(prepared.moderation_policy, text).await?;
+            }
+
             self.sessions
                 .append(conversation_id, Message::assistant(text.clone()))
                 .await?;
@@ -544,6 +577,8 @@ impl Ai {
         let title_generator = self.title_generator.clone();
         let rate_limiter = self.rate_limiter.clone();
         let spend_cap_enforcer = self.spend_cap_enforcer.clone();
+        let moderation_gate = self.moderation_gate.clone();
+        let moderation_policy = prepared.moderation_policy;
         let rate_limit_scopes = prepared.rate_limit_scopes;
         let conversation_id = prepared.conversation_id;
         let persona_label = prepared.persona_label;
@@ -625,6 +660,17 @@ impl Ai {
                             let _ = sessions
                                 .append(conversation_id, Message::assistant(assistant_text.clone()))
                                 .await;
+
+                            // advisory only, and deliberately detached: unlike Ai::turn, the
+                            // reply has already streamed out by the time this could ever
+                            // resolve, so a flag here can only inform auditing, never stop
+                            // the user from having already seen it
+                            if let Some(gate) = moderation_gate.clone() {
+                                let text = assistant_text.clone();
+                                tokio::spawn(async move {
+                                    let _ = gate.check(moderation_policy, &text).await;
+                                });
+                            }
 
                             if needs_title {
                                 spawn_title_generation(
@@ -761,6 +807,13 @@ impl Ai {
                 .check(Scope::User(req.user_id), &req.message, &req.persona_id)
                 .await
                 .map_err(|error| AiError::Refused(error.to_string()))?;
+        }
+
+        // the inbound half of provider moderation; the outbound half runs
+        // in Self::turn once a reply actually exists (turn_streamed cannot
+        // block its own output the same way - see that method's own note)
+        if let Some(gate) = &self.moderation_gate {
+            gate.check(persona.moderation_policy, &req.message).await?;
         }
 
         let mut conversation = self
@@ -907,6 +960,7 @@ impl Ai {
             rate_limit_guards,
             rate_limit_scopes,
             sandbox,
+            moderation_policy: persona.moderation_policy,
         })))
     }
 
@@ -1250,6 +1304,7 @@ mod tests {
                 memory: MemoryPolicy::None,
                 sandbox: crate::persona::SandboxPolicy::default(),
                 delegable: false,
+                moderation_fail_closed: None,
             });
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
@@ -1295,6 +1350,7 @@ mod tests {
                 memory: MemoryPolicy::None,
                 sandbox: crate::persona::SandboxPolicy::Required,
                 delegable: true,
+                moderation_fail_closed: None,
             });
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
         let personas = PersonaRegistry::load(&config, &providers).expect("should resolve");
@@ -1336,6 +1392,7 @@ mod tests {
                 memory,
                 sandbox: crate::persona::SandboxPolicy::default(),
                 delegable: false,
+                moderation_fail_closed: None,
             });
 
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
@@ -1382,6 +1439,7 @@ mod tests {
                 memory,
                 sandbox: crate::persona::SandboxPolicy::default(),
                 delegable: false,
+                moderation_fail_closed: None,
             });
 
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
@@ -1427,6 +1485,7 @@ mod tests {
                 memory: MemoryPolicy::None,
                 sandbox: crate::persona::SandboxPolicy::default(),
                 delegable: false,
+                moderation_fail_closed: None,
             });
         config
             .personas
@@ -1444,6 +1503,7 @@ mod tests {
                 memory: MemoryPolicy::None,
                 sandbox: crate::persona::SandboxPolicy::default(),
                 delegable: true,
+                moderation_fail_closed: None,
             });
 
         let providers = ProviderRegistry::from_available(["anthropic".to_string()]);

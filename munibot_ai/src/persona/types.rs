@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     harness::{Budget, HandoffSchema},
+    moderation::ModerationPolicy,
     persona::PromptTemplate,
     provider,
     tools::ToolSelection,
@@ -78,6 +79,10 @@ pub struct Persona {
     /// by remembering to exclude it in every tool schema that lists
     /// candidates.
     pub delegable: bool,
+    /// What to do when a provider moderation check fails to run, resolved
+    /// once here from [`PersonaConfig::moderation_policy`] rather than
+    /// recomputed on every turn.
+    pub moderation_policy: ModerationPolicy,
 }
 
 impl Persona {
@@ -129,6 +134,7 @@ mod tests {
             memory: MemoryPolicy::default(),
             sandbox: SandboxPolicy::default(),
             delegable: false,
+            moderation_policy: ModerationPolicy::FailOpen,
         }
     }
 

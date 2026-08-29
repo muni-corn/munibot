@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     harness::Budget,
     limits::{RateLimitPolicy, ScopePolicies, SpendCapPolicies, SpendCapPolicy},
+    moderation::ModerationPolicy,
     persona::{MemoryPolicy, PersonaId, SandboxPolicy},
     tools::ToolSelection,
     types::{AiError, Cost, ModelRef},
@@ -254,6 +255,28 @@ pub struct PersonaConfig {
     /// see `Persona::delegable`.
     #[serde(default)]
     pub delegable: bool,
+    /// Whether a moderation *check* failing (never content actually
+    /// flagged - that always refuses) refuses this persona's turn outright
+    /// rather than letting it through with a warning. Unset resolves from
+    /// `tools` itself - see [`ModerationPolicy::default_for`] - so an
+    /// operator only ever needs to set this to override that default, not
+    /// to opt in to moderation existing at all (that only needs a
+    /// [`crate::moderation::Moderator`] configured at the service level).
+    #[serde(default)]
+    pub moderation_fail_closed: Option<bool>,
+}
+
+impl PersonaConfig {
+    /// Resolves [`Self::moderation_fail_closed`] to a real
+    /// [`ModerationPolicy`], falling back to [`ModerationPolicy::default_for`]
+    /// when unset.
+    pub fn moderation_policy(&self) -> ModerationPolicy {
+        match self.moderation_fail_closed {
+            Some(true) => ModerationPolicy::FailClosed,
+            Some(false) => ModerationPolicy::FailOpen,
+            None => ModerationPolicy::default_for(&self.tools),
+        }
+    }
 }
 
 /// The `[ai]` section of munibot's configuration file.

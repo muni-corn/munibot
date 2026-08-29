@@ -72,6 +72,7 @@ fn embedded_personas() -> HashMap<PersonaId, PersonaConfig> {
             memory: MemoryPolicy::None,
             sandbox: crate::persona::SandboxPolicy::default(),
             delegable,
+            moderation_fail_closed: None,
         }
     }
 
@@ -384,6 +385,7 @@ impl PersonaRegistry {
             memory: config.memory,
             sandbox: config.sandbox,
             delegable: config.delegable,
+            moderation_policy: config.moderation_policy(),
         })
     }
 
@@ -453,6 +455,7 @@ mod tests {
             memory: MemoryPolicy::default(),
             sandbox: SandboxPolicy::default(),
             delegable: false,
+            moderation_fail_closed: None,
         }
     }
 
