@@ -15,8 +15,9 @@ use thiserror::Error;
 
 use crate::{
     pipeline::{
-        AgentContext, AgentDispatcher, AgentRole, DispatchError, PipelineEvent, PipelineId,
-        PipelineState, PipelineStore, PipelineStoreError, SubtaskId, advance,
+        AgentContext, AgentDispatcher, AgentRole, DispatchError, InteractionAdapter,
+        InteractionError, PipelineEvent, PipelineId, PipelineState, PipelineStore,
+        PipelineStoreError, SubtaskId, advance,
     },
     tools::{ConversationId, ToolRegistry},
 };
@@ -40,6 +41,8 @@ pub enum ExecutorError {
     },
     #[error("couldn't provision a sandbox: {0}")]
     Sandbox(String),
+    #[error(transparent)]
+    Interaction(#[from] InteractionError),
 }
 
 /// Where a run stopped.
@@ -372,6 +375,41 @@ impl Executor {
             })?;
 
             self.store.append_event(pipeline_id, event).await?;
+        }
+    }
+
+    /// Runs `pipeline_id` all the way to a terminal state, resolving every
+    /// pause along the way through `adapter` -- what a caller that
+    /// actually wants a finished run (rather than "one leg of it, maybe
+    /// paused") should call.
+    ///
+    /// Each pause is a fresh `run` after the previous one already
+    /// persisted `UserInputReceived`, so a crash between an answer
+    /// arriving and the next `run` starting resumes exactly where the
+    /// event log says it should, the same as any other iteration.
+    pub async fn run_with_interaction(
+        &self,
+        pipeline_id: PipelineId,
+        adapter: &dyn InteractionAdapter,
+    ) -> Result<PipelineState, ExecutorError> {
+        loop {
+            match self.run(pipeline_id).await? {
+                ExecutorOutcome::Finished(state) => return Ok(state),
+                ExecutorOutcome::Paused(PipelineState::AwaitingUserInput { request, .. }) => {
+                    let answer = adapter.request_input(pipeline_id, &request).await?;
+                    self.store
+                        .append_event(pipeline_id, PipelineEvent::UserInputReceived {
+                            response: answer.response,
+                        })
+                        .await?;
+                }
+                // role_for_state only ever returns None for AwaitingUserInput
+                // or a terminal state, and terminal states are handled by
+                // the Finished arm above -- reachable only if that
+                // invariant is ever broken, so surfaced rather than looped
+                // on forever
+                ExecutorOutcome::Paused(other) => return Ok(other),
+            }
         }
     }
 }
@@ -764,5 +802,109 @@ mod tests {
 
         let outcome = executor.run(id).await.unwrap();
         assert_eq!(outcome, ExecutorOutcome::Finished(PipelineState::Complete));
+    }
+
+    #[tokio::test]
+    async fn test_run_with_interaction_resolves_a_pause_and_keeps_going_to_completion() {
+        use crate::pipeline::{InteractionResponse, MockInteractionAdapter};
+
+        let store = Arc::new(InMemoryPipelineStore::new());
+        let id = new_pipeline(&store).await;
+
+        let dispatcher = Arc::new(
+            MockAgentDispatcher::new()
+                .respond(ok_output(
+                    serde_json::to_value(IssueAnalysis {
+                        classification: IssueClassification::Bug,
+                        reproduction_status: ReproductionStatus::NoStepsProvided,
+                        summary: "not enough detail".to_string(),
+                        reproduction_details: String::new(),
+                        recommended_action: RecommendedAction::NeedsMoreInfo,
+                        relevant_files: vec![],
+                    })
+                    .unwrap(),
+                ))
+                .respond(ok_output(
+                    serde_json::to_value(IssueAnalysis {
+                        classification: IssueClassification::NotActionable,
+                        reproduction_status: ReproductionStatus::NotApplicable,
+                        summary: "actually just spam".to_string(),
+                        reproduction_details: String::new(),
+                        recommended_action: RecommendedAction::Skip,
+                        relevant_files: vec![],
+                    })
+                    .unwrap(),
+                )),
+        );
+        let sandbox = Arc::new(NoSandbox::new(Arc::new(ToolRegistry::new())));
+        let executor = Executor::new(store.clone(), dispatcher, sandbox);
+
+        let adapter = MockInteractionAdapter::new().answer(Ok(InteractionResponse::new(
+            "no steps, it's just spam actually",
+        )));
+
+        let final_state = executor.run_with_interaction(id, &adapter).await.unwrap();
+        assert_eq!(final_state, PipelineState::Complete);
+        assert_eq!(
+            adapter.requests().len(),
+            1,
+            "should have asked exactly once"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_with_interaction_resolves_multiple_pauses_in_sequence() {
+        use crate::pipeline::{InteractionResponse, MockInteractionAdapter};
+
+        let store = Arc::new(InMemoryPipelineStore::new());
+        let id = new_pipeline(&store).await;
+
+        // pauses on NeedsMoreInfo twice before finally proceeding
+        let dispatcher = Arc::new(
+            MockAgentDispatcher::new()
+                .respond(ok_output(
+                    serde_json::to_value(IssueAnalysis {
+                        classification: IssueClassification::Bug,
+                        reproduction_status: ReproductionStatus::NoStepsProvided,
+                        summary: "first question".to_string(),
+                        reproduction_details: String::new(),
+                        recommended_action: RecommendedAction::NeedsMoreInfo,
+                        relevant_files: vec![],
+                    })
+                    .unwrap(),
+                ))
+                .respond(ok_output(
+                    serde_json::to_value(IssueAnalysis {
+                        classification: IssueClassification::Bug,
+                        reproduction_status: ReproductionStatus::NoStepsProvided,
+                        summary: "second question".to_string(),
+                        reproduction_details: String::new(),
+                        recommended_action: RecommendedAction::NeedsMoreInfo,
+                        relevant_files: vec![],
+                    })
+                    .unwrap(),
+                ))
+                .respond(ok_output(
+                    serde_json::to_value(IssueAnalysis {
+                        classification: IssueClassification::NotActionable,
+                        reproduction_status: ReproductionStatus::NotApplicable,
+                        summary: "done".to_string(),
+                        reproduction_details: String::new(),
+                        recommended_action: RecommendedAction::Skip,
+                        relevant_files: vec![],
+                    })
+                    .unwrap(),
+                )),
+        );
+        let sandbox = Arc::new(NoSandbox::new(Arc::new(ToolRegistry::new())));
+        let executor = Executor::new(store.clone(), dispatcher, sandbox);
+
+        let adapter = MockInteractionAdapter::new()
+            .answer(Ok(InteractionResponse::new("first answer")))
+            .answer(Ok(InteractionResponse::new("second answer")));
+
+        let final_state = executor.run_with_interaction(id, &adapter).await.unwrap();
+        assert_eq!(final_state, PipelineState::Complete);
+        assert_eq!(adapter.requests().len(), 2);
     }
 }
