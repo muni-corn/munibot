@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::settings::{CHANNEL_MODE_ALLOWLIST, GuildAiSettings, SettingsResult};
+use crate::settings::{GuildAiSettings, SettingsResult};
 
 /// Returns a guild's ai settings.
 #[server(
@@ -59,12 +59,15 @@ pub async fn set_guild_ai_settings(
     use munibot_ai::persona::PersonaId;
     use munibot_core::db::operations::{self, ai as ai_ops};
 
-    use crate::{auth::guild::require_guild_admin, oauth::discord::bot};
+    use crate::{
+        auth::guild::require_guild_admin,
+        oauth::discord::bot,
+        settings::{CHANNEL_MODE_ALL, CHANNEL_MODE_ALLOWLIST},
+    };
 
     require_guild_admin(&auth, &pool, &guild_id).await?;
 
-    if settings.channel_mode != crate::settings::CHANNEL_MODE_ALL
-        && settings.channel_mode != CHANNEL_MODE_ALLOWLIST
+    if settings.channel_mode != CHANNEL_MODE_ALL && settings.channel_mode != CHANNEL_MODE_ALLOWLIST
     {
         return Err(
             anyhow::anyhow!("'{}' isn't a valid channel mode", settings.channel_mode).into(),

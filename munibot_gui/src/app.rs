@@ -6,7 +6,7 @@ use crate::{
         account::Account,
         chat::{Chat, ChatLayout, conversation::ChatConversation},
         dashboard::{Dashboard, DashboardIndex},
-        guild_settings::{GuildSettings, logging::LoggingSettingsPage},
+        guild_settings::{GuildSettings, ai::GuildAiSettingsPage, logging::LoggingSettingsPage},
         home::Home,
         memory::Memory,
         personas::Personas,
@@ -63,6 +63,11 @@ pub enum Route {
                 // collide with munibot_api::settings::GuildLoggingSettings
                 #[route("/dashboard/:guild_id/logging", LoggingSettingsPage)]
                 GuildLoggingSettings { guild_id: String },
+                // renders GuildAiSettingsPage rather than a component named
+                // GuildAiSettings, the same collision-avoidance reasoning
+                // GuildLoggingSettings's own doc comment documents
+                #[route("/dashboard/:guild_id/ai", GuildAiSettingsPage)]
+                GuildAiSettings { guild_id: String },
             #[end_layout]
             #[layout(ChatLayout)]
                 #[route("/chat")]

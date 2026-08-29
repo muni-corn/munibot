@@ -2,13 +2,10 @@ use dioxus::prelude::*;
 
 use crate::app::Route;
 
+pub mod ai;
 pub mod logging;
 
 /// Lists the settings sections available for a guild.
-///
-/// Only one section exists today (logging); this is the natural place to
-/// link to the next one (autodelete, twitch, github, ...) rather than
-/// changing the route structure when it arrives.
 #[component]
 pub fn GuildSettings(guild_id: String) -> Element {
     rsx! {
@@ -21,6 +18,14 @@ pub fn GuildSettings(guild_id: String) -> Element {
                             guild_id: guild_id.clone(),
                         },
                         "logging"
+                    }
+                }
+                li {
+                    Link {
+                        to: Route::GuildAiSettings {
+                            guild_id: guild_id.clone(),
+                        },
+                        "ai"
                     }
                 }
             }
