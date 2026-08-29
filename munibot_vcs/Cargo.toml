@@ -1,0 +1,16 @@
+[package]
+name = "munibot_vcs"
+description = "forge-agnostic version control types and traits for munibot's autonomous pipeline"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# no forge-specific dependency belongs here, ever -- see munibot_github for
+# the github app's own implementation of these traits.
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+url.workspace = true

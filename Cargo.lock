@@ -4797,6 +4797,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "munibot_vcs"
+version = "0.3.2"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "thiserror 2.0.19",
+ "url",
+]
+
+[[package]]
 name = "mysql_async"
 version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
