@@ -52,7 +52,10 @@ humantime = "2.1.0"
 humantime-serde = "1.1.1"
 ignore = "0.4"
 jsonschema = "0.49"
-jsonwebtoken = "11.0"
+# pinned to the major version octocrab itself depends on (see
+# munibot_github/Cargo.toml) -- jsonwebtoken::EncodingKey has to be the
+# exact same type on both sides of octocrab's own `.app()` call
+jsonwebtoken = "10.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
   "env-filter",
@@ -70,6 +73,7 @@ regex = "1"
 reqwest = { version = "0.12", features = ["json"] }
 rig-core = "0.41"
 schemars = "1.2"
+secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"
