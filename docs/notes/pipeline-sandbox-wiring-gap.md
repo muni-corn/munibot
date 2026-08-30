@@ -4,6 +4,12 @@ What the executor (`munibot_ai::pipeline::executor`) actually verified about
 sandbox lifecycle, and what it didn't - written down so it isn't discovered
 by surprise during rollout.
 
+**Still accurate as of writing, and now scheduled.** Everything described
+below as missing is planned in `docs/plans/ai/milestone-7-projects.md` phase
+26: the real `SandboxLifecycle` (commit 231), the launcher that constructs an
+`Executor` at all (232), webhook dispatch (233), resume at boot (236), and the
+`pipeline_id` columns that give a pipeline turn its own audit trail (229-230).
+
 ## What's verified
 
 - The executor's own loop mechanics: provisioning exactly once on entering
