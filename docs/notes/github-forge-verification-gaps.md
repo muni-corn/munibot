@@ -3,6 +3,11 @@
 What `munibot_github::GitHubForge` (phase 20) actually verified, and what it
 didn't - written down so it isn't discovered by surprise during rollout.
 
+**Still accurate as of writing, and now scheduled.** The `wiremock`-backed
+suite this note asks for is `docs/plans/ai/milestone-7-projects.md` commit
+242, covering exactly the three paths named at the bottom: `create_branch`'s
+idempotent reuse, `push`'s rejection path, and `open_pull_request`.
+
 ## What's verified
 
 - Token minting and its refresh-before-expiry cache
