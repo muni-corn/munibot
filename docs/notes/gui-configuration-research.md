@@ -16,6 +16,13 @@ and still useful, without the framework it was built to justify. See
 `git show gui:docs/plans/gui-configuration.md` for the full original if the
 proc-macro approach is ever worth revisiting at a much larger provider count.
 
+**Status:** several findings below have since been acted on, and each is
+marked inline rather than deleted -- the reasoning is often still the useful
+part even once the bug is gone. What is still outstanding: the two autodelete
+storage bugs, the missing `ON DELETE CASCADE` on `linked_accounts`, and the
+quote timestamp timezone. All four are scheduled in
+`docs/plans/ai/milestone-7-projects.md` phase 28.
+
 ## Existing settings surfaces (as of the fork point)
 
 | Scope                 | Storage             | Read                                                  | Write                                      |
@@ -24,33 +31,52 @@ proc-macro approach is ever worth revisiting at a much larger provider count.
 | Channel autodelete    | `autodelete_timers` | boot-load into a `HashMap`, `autodelete.rs:31-53`     | `autodelete.rs:55-107`, `:111-135`         |
 | Global bot config     | TOML file           | `Config::read_or_write_default_from`                  | none -- only writes the default            |
 
-All guild settings today are Discord-slash-command only, gated on
-`required_permissions = "MANAGE_GUILD"` (`admin.rs:28`). That gate is the
+At the fork point, all guild settings were Discord-slash-command only, gated
+on `required_permissions = "MANAGE_GUILD"` (`admin.rs:28`). That gate is the
 precedent a GUI equivalent must mirror.
 
-## Storage bugs found by this research (fix before adding columns)
+**Since then**, logging and AI settings both gained a GUI surface under
+`/dashboard/:guild_id` (`munibot_gui/src/pages/guild_settings/`), and the
+prediction above held: they mirror the slash-command gate through
+`munibot_api/src/auth/guild.rs::require_guild_admin` rather than reusing
+`is_administered_by_user`, which remains a display filter and not an
+authorization check. Autodelete is still slash-command only, and the two
+storage bugs below are the reason it should stay that way until they're
+fixed.
 
-- `upsert_guild_config` (`operations.rs:29`) uses MySQL `REPLACE INTO`, which
-  **deletes the row and reinserts it**, nulling every column not present in
-  the write. Adding a second guild setting alongside `logging_channel` would
-  silently erase the first on every save. Use
-  `on_conflict(...).do_update().set(...)` instead (`GuildConfig` already
-  derives `AsChangeset`).
-- `/admin stop-logging` (`admin.rs:107`) calls `delete_guild_config`, which
-  deletes the **whole row** -- not just the logging column. Any future
-  per-guild setting sharing that row would be wiped out too. It should
-  update `logging_channel` to `NULL` instead.
+## Storage bugs found by this research
+
+Two of the four are fixed. Two are still live.
+
+### Fixed
+
+- ~~`upsert_guild_config` uses MySQL `REPLACE INTO`, which deletes the row and
+  reinserts it, nulling every column not present in the write.~~ **Fixed.** It
+  now uses `on_conflict(DuplicatedKeys).do_update()` (`operations.rs:47`),
+  which is what made milestone 6's `ai_enabled`/`ai_default_persona`/
+  `ai_channel_mode` columns safe to add alongside `logging_channel`.
+- ~~`/admin stop-logging` calls `delete_guild_config`, which deletes the whole
+  row rather than just the logging column.~~ **Fixed.** It now calls
+  `set_guild_logging_channel(db, guild_id, None)` (`admin.rs:107-114`).
+  `delete_guild_config` still exists but has no caller outside its own test.
+
+### Still live
+
 - `AutoDeleteHandler` loads every timer into a `HashMap` once at boot
-  (`autodelete.rs:31-53`) and never re-reads. A GUI (or any external) write
+  (`autodelete.rs:30-53`) and never re-reads. A GUI (or any external) write
   straight to `autodelete_timers` would be invisible to the running bot
   until restart. Any settings surface touching autodelete-style cached state
   needs an invalidation hook, not just a database write.
-- `set_autodelete` (`autodelete.rs:62-73`) always writes
+- `set_autodelete` (`autodelete.rs:55-80`) always writes
   `last_cleaned: epoch` and `last_message_id_cleaned: 1` alongside the
-  duration/mode. Combined with `REPLACE INTO`, **editing an existing timer's
-  duration resets its sweep cursor to the beginning of time**, forcing a
-  full re-scan. Splitting settings columns from sweep-state columns (or at
-  minimum, not re-writing sweep state on a settings-only change) fixes this.
+  duration/mode. Combined with `upsert_autodelete_timer`'s `replace_into`
+  (`operations.rs:142`), **editing an existing timer's duration resets its
+  sweep cursor to the beginning of time**, forcing a full re-scan. Splitting
+  settings columns from sweep-state columns (or at minimum, not re-writing
+  sweep state on a settings-only change) fixes this.
+
+Both are planned as commits 249 and 250 in
+`docs/plans/ai/milestone-7-projects.md`.
 
 ## Authorization gap
 
@@ -74,6 +100,13 @@ guild-admin check are two different authorities, gating two different kinds
 of page, and neither substitutes for the other.
 
 ## Getting a channel list: the bot token, not the user's oauth token
+
+**Resolved, exactly as recommended below.** `get_guild_channels`
+(`munibot_api/src/server_fns/settings/channels.rs`) reads `DISCORD_TOKEN`
+straight from the environment and calls the REST API through
+`oauth/discord/bot.rs`, with no `GlobalAccess` plumbing and no dependency on
+the gateway being connected. The rest of this section is kept as the
+reasoning behind that choice.
 
 The OAuth scope granted at sign-in is `identify guilds`
 (`oauth/discord.rs:11`), which does **not** permit
@@ -106,9 +139,11 @@ snowflakes with no foreign key** to anything
 (`migrations/2026-02-28-.../up.sql:19,27`). A new per-user settings table
 must pick one explicitly and not reuse the column name to mean both.
 
-Recommendation: key a `user_settings` table on `users.id`, and reach it from
-a bot handler via the `(provider, provider_user_id)` unique index on
-`linked_accounts`. The cost of that join is fine as long as **cheap checks
+Recommendation, **since followed**: key a `user_settings` table on `users.id`,
+and reach it from a bot handler via the `(provider, provider_user_id)` unique
+index on `linked_accounts`. `ai_user_settings` and every other `ai_*` table
+does exactly this, with a real foreign key and `ON DELETE CASCADE`. The cost
+of that join is fine as long as **cheap checks
 run first** -- e.g. the greeting handler already regex-matches before doing
 anything else (`handlers/greeting.rs:31`), so a settings lookup only runs
 when someone actually triggers a greeting, not on every message. Most
@@ -125,12 +160,15 @@ compile-time separation** between them. Any server function exposing linked
 accounts to the client must map to a token-free DTO explicitly and have that
 mapping reviewed -- the model itself won't stop a mistake.
 
-There is currently no delete/unlink operation, no "list all linked accounts
-for a user" query, and the `linked_accounts.user_id` foreign key has no
-`ON DELETE CASCADE`. Since sign-in only ever reaches a `users` row through
-`linked_accounts`, unlinking a user's last provider would permanently orphan
-that row -- unlinking the final linked account needs to be blocked (or
-cascade into deleting the user, which is a bigger decision).
+**Partly resolved.** `list_linked_accounts` and `unlink_linked_account` both
+exist now (`operations.rs:650` and below), and unlinking the final linked
+account **is** blocked -- the "not the last one" check the paragraph below
+asked for. The `/account` page is the user-facing surface.
+
+Still open: `linked_accounts.user_id` has no `ON DELETE CASCADE`
+(`migrations/2026-07-10-.../up.sql:24`), so deleting a `users` row would
+orphan its links. Not reachable today, since nothing deletes a user, but the
+constraint is still missing.
 
 ## Display preferences
 
@@ -154,5 +192,6 @@ Pre-existing, unrelated bug noticed in passing: `munibot_twitch/src/handlers/quo
 stores `Local::now().naive_local()` for `quotes.created_at`, while every
 other table in the schema stores UTC (`Utc::now().naive_utc()`, e.g.
 `economy/payout.rs:38,73`). Worth fixing independently of any settings work;
-existing rows would need a decision on whether to backfill.
+existing rows would need a decision on whether to backfill. Planned as commit
+251 in `docs/plans/ai/milestone-7-projects.md`.
 </content>
