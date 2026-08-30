@@ -50,7 +50,7 @@ The following span boundaries are instrumented:
 
 | Location                                   | Span name / fields                                                   | Purpose                                                                                                                                                                                                                    |
 | ------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `munibot::main`                            | `discord{}`                                                          | Root span for the spawned Discord task                                                                                                                                                                                     |
+| `munibot::bot`                             | `discord{}`                                                          | Root span for the spawned Discord task                                                                                                                                                                                     |
 | `munibot_core::config`                     | `read_or_write_default_from{path}`                                   | Config file loading                                                                                                                                                                                                        |
 | `munibot_core::db`                         | `establish_pool{}`                                                   | DB pool creation                                                                                                                                                                                                           |
 | `munibot_core::db`                         | `run_pending_migrations{}`                                           | Diesel migrations                                                                                                                                                                                                          |
@@ -79,6 +79,19 @@ The following span boundaries are instrumented:
 | `munibot_ai::pipeline::executor`           | `run_with_interaction{pipeline_id}`                                  | A pipeline run through to a terminal state                                                                                                                                                                                 |
 | `munibot_ai::pipeline::dispatch`           | `invoke_agent{role, conversation_id}`                                | One pipeline agent's own turn                                                                                                                                                                                              |
 | `munibot_discord::handlers::ai`            | `respond_to_message{guild_id, channel_id, user_id}`                  | The ai chat handler, once a message is confirmed relevant                                                                                                                                                                  |
+| `munibot_gui::server::webhooks`            | `github_webhook{event_type}`                                         | One github webhook delivery, processed in a spawned task after the route has already answered `202`                                                                                                                        |
+
+## Known limitations
+
+Two places where a span does not cover as much as its name suggests. Both are noted inline at their
+own definitions too, but they are easy to trip over while reading output rather than code.
+
+- **`turn_streamed` covers setup only** — persona resolution, rate limiting, and context assembly.
+  The stream itself keeps producing events after the span has already closed, because `tracing`'s
+  `Instrument` extension supports `Future` and not `Stream`. Events emitted while a reply is
+  streaming therefore carry no `turn_streamed` context.
+- **`Passing::pass()` discards context** — see the section below. It records that _something_ failed,
+  not what was being attempted.
 
 ## Adding new spans
 
