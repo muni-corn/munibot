@@ -4,6 +4,15 @@ What milestone 4's implementation actually verified live, and the one
 combination it didn't - written down so it isn't discovered by surprise
 during rollout.
 
+**Still accurate as of writing, and now scheduled.** The unrun end-to-end
+chain is `docs/plans/ai/milestone-7-projects.md` commit 240, and eager
+`Optional` provisioning is closed by commits 206 and 218 there. Note that
+milestone 7 also changes the shape of the manual `podman build` at the bottom
+of this note: from commit 204 the tool agent is **mounted** into an image
+rather than baked into it, so the root `Containerfile` stops being a two-stage
+build and a project's own image can host the agent without knowing munibot
+exists.
+
 ## What's verified live, with real podman
 
 - Container lifecycle (`create`/`start`/`stop`/`remove`), the full security
