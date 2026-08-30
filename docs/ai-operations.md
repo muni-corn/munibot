@@ -41,13 +41,18 @@ local server.
 
 ### GitHub (two unrelated pairs -- do not confuse them)
 
-| Variable                     | Authenticates                                                            |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| `GITHUB_APP_ID`              | The autonomous pipeline itself, against repositories it's installed into |
-| `GITHUB_APP_PRIVATE_KEY`     | Same App, for minting installation tokens                                |
-| `GITHUB_WEBHOOK_SECRET`      | Verifying GitHub's own webhook deliveries                                |
-| `GITHUB_OAUTH_CLIENT_ID`     | A **separate** OAuth App, signing a human in ("sign in with github")     |
-| `GITHUB_OAUTH_CLIENT_SECRET` | Same OAuth App                                                           |
+| Variable                     | Authenticates                                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GITHUB_APP_ID`              | The autonomous pipeline itself, against repositories it's installed into                                 |
+| `GITHUB_APP_PRIVATE_KEY`     | Same App, for minting installation tokens                                                                |
+| `GITHUB_WEBHOOK_SECRET`      | Verifying GitHub's own webhook deliveries                                                                |
+| `GITHUB_BOT_LOGIN`           | Not a credential -- the App's own login, so munibot ignores its own comments. Defaults to `munibot[bot]` |
+| `GITHUB_OAUTH_CLIENT_ID`     | A **separate** OAuth App, signing a human in ("sign in with github")                                     |
+| `GITHUB_OAUTH_CLIENT_SECRET` | Same OAuth App                                                                                           |
+
+`GITHUB_BOT_LOGIN` is read at `munibot_gui/src/server.rs:67` but is **not yet declared in
+`secretspec.toml`** -- so `secretspec` will not prompt for it and will not warn about it. Set it in
+the environment directly until that's fixed.
 
 ### Email sign-in (optional; unset `SMTP_HOST` disables it entirely)
 
@@ -154,11 +159,32 @@ configuration, as a set of working examples.
   Operator-gated for any conversation; anyone can read their own. This is the fastest way to
   understand why a persona behaved oddly, or to investigate anything a safety event flagged.
 - **`/pipelines`** -- every autonomous pipeline run, live via SSE: state, current subtask, elapsed
-  time, and an abort button. `/pipelines/:id` shows one run's full event log.
+  time, and an abort button. `/pipelines/:id` shows one run's full event log. **Nothing can start a
+  run yet** -- see "the autonomous pipeline is not yet wired up" below. The page itself works; it
+  just has nothing to show.
 - **`/dashboard/:guild_id/ai`** -- per-guild: AI on/off, default persona, and a channel allowlist.
   Guild-admin gated, not operator-only -- a server owner manages their own server's settings here.
 - **`/account`** -- a signed-in user's own linked sign-in providers, with unlink buttons. Point a
   confused user here rather than doing it for them.
+
+## The autonomous pipeline is not yet wired up
+
+Everything this document says about pipelines describes a subsystem that is **fully built, fully
+tested, and has no production caller**. Concretely, as things stand:
+
+- Nothing in any binary constructs an `Executor`, so **no pipeline can start**. `WebhookConfig` is
+  hardcoded to `triggers: Vec::new()` and `dispatch: None` (`munibot_gui/src/server.rs:71-72`), so a
+  webhook delivery is verified, normalized, and then dropped for want of a trigger to match.
+- `PipelineRegistry::is_running` therefore always answers `false`, so `/pipelines` will list any rows
+  that exist but never show a run as live, and the abort button never renders.
+- `resume_all` exists but is **never called at boot**, so the resume behaviour described below does
+  not happen yet.
+- Nothing builds `munibot-sandbox:latest`. Until you run
+  `podman build -t munibot-sandbox:latest -f Containerfile .` by hand, every sandboxed persona fails
+  at container creation.
+
+`docs/plans/ai/milestone-7-projects.md` is the plan that closes all of this. Read `/pipelines` and
+the section below as documentation of intended behaviour, not of current behaviour.
 
 ## Aborting a pipeline
 
@@ -168,10 +194,12 @@ needed to stop). It cancels the pipeline's own turn and stops its container, and
 whether it was actually running here at all (aborting one already finished, or resumed by a
 different process, is a no-op, not an error).
 
-If the button doesn't work (the process that owns it crashed, say), the pipeline resumes
-automatically the next time munibot starts (every non-terminal pipeline is replayed from its own
-event log on boot) -- restarting the process is a valid, if blunt, way to regain control of a
-pipeline whose owning process is itself unresponsive.
+If the button doesn't work (the process that owns it crashed, say), the pipeline is _intended_ to
+resume automatically the next time munibot starts, every non-terminal pipeline being replayed from
+its own event log on boot -- which would make restarting the process a valid, if blunt, way to regain
+control of a pipeline whose owning process is itself unresponsive. **`resume_all` is not called at
+startup yet**, so today a restart leaves a non-terminal pipeline sitting in its last persisted state
+instead. See the section above.
 
 ## Safety systems
 
@@ -329,6 +357,9 @@ affect whether the safety check it's recording actually did its job.
 
 - `docs/plans/ai/milestone-6-hardening.md` -- the plan this document itself was written to satisfy
   (commit 199), and the plan for everything else in this milestone.
+- `docs/plans/ai/milestone-7-projects.md` -- projects, workspaces, and the wiring that makes the
+  pipeline sections above describe reality. Its opening table is the current, evidenced list of
+  everything in the AI stack that is built but not connected.
 - `docs/plans/ai/overview.md` -- the full architecture, including the "Risks" section this
   document exists to make actionable.
 - `docs/tracing.md` -- how to actually watch any of this happen, via `RUST_LOG`.
