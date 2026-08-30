@@ -39,8 +39,16 @@ prompts into an orchestration problem over known-good parts.
 | [4 — sandbox](milestone-4-sandbox.md)                        | munibot reads, writes, and runs code in a container                | 18–19  | 130–151 |
 | [5 — autonomous development](milestone-5-autonomous.md)      | munibot answers a GitHub issue with a working pull request         | 20–22  | 152–182 |
 | [6 — hardening](milestone-6-hardening.md)                    | Safe, affordable, and observable in public                         | 23     | 183–199 |
+| [7 — projects](milestone-7-projects.md)                      | He works in real repositories, and the pipeline actually runs      | 24–28  | 200–255 |
 
-Around 199 commits total. Each commit is one logical change that leaves the workspace compiling.
+Around 255 commits total. Each commit is one logical change that leaves the workspace compiling.
+
+Milestone 7 was not in the original six. It exists because milestones 4 and 5 both shipped a
+complete, fully tested subsystem with no production caller — a sandbox whose image nothing builds,
+and a pipeline nothing starts — and because the missing noun in both cases turned out to be the
+same one: a **project**, a git repository munibot keeps a checkout of, with **workspaces** (git
+worktrees) inside it and a container image the project itself describes. See
+[milestone 7](milestone-7-projects.md) for the full accounting of what is unwired and why.
 
 Commit numbers are sequence labels, not promises. Milestone 1 already landed three commits its own
 table never planned for, and each milestone's internal numbering is rebased against reality when work
