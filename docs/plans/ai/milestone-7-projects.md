@@ -76,12 +76,13 @@ design correction made cheaply instead of expensively.
 
 ```
 <ai.projects.root>/
-  cocoa/
-    repo.git/                     bare clone, the single source of objects
-    worktrees/
-      pipeline-142/               worktree on munibot/issue-17
-      chat-8891/                  worktree on munibot/chat-8891
-      scratch-a3f1/               worktree on the default branch
+  <munibot_user_id>/
+    cocoa/
+      repo.git/                     bare clone, the single source of objects
+      worktrees/
+        pipeline-142/               worktree on munibot/issue-17
+        chat-8891/                  worktree on munibot/chat-8891
+        scratch-a3f1/               worktree on the default branch
 ```
 
 A **project** is a git repository munibot has cloned. One row in `ai_projects`, one directory on
