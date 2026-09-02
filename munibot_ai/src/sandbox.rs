@@ -31,7 +31,14 @@
 //!
 //! - Rootless podman: the container runs as an unprivileged user mapped into a
 //!   user namespace.
-//! - No network by default; a persona must explicitly request it.
+//! - No network by default ([`config::NetworkPolicy::None`]).
+//!   [`config::NetworkPolicy::Full`] is the only implemented opt-in, and it is
+//!   full, unfiltered access - an explicit, documented weakening of isolation,
+//!   never the default. [`config::NetworkPolicy::Allowlist`] describes the
+//!   policy this sandbox actually wants (access limited to specific hosts,
+//!   proxied rather than granted directly) but fails loudly rather than
+//!   silently falling back to full access, since no filtering proxy exists yet
+//!   to point a container's only route at.
 //! - Read-only root filesystem, writable only at the repository path and
 //!   `/tmp`.
 //! - Dropped capabilities, `no-new-privileges`, and a seccomp profile.

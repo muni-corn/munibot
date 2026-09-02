@@ -114,7 +114,7 @@ impl Sandbox {
         let body = ContainerCreateBody {
             image: Some(self.config.image.clone()),
             cmd: (!cmd.is_empty()).then_some(cmd),
-            host_config: Some(self.build_host_config()),
+            host_config: Some(self.build_host_config()?),
             ..Default::default()
         };
 
@@ -132,19 +132,26 @@ impl Sandbox {
     /// milestone's own security posture call for: fractional CPUs via
     /// `nano_cpus`, a memory ceiling, a pids limit, every Linux capability
     /// dropped, `no-new-privileges`, a read-only root filesystem with a
-    /// writable `/tmp`, and no network unless the policy says otherwise.
-    fn build_host_config(&self) -> HostConfig {
+    /// writable `/tmp`, and network access exactly as narrow as the
+    /// configured [`NetworkPolicy`] - see the network table in
+    /// `docs/plans/ai/milestone-7-projects.md`.
+    ///
+    /// Fails for [`NetworkPolicy::Allowlist`]: no filtering proxy exists
+    /// yet to point the container's only route at, so this refuses to
+    /// silently grant full network the way it used to.
+    fn build_host_config(&self) -> Result<HostConfig, AiError> {
         let nano_cpus = (self.config.cpu_quota * 1_000_000_000.0).round() as i64;
 
-        // proxy-allowlisted network access is a real feature this commit
-        // does not build: for now, anything other than `None` gets a real
-        // network namespace, which is strictly more permissive than the
-        // allowlist a persona actually asked for. Tracked as a gap to close
-        // before any persona's policy allows network, rather than silently
-        // pretending an allowlist filters anything yet.
         let network_mode = match &self.config.network {
             NetworkPolicy::None => "none",
-            NetworkPolicy::Allowlist(_) => "bridge",
+            NetworkPolicy::Full => "bridge",
+            NetworkPolicy::Allowlist(hosts) => {
+                return Err(AiError::Other(format!(
+                    "NetworkPolicy::Allowlist({hosts:?}) isn't implemented yet :< no filtering \
+                     proxy exists to point the container's route at - use NetworkPolicy::None or \
+                     NetworkPolicy::Full instead"
+                )));
+            }
         };
 
         let mut binds = vec![format!(
@@ -155,7 +162,7 @@ impl Sandbox {
             binds.push(format!("{}:{WORKSPACE_MOUNT_PATH}:rw", host_path.display()));
         }
 
-        HostConfig {
+        Ok(HostConfig {
             nano_cpus: Some(nano_cpus),
             memory: Some(self.config.memory_limit_bytes as i64),
             pids_limit: Some(self.config.pids_limit),
@@ -169,7 +176,7 @@ impl Sandbox {
             binds: Some(binds),
             tmpfs: Some(HashMap::from([("/tmp".to_string(), String::new())])),
             ..Default::default()
-        }
+        })
     }
 
     /// This sandbox's configured workspace mount, if
@@ -462,7 +469,7 @@ mod tests {
     #[test]
     fn test_build_host_config_applies_the_security_posture() {
         let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
-        let host_config = sandbox.build_host_config();
+        let host_config = sandbox.build_host_config().expect("should build");
 
         assert_eq!(host_config.cap_drop, Some(vec!["ALL".to_string()]));
         assert_eq!(
@@ -477,7 +484,7 @@ mod tests {
     #[test]
     fn test_build_host_config_converts_cpu_quota_to_nano_cpus() {
         let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
-        let host_config = sandbox.build_host_config();
+        let host_config = sandbox.build_host_config().expect("should build");
         assert_eq!(host_config.nano_cpus, Some(500_000_000));
     }
 
@@ -485,7 +492,7 @@ mod tests {
     fn test_build_host_config_carries_the_memory_and_pids_limits() {
         let config = test_config("alpine:latest");
         let sandbox = Sandbox::with_docker(docker(), config.clone());
-        let host_config = sandbox.build_host_config();
+        let host_config = sandbox.build_host_config().expect("should build");
         assert_eq!(host_config.memory, Some(config.memory_limit_bytes as i64));
         assert_eq!(host_config.pids_limit, Some(config.pids_limit));
     }
@@ -494,7 +501,7 @@ mod tests {
     fn test_with_workspace_mount_adds_a_bind_mount() {
         let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"))
             .with_workspace_mount("/host/repo");
-        let host_config = sandbox.build_host_config();
+        let host_config = sandbox.build_host_config().expect("should build");
         let binds = host_config.binds.expect("should have binds");
         assert!(binds.contains(&format!("/host/repo:{WORKSPACE_MOUNT_PATH}:rw")));
     }
@@ -504,10 +511,31 @@ mod tests {
         let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
         let binds = sandbox
             .build_host_config()
+            .expect("should build")
             .binds
             .expect("the socket mount is always present");
         assert_eq!(binds.len(), 1);
         assert!(binds[0].ends_with(&format!(":{SOCKET_MOUNT_DIR}:rw")));
+    }
+
+    #[test]
+    fn test_full_network_policy_maps_to_bridge() {
+        let mut config = test_config("alpine:latest");
+        config.network = NetworkPolicy::Full;
+        let sandbox = Sandbox::with_docker(docker(), config);
+        let host_config = sandbox.build_host_config().expect("should build");
+        assert_eq!(host_config.network_mode, Some("bridge".to_string()));
+    }
+
+    #[test]
+    fn test_allowlist_network_policy_fails_loudly_instead_of_granting_full_network() {
+        let mut config = test_config("alpine:latest");
+        config.network = NetworkPolicy::Allowlist(vec!["api.example.com".to_string()]);
+        let sandbox = Sandbox::with_docker(docker(), config);
+        let error = sandbox
+            .build_host_config()
+            .expect_err("an allowlist should be refused, not silently widened to full network");
+        assert!(error.to_string().contains("Allowlist"));
     }
 
     #[test]

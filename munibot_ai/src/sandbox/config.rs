@@ -6,17 +6,29 @@ use std::time::Duration;
 /// Whether a sandbox's container may reach the network at all.
 ///
 /// Defaults to [`NetworkPolicy::None`] - a persona must explicitly request
-/// network access, and even then only through an allowlist, never open
-/// access. See `docs/plans/ai/milestone-4-sandbox.md`'s security posture
-/// section.
+/// network access, and even then the only real option today is
+/// [`NetworkPolicy::Full`], an explicit, documented weakening of isolation.
+/// See `docs/plans/ai/milestone-4-sandbox.md`'s security posture section
+/// and the network table in `docs/plans/ai/milestone-7-projects.md`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum NetworkPolicy {
     /// No network access at all - the container has no network namespace
-    /// reachable beyond loopback.
+    /// reachable beyond loopback. The default, and the only sensible
+    /// choice for untrusted generated code.
     #[default]
     None,
+    /// Full, unfiltered network access - podman's plain `bridge` mode. An
+    /// explicit per-project opt-in that weakens isolation; never the
+    /// default.
+    Full,
     /// Access limited to exactly these hosts, proxied rather than granted
     /// directly.
+    ///
+    /// **Not implemented yet.** No filtering proxy exists to point a
+    /// container's only route at, so [`crate::sandbox::Sandbox::create`]
+    /// fails loudly naming this variant rather than silently granting
+    /// full network the way it used to. See "decisions still open" in
+    /// `docs/plans/ai/milestone-7-projects.md`.
     Allowlist(Vec<String>),
 }
 
@@ -118,7 +130,7 @@ mod tests {
             NetworkPolicy::Allowlist(hosts) => {
                 assert_eq!(hosts, vec!["api.example.com".to_string()]);
             }
-            NetworkPolicy::None => panic!("expected an allowlist"),
+            NetworkPolicy::None | NetworkPolicy::Full => panic!("expected an allowlist"),
         }
     }
 }
