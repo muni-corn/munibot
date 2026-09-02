@@ -199,6 +199,33 @@ impl SandboxSettings {
                 .to_string(),
         ))
     }
+
+    /// Resolves to a real [`SandboxConfig`] the way [`Self::resolve`] does,
+    /// but also attempts [`Self::resolve_tool_agent_path`] and carries the
+    /// result.
+    ///
+    /// A resolution failure there is logged rather than propagated: not
+    /// every persona provisions a sandbox, so a missing tool agent binary
+    /// shouldn't stop this instance from booting at all. It surfaces
+    /// instead the first time a sandbox actually tries to use one - see
+    /// `docs/plans/ai/milestone-7-projects.md`, commit 206.
+    pub fn resolve_with_tool_agent(&self) -> SandboxConfig {
+        let tool_agent_path = match self.resolve_tool_agent_path() {
+            Ok(path) => Some(path),
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "couldn't resolve a tool agent path for the sandbox at startup"
+                );
+                None
+            }
+        };
+
+        SandboxConfig {
+            tool_agent_path,
+            ..self.resolve()
+        }
+    }
 }
 
 /// Everything a [`crate::sandbox::Sandbox`] needs to know to create and
@@ -440,6 +467,26 @@ mod tests {
         assert_eq!(
             resolved.unwrap(),
             PathBuf::from("/env/path/munibot_toolagent")
+        );
+
+        // resolve_with_tool_agent must never fail outright: a missing tool
+        // agent binary logs a warning and leaves tool_agent_path unset
+        // rather than stopping this instance from booting
+        // SAFETY: see above
+        unsafe { std::env::remove_var("MUNIBOT_TOOLAGENT_PATH") };
+        let config = settings.resolve_with_tool_agent();
+        assert_eq!(config.tool_agent_path, None);
+        assert_eq!(config.image, settings.image);
+
+        // when resolution succeeds, the path carries through
+        // SAFETY: see above
+        unsafe { std::env::set_var("MUNIBOT_TOOLAGENT_PATH", "/env/path/munibot_toolagent") };
+        let config = settings.resolve_with_tool_agent();
+        // SAFETY: see above
+        unsafe { std::env::remove_var("MUNIBOT_TOOLAGENT_PATH") };
+        assert_eq!(
+            config.tool_agent_path,
+            Some(PathBuf::from("/env/path/munibot_toolagent"))
         );
     }
 }

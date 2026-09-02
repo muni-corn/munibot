@@ -213,6 +213,11 @@ pub struct Ai {
     /// crisis trigger still happens exactly the same - only the durable
     /// `ai_safety_events` record of it is skipped.
     safety_auditor: Option<Arc<dyn SafetyEventAuditor>>,
+    /// The image, resource limits, network policy, and tool agent path
+    /// every sandbox this instance provisions uses. [`SandboxConfig::default`]
+    /// until [`Self::with_sandbox_config`] sets one - [`Self::new`] already
+    /// calls that from the [`AiConfig`] it was given.
+    sandbox_config: crate::sandbox::config::SandboxConfig,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -325,7 +330,8 @@ impl Ai {
         let personas = PersonaRegistry::load(config, &provider_registry)?;
         Ok(
             Self::from_parts(personas, tools, sessions, Arc::new(ProviderResolver::new()))
-                .with_crisis_resources(config.crisis_resources.clone()),
+                .with_crisis_resources(config.crisis_resources.clone())
+                .with_sandbox_config(config.sandbox.resolve_with_tool_agent()),
         )
     }
 
@@ -357,6 +363,7 @@ impl Ai {
             abuse_detector: None,
             moderation_gate: None,
             safety_auditor: None,
+            sandbox_config: crate::sandbox::config::SandboxConfig::default(),
         }
     }
 
@@ -414,6 +421,22 @@ impl Ai {
     /// without going through a config file at all.
     pub fn with_crisis_resources(mut self, resources: Vec<CrisisResourceConfig>) -> Self {
         self.crisis_resources = resources;
+        self
+    }
+
+    /// Sets the sandbox configuration every provisioned sandbox uses:
+    /// image, resource limits, network policy, and tool agent path.
+    ///
+    /// [`Self::new`] already calls this from the [`AiConfig`] it was
+    /// given (via
+    /// [`crate::sandbox::config::SandboxSettings::resolve_with_tool_agent`]);
+    /// this exists for [`Self::from_parts`] callers that build a service
+    /// without going through a config file at all. Closes the gap where
+    /// both production provisioning call sites hardcoded
+    /// `SandboxConfig::default()` regardless of what an operator
+    /// configured - see `docs/plans/ai/milestone-7-projects.md`, commit 205.
+    pub fn with_sandbox_config(mut self, config: crate::sandbox::config::SandboxConfig) -> Self {
+        self.sandbox_config = config;
         self
     }
 
@@ -1029,7 +1052,7 @@ impl Ai {
 
         let sandbox = crate::sandbox::provision::provision_if_needed(
             persona.sandbox,
-            crate::sandbox::config::SandboxConfig::default(),
+            self.sandbox_config.clone(),
             &self.tools,
         )
         .await?;
@@ -1192,7 +1215,7 @@ impl crate::tools::Delegator for Ai {
         // provisioning documents
         let sandbox = crate::sandbox::provision::provision_if_needed(
             persona.sandbox,
-            crate::sandbox::config::SandboxConfig::default(),
+            self.sandbox_config.clone(),
             &self.tools,
         )
         .await?;
@@ -3471,6 +3494,31 @@ mod tests {
             .await
             .expect("a Forbidden-sandbox persona's turn should never touch podman at all");
         assert_eq!(outcome.text, Some("hi".to_string()));
+    }
+
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_a_configured_sandbox_image_is_actually_used_not_the_hardcoded_default() {
+        // proves gap 12 stays closed: provisioning must fail naming *this*
+        // image, not silently fall back to SandboxConfig::default()'s
+        // "munibot-sandbox:latest" regardless of what was configured
+        let provider = Arc::new(MockProvider::new().respond_text("should never be reached"));
+        let ai = ai_with_required_sandbox(provider).with_sandbox_config(
+            crate::sandbox::config::SandboxConfig {
+                image: "definitely-does-not-exist-anywhere:latest".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let error = ai
+            .turn(request("builder", "do the thing"))
+            .await
+            .expect_err("provisioning an image that doesn't exist should fail the turn");
+        assert!(
+            error
+                .to_string()
+                .contains("definitely-does-not-exist-anywhere")
+        );
     }
 
     #[tokio::test]
