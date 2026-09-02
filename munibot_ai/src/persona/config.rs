@@ -7,6 +7,7 @@ use crate::{
     limits::{RateLimitPolicy, ScopePolicies, SpendCapPolicies, SpendCapPolicy},
     moderation::ModerationPolicy,
     persona::{MemoryPolicy, PersonaId, SandboxPolicy},
+    sandbox::config::SandboxSettings,
     tools::ToolSelection,
     types::{AiError, Cost, ModelRef},
 };
@@ -334,6 +335,13 @@ pub struct AiConfig {
     /// limit means "unlimited".
     #[serde(default)]
     pub abuse: AbuseConfig,
+    /// Container image, resource limits, network policy, and tool agent
+    /// path for every sandbox this instance provisions. Built-in defaults
+    /// apply even with no `[ai.sandbox]` section at all, matching
+    /// [`SandboxConfig::default`](crate::sandbox::config::SandboxConfig::default)
+    /// exactly.
+    #[serde(default)]
+    pub sandbox: SandboxSettings,
     /// How many levels deep a chain of delegations may go before the
     /// `delegate` tool refuses rather than starting another nested turn -
     /// see `ToolCtx::delegation_depth`. A companion delegating to a
@@ -372,6 +380,7 @@ impl Default for AiConfig {
             rate_limits: RateLimitConfig::default(),
             spend_caps: SpendCapConfig::default(),
             abuse: AbuseConfig::default(),
+            sandbox: SandboxSettings::default(),
             max_delegation_depth: default_max_delegation_depth(),
         }
     }

@@ -807,6 +807,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bytesize"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7354288c522e7e980fafd2075d63d1285794c3a6a16cdd492f189ea406e5f18b"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "cairo-rs"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4907,6 +4916,7 @@ dependencies = [
  "backon",
  "base64 0.23.1",
  "bollard",
+ "bytesize",
  "chrono",
  "chrono-tz",
  "decancer",
@@ -4924,6 +4934,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "strum",
  "thiserror 2.0.19",
  "tokio",
  "tokio-util",

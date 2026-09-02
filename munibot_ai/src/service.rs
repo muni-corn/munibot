@@ -1408,6 +1408,7 @@ mod tests {
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
+            sandbox: crate::sandbox::config::SandboxSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1454,6 +1455,7 @@ mod tests {
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
+            sandbox: crate::sandbox::config::SandboxSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1496,6 +1498,7 @@ mod tests {
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
+            sandbox: crate::sandbox::config::SandboxSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1543,6 +1546,7 @@ mod tests {
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
+            sandbox: crate::sandbox::config::SandboxSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1589,6 +1593,7 @@ mod tests {
             rate_limits: crate::persona::config::RateLimitConfig::default(),
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
+            sandbox: crate::sandbox::config::SandboxSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };

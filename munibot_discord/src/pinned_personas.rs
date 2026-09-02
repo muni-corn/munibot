@@ -92,6 +92,7 @@ mod tests {
             rate_limits: munibot_ai::persona::RateLimitConfig::default(),
             spend_caps: munibot_ai::persona::SpendCapConfig::default(),
             abuse: munibot_ai::persona::AbuseConfig::default(),
+            sandbox: munibot_ai::sandbox::config::SandboxSettings::default(),
             max_delegation_depth: 2,
             personas,
         };
