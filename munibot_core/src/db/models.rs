@@ -7,6 +7,7 @@ use crate::db::schema::{
 };
 
 pub mod ai;
+pub mod project;
 
 pub use ai::{
     AiAbuseCooldown, AiAttachment, AiAttachmentMeta, AiChannelAllowlistEntry, AiConversation,
@@ -15,6 +16,9 @@ pub use ai::{
     NewAiChannelAllowlistEntry, NewAiConversation, NewAiMemory, NewAiMessage, NewAiPipeline,
     NewAiPipelineEvent, NewAiRateLimit, NewAiSafetyEvent, NewAiSpendCap, NewAiToolCall, NewAiUsage,
     NewAiUserSettings,
+};
+pub use project::{
+    AiProject, AiWorkspace, NewAiProject, NewAiWorkspace, TouchAiWorkspace, UpdateAiProject,
 };
 
 // guild_configs

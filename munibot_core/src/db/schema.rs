@@ -55,6 +55,7 @@ diesel::table! {
         archived_at -> Nullable<Datetime>,
         created_at -> Datetime,
         last_active_at -> Datetime,
+        project_id -> Nullable<Bigint>,
     }
 }
 
@@ -106,6 +107,45 @@ diesel::table! {
         repo_name -> Varchar,
         issue_number -> Unsigned<Bigint>,
         created_at -> Datetime,
+        project_id -> Nullable<Bigint>,
+    }
+}
+
+diesel::table! {
+    ai_projects (id) {
+        id -> Bigint,
+        #[max_length = 64]
+        slug -> Varchar,
+        #[max_length = 255]
+        display_name -> Varchar,
+        #[max_length = 16]
+        forge -> Varchar,
+        #[max_length = 255]
+        repo_owner -> Varchar,
+        #[max_length = 255]
+        repo_name -> Varchar,
+        #[max_length = 1024]
+        clone_url -> Varchar,
+        #[max_length = 255]
+        default_branch -> Varchar,
+        #[max_length = 1024]
+        local_path -> Varchar,
+        #[max_length = 16]
+        image_strategy -> Varchar,
+        #[max_length = 255]
+        image_tag -> Nullable<Varchar>,
+        #[max_length = 16]
+        image_source_hash -> Nullable<Char>,
+        image_built_at -> Nullable<Datetime>,
+        image_error -> Nullable<Text>,
+        #[max_length = 16]
+        network_policy -> Varchar,
+        #[max_length = 16]
+        trigger_mode -> Nullable<Varchar>,
+        #[max_length = 255]
+        trigger_label -> Nullable<Varchar>,
+        created_at -> Datetime,
+        updated_at -> Datetime,
     }
 }
 
@@ -193,6 +233,23 @@ diesel::table! {
         memory_opt_in -> Bool,
         created_at -> Datetime,
         updated_at -> Datetime,
+    }
+}
+
+diesel::table! {
+    ai_workspaces (id) {
+        id -> Bigint,
+        project_id -> Bigint,
+        #[max_length = 255]
+        name -> Varchar,
+        #[max_length = 255]
+        branch -> Varchar,
+        #[max_length = 1024]
+        path -> Varchar,
+        pipeline_id -> Nullable<Bigint>,
+        conversation_id -> Nullable<Bigint>,
+        created_at -> Datetime,
+        last_used_at -> Datetime,
     }
 }
 
@@ -317,14 +374,17 @@ diesel::table! {
 
 diesel::joinable!(ai_attachments -> ai_conversations (conversation_id));
 diesel::joinable!(ai_attachments -> ai_messages (message_id));
+diesel::joinable!(ai_conversations -> ai_projects (project_id));
 diesel::joinable!(ai_conversations -> users (owner_user_id));
 diesel::joinable!(ai_memories -> users (user_id));
 diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
 diesel::joinable!(ai_pipeline_events -> ai_pipelines (pipeline_id));
+diesel::joinable!(ai_pipelines -> ai_projects (project_id));
 diesel::joinable!(ai_tool_calls -> ai_conversations (conversation_id));
 diesel::joinable!(ai_usage -> ai_conversations (conversation_id));
 diesel::joinable!(ai_usage -> users (user_id));
 diesel::joinable!(ai_user_settings -> users (user_id));
+diesel::joinable!(ai_workspaces -> ai_projects (project_id));
 diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
 diesel::joinable!(user_permissions -> users (user_id));
@@ -338,12 +398,14 @@ diesel::allow_tables_to_appear_in_same_query!(
     ai_messages,
     ai_pipeline_events,
     ai_pipelines,
+    ai_projects,
     ai_rate_limits,
     ai_safety_events,
     ai_spend_caps,
     ai_tool_calls,
     ai_usage,
     ai_user_settings,
+    ai_workspaces,
     autodelete_timers,
     community_links,
     email_signin_tokens,
