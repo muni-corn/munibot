@@ -44,6 +44,31 @@ in
     cargo test
   '';
 
+  scripts.build-toolagent.exec = ''
+    set -euo pipefail
+
+    echo "building static munibot_toolagent for x86_64-unknown-linux-musl..."
+
+    # the pinned nightly ICEs codegen'ing tokio for this target at
+    # opt-level 2/3 -- see docs/notes/projects-preflight-findings.md
+    RUSTFLAGS="-C opt-level=1" cargo build --release \
+      --target x86_64-unknown-linux-musl \
+      -p munibot_toolagent
+
+    bin="target/x86_64-unknown-linux-musl/release/munibot_toolagent"
+
+    # musl static-pie binaries report "statically linked"; fully static
+    # (non-pie) binaries report "not a dynamic executable" -- accept either,
+    # reject anything that names actual shared library dependencies
+    if ldd "$bin" 2>&1 | grep -qE "not a dynamic executable|statically linked"; then
+      echo "confirmed static: $bin"
+    else
+      echo "error: $bin is not statically linked:" >&2
+      ldd "$bin" >&2 || true
+      exit 1
+    fi
+  '';
+
   env = {
     RUST_LOG = "error,munibot=debug,munibot_api=debug,munibot_core=debug,munibot_discord=debug,munibot_gui=debug,munibot_twitch=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
@@ -123,7 +148,13 @@ in
       # mold.enable is off: it sets RUSTFLAGS=-C link-arg=-fuse-ld=mold
       # globally, which breaks the wasm32-unknown-unknown build (rust-lld
       # doesn't understand -fuse-ld, since wasm has no cc-style linker driver)
-      targets = [ "wasm32-unknown-unknown" ];
+      # x86_64-unknown-linux-musl builds munibot_toolagent as a static
+      # binary that can be bind-mounted into any container image (see
+      # docs/plans/ai/milestone-7-projects.md, commit 202/204)
+      targets = [
+        "wasm32-unknown-unknown"
+        "x86_64-unknown-linux-musl"
+      ];
     };
   };
 
@@ -204,4 +235,7 @@ in
   # that munibot is a dioxus app rather than a plain bot binary -- see
   # nix/build.nix. this replaced a crate2nix-based build.
   outputs.default = import ./nix/build.nix { inherit config pkgs; };
+  # the static musl tool agent, bind-mounted into sandbox containers -- see
+  # nix/toolagent.nix.
+  outputs.toolagent = import ./nix/toolagent.nix { inherit config pkgs; };
 }
