@@ -25,7 +25,10 @@ use crate::{
         TitleGenerator, assemble_context, compact_if_needed,
     },
     moderation::ModerationGate,
-    persona::{AiConfig, CrisisResourceConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry},
+    persona::{
+        AiConfig, CrisisResourceConfig, MemoryPolicy, Persona, PersonaId, PersonaRegistry,
+        SandboxPolicy,
+    },
     provider::{Provider, ProviderRegistry, ProviderResolver, estimate_cost},
     safety::{SafetyEvent, SafetyEventAuditor, SafetyEventType},
     tools::{ConversationId, RiskTier, ToolCtx, ToolRegistry},
@@ -268,6 +271,36 @@ fn rate_limit_scopes_for(req: &AiTurnRequest) -> Vec<Scope> {
     }
     scopes.push(Scope::User(req.user_id));
     scopes
+}
+
+/// Provisions a sandbox for one turn, letting [`SandboxPolicy::Optional`]
+/// degrade to no sandbox at all instead of failing the turn outright.
+///
+/// [`SandboxPolicy::Required`] still propagates a provisioning failure -
+/// the persona asked for a sandbox and cannot do its job without one, so a
+/// missing podman or a missing image must fail loudly rather than let a
+/// persona that thinks it can write files silently run without any. An
+/// `Optional` persona has no such assumption: it degrades to the base
+/// tool registry, with a warning naming the cause, so a coding-adjacent
+/// persona still answers on a machine with no podman rather than dying
+/// before the model has said a word. See
+/// `docs/plans/ai/milestone-7-projects.md`, commit 206.
+async fn provision_or_degrade(
+    policy: SandboxPolicy,
+    config: crate::sandbox::config::SandboxConfig,
+    base_tools: &Arc<ToolRegistry>,
+) -> Result<Option<crate::sandbox::provision::ProvisionedSandbox>, AiError> {
+    match crate::sandbox::provision::provision_if_needed(policy, config, base_tools).await {
+        Ok(sandbox) => Ok(sandbox),
+        Err(error) if policy == SandboxPolicy::Optional => {
+            tracing::warn!(
+                %error,
+                "an optional sandbox couldn't be provisioned - continuing without one"
+            );
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// A failure - the model, or saving the result - is logged and otherwise
@@ -1050,12 +1083,8 @@ impl Ai {
 
         let system = self.render_system_prompt(persona, req).await?;
 
-        let sandbox = crate::sandbox::provision::provision_if_needed(
-            persona.sandbox,
-            self.sandbox_config.clone(),
-            &self.tools,
-        )
-        .await?;
+        let sandbox =
+            provision_or_degrade(persona.sandbox, self.sandbox_config.clone(), &self.tools).await?;
         let tools = sandbox
             .as_ref()
             .map(|provisioned| provisioned.tools.clone())
@@ -1213,12 +1242,8 @@ impl crate::tools::Delegator for Ai {
         // held for the rest of this function - tears down once the
         // delegated turn finishes, the same reasoning Ai::prepare's own
         // provisioning documents
-        let sandbox = crate::sandbox::provision::provision_if_needed(
-            persona.sandbox,
-            self.sandbox_config.clone(),
-            &self.tools,
-        )
-        .await?;
+        let sandbox =
+            provision_or_degrade(persona.sandbox, self.sandbox_config.clone(), &self.tools).await?;
         let tools = sandbox
             .as_ref()
             .map(|provisioned| provisioned.tools.clone())
@@ -1465,10 +1490,10 @@ mod tests {
     }
 
     /// Builds an `Ai` with one persona, `builder`, whose `sandbox` policy
-    /// is [`crate::persona::SandboxPolicy::Required`] - for the sandbox
-    /// provisioning wiring tests, which need a persona actually configured
-    /// to trigger it rather than every other test's default `Forbidden`.
-    fn ai_with_required_sandbox(provider: Arc<dyn Provider>) -> Ai {
+    /// is `sandbox_policy` - for the sandbox provisioning wiring tests,
+    /// which need a persona actually configured to trigger it rather than
+    /// every other test's default `Forbidden`.
+    fn ai_with_sandbox_policy(provider: Arc<dyn Provider>, sandbox_policy: SandboxPolicy) -> Ai {
         let mut config = AiConfig {
             enabled: true,
             default_persona: Some(PersonaId::new("builder")),
@@ -1493,7 +1518,7 @@ mod tests {
                 tools: crate::tools::ToolSelection::none(),
                 budget: crate::persona::BudgetConfig::default(),
                 memory: MemoryPolicy::None,
-                sandbox: crate::persona::SandboxPolicy::Required,
+                sandbox: sandbox_policy,
                 delegable: true,
                 moderation_fail_closed: None,
             });
@@ -1506,6 +1531,12 @@ mod tests {
             Arc::new(InMemorySessionStore::new()),
             Arc::new(FixedProviderSource(provider)),
         )
+    }
+
+    /// Builds an `Ai` with one persona, `builder`, whose `sandbox` policy
+    /// is [`crate::persona::SandboxPolicy::Required`].
+    fn ai_with_required_sandbox(provider: Arc<dyn Provider>) -> Ai {
+        ai_with_sandbox_policy(provider, SandboxPolicy::Required)
     }
 
     /// Builds a real, offline-resolved [`PersonaRegistry`] with one persona
@@ -3538,5 +3569,27 @@ mod tests {
         // not asserting the exact message - only that a real attempt was
         // made and failed, rather than the turn quietly succeeding
         assert!(!error.to_string().is_empty());
+    }
+
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_an_optional_sandbox_policy_degrades_instead_of_failing_the_turn() {
+        // the same unbuildable image as the Required test above, but this
+        // persona's policy is Optional - the turn must still complete,
+        // continuing with the base tool registry rather than failing
+        // before the model has said a word
+        let provider = Arc::new(MockProvider::new().respond_text("hi anyway"));
+        let ai = ai_with_sandbox_policy(provider, SandboxPolicy::Optional).with_sandbox_config(
+            crate::sandbox::config::SandboxConfig {
+                image: "definitely-does-not-exist-anywhere:latest".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let outcome = ai
+            .turn(request("builder", "do the thing"))
+            .await
+            .expect("an Optional persona's turn must still complete when provisioning fails");
+        assert_eq!(outcome.text, Some("hi anyway".to_string()));
     }
 }
