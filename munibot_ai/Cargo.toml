@@ -26,7 +26,7 @@ munibot_core = { path = "../munibot_core" }
 munibot_vcs = { path = "../munibot_vcs" }
 reqwest.workspace = true
 rig-core.workspace = true
-schemars.workspace = true
+schemars = { workspace = true, features = ["chrono04"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

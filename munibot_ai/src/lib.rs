@@ -25,6 +25,7 @@ pub mod memory;
 pub mod moderation;
 pub mod persona;
 pub mod pipeline;
+pub mod project;
 pub mod provider;
 pub mod safety;
 pub mod sandbox;
