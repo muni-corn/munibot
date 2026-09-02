@@ -9,6 +9,7 @@ use bollard::{
     models::{ContainerCreateBody, HostConfig},
     query_parameters::{RemoveContainerOptions, StopContainerOptions},
 };
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     sandbox::config::{NetworkPolicy, SandboxConfig},
@@ -51,6 +52,10 @@ pub struct Sandbox {
     /// choose this path, so there is no `with_socket_mount` builder to
     /// match [`Self::with_workspace_mount`].
     socket_host_dir: PathBuf,
+    /// Cancelled when this sandbox tears down normally (`stop`, `remove`,
+    /// or `Drop`), so the wall-clock watchdog [`Self::start`] spawns never
+    /// outlives the container it watches.
+    wall_clock_watchdog: CancellationToken,
 }
 
 impl Sandbox {
@@ -76,6 +81,7 @@ impl Sandbox {
             container_id: None,
             workspace_mount: None,
             socket_host_dir: fresh_socket_host_dir(),
+            wall_clock_watchdog: CancellationToken::new(),
         }
     }
 
@@ -242,19 +248,72 @@ impl Sandbox {
         }
     }
 
-    /// Starts the created container.
+    /// Starts the created container, and arms a watchdog that force-stops
+    /// it after `config.wall_clock_limit` - a ceiling independent of
+    /// whatever budget the harness's own turn is running under, so a
+    /// wedged container (or a turn that never comes back to tear it down)
+    /// can never live forever. [`Self::stop`], [`Self::remove`], and
+    /// `Drop` all cancel the watchdog first, so a normal teardown never
+    /// races it.
     pub async fn start(&self) -> Result<(), AiError> {
         let id = self.require_id()?;
         self.docker
             .start_container(id, None)
             .await
-            .map_err(|error| AiError::Other(format!("couldn't start the sandbox :< {error}")))
+            .map_err(|error| AiError::Other(format!("couldn't start the sandbox :< {error}")))?;
+
+        self.arm_wall_clock_watchdog(id.to_string());
+        Ok(())
+    }
+
+    /// Spawns the task that stops this sandbox's container if
+    /// `config.wall_clock_limit` elapses before the watchdog is cancelled.
+    /// A no-op if no tokio runtime is current (matches [`Drop`]'s own
+    /// best-effort posture below) - `start` still succeeds either way,
+    /// since a missing watchdog is a lesser failure than refusing to start
+    /// the container at all.
+    fn arm_wall_clock_watchdog(&self, container_id: String) {
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            tracing::warn!(
+                container_id = %container_id,
+                "started a sandbox with no tokio runtime available to arm its wall-clock watchdog"
+            );
+            return;
+        };
+
+        let docker = self.docker.clone();
+        let limit = self.config.wall_clock_limit;
+        let watchdog = self.wall_clock_watchdog.clone();
+        handle.spawn(async move {
+            tokio::select! {
+                () = watchdog.cancelled() => {}
+                () = tokio::time::sleep(limit) => {
+                    tracing::warn!(
+                        container_id = %container_id,
+                        wall_clock_limit_secs = limit.as_secs(),
+                        "sandbox container exceeded its wall-clock limit, stopping it"
+                    );
+                    let options = StopContainerOptions {
+                        t: Some(STOP_TIMEOUT_SECS),
+                        ..Default::default()
+                    };
+                    if let Err(error) = docker.stop_container(&container_id, Some(options)).await {
+                        tracing::warn!(
+                            %error,
+                            container_id = %container_id,
+                            "wall-clock watchdog couldn't stop an overrunning sandbox container"
+                        );
+                    }
+                }
+            }
+        });
     }
 
     /// Stops the container, giving it [`STOP_TIMEOUT_SECS`] to exit on its
     /// own before podman escalates to `SIGKILL`.
     pub async fn stop(&self) -> Result<(), AiError> {
         let id = self.require_id()?;
+        self.wall_clock_watchdog.cancel();
         let options = StopContainerOptions {
             t: Some(STOP_TIMEOUT_SECS),
             ..Default::default()
@@ -267,6 +326,7 @@ impl Sandbox {
 
     /// Force-removes the container, whether or not it has already stopped.
     pub async fn remove(&mut self) -> Result<(), AiError> {
+        self.wall_clock_watchdog.cancel();
         let id = self.container_id.take().ok_or_else(|| {
             AiError::Other("this sandbox has no container to remove :<".to_string())
         })?;
@@ -337,6 +397,11 @@ impl Drop for Sandbox {
     /// podman's own garbage collection is still far better than a panic in
     /// a destructor.
     fn drop(&mut self) {
+        // cancel the wall-clock watchdog before anything else - a
+        // container this `Drop` is about to remove itself must never race
+        // a spawned watchdog task also trying to stop it
+        self.wall_clock_watchdog.cancel();
+
         // the socket directory is a plain host directory, cleaned up
         // synchronously regardless of whether a container ever existed -
         // unlike the container itself, there is no async daemon call
@@ -588,6 +653,65 @@ mod tests {
 
         sandbox.remove().await.expect("cleanup should succeed");
         std::fs::remove_dir_all(&host_dir).ok();
+    }
+
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_a_container_exceeding_its_wall_clock_limit_is_stopped() {
+        let mut config = test_config("alpine:latest");
+        config.wall_clock_limit = std::time::Duration::from_millis(300);
+        let mut sandbox = Sandbox::with_docker(docker(), config);
+
+        sandbox
+            .create(vec!["sleep".to_string(), "30".to_string()])
+            .await
+            .expect("should create");
+        sandbox.start().await.expect("should start");
+
+        // give the watchdog time to fire well past its 300ms deadline, but
+        // well short of the container's own 30s sleep finishing on its own
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        let inspected = sandbox
+            .docker
+            .inspect_container(
+                sandbox.container_id().unwrap(),
+                None::<bollard::query_parameters::InspectContainerOptions>,
+            )
+            .await
+            .expect("should inspect");
+        let running = inspected
+            .state
+            .as_ref()
+            .and_then(|state| state.running)
+            .unwrap_or(false);
+        assert!(
+            !running,
+            "a container that overran its wall-clock limit should have been stopped"
+        );
+
+        sandbox.remove().await.expect("cleanup should succeed");
+    }
+
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_a_normal_stop_cancels_the_watchdog_instead_of_racing_it() {
+        let mut config = test_config("alpine:latest");
+        config.wall_clock_limit = std::time::Duration::from_secs(30 * 60);
+        let mut sandbox = Sandbox::with_docker(docker(), config);
+
+        sandbox
+            .create(vec!["sleep".to_string(), "5".to_string()])
+            .await
+            .expect("should create");
+        sandbox.start().await.expect("should start");
+        sandbox.stop().await.expect("a normal stop should succeed");
+        assert!(
+            sandbox.wall_clock_watchdog.is_cancelled(),
+            "stop should cancel the watchdog rather than leave it armed"
+        );
+
+        sandbox.remove().await.expect("cleanup should succeed");
     }
 
     #[tokio::test]
