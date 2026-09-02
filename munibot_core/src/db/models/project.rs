@@ -46,8 +46,13 @@ pub struct AiProject {
     pub updated_at: NaiveDateTime,
 }
 
-/// Insertable shape for `ai_projects`.
-#[derive(Clone, Debug, Insertable)]
+/// Insertable and upsertable shape for `ai_projects` - `upsert_project`
+/// (see `operations::ai::project`) uses this both as the row to insert and,
+/// on a `slug` collision, the changeset to update with via
+/// `on_conflict(...).do_update()`, never `replace_into` - see
+/// `operations.rs`'s own note on why `replace_into` is a trap for a table
+/// with more than one concern's worth of columns.
+#[derive(Clone, Debug, Insertable, AsChangeset)]
 #[diesel(table_name = ai_projects)]
 pub struct NewAiProject {
     pub slug: String,

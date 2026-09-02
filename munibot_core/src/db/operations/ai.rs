@@ -11,6 +11,7 @@ pub mod attachment;
 pub mod guild_settings;
 pub mod limits;
 pub mod pipeline;
+pub mod project;
 pub mod safety;
 pub mod usage;
 
@@ -29,6 +30,11 @@ pub use limits::{
 pub use pipeline::{
     append_pipeline_event, create_pipeline, get_pipeline, list_pipeline_events, list_pipeline_ids,
     list_pipelines,
+};
+pub use project::{
+    create_workspace, delete_project, delete_workspace, get_project, get_project_by_slug,
+    get_workspace, get_workspace_by_name, list_projects, list_workspaces_for_project,
+    touch_workspace, update_project, upsert_project,
 };
 pub use safety::{list_safety_events, record_safety_event};
 pub use usage::{
