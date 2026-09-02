@@ -28,6 +28,13 @@ pub const SOCKET_MOUNT_DIR: &str = "/run/toolagent";
 /// mirror, [`Sandbox::socket_host_path`]).
 pub const SOCKET_FILENAME: &str = "agent.sock";
 
+/// Where the tool agent binary is bind-mounted inside the container when
+/// [`SandboxConfig::tool_agent_path`] is set. The container's entrypoint is
+/// overridden to run this path directly, which is what lets an image that
+/// has never heard of munibot still host the tool agent - see
+/// `docs/plans/ai/milestone-7-projects.md`, commit 204.
+pub const TOOL_AGENT_MOUNT_PATH: &str = "/munibot/toolagent";
+
 /// How long `stop` waits for the container to exit on its own before
 /// escalating to a kill signal.
 const STOP_TIMEOUT_SECS: i32 = 10;
@@ -101,6 +108,12 @@ impl Sandbox {
     /// and security limit from [`SandboxConfig`], with `cmd` as the
     /// entrypoint's arguments (empty uses the image's own default).
     ///
+    /// When [`SandboxConfig::tool_agent_path`] is set, the entrypoint is
+    /// overridden to [`TOOL_AGENT_MOUNT_PATH`] regardless of what the
+    /// image itself declares - see [`Self::build_host_config`] for the
+    /// bind mount this pairs with. `cmd` is still whatever the caller
+    /// passes (production callers pass [`Self::tool_agent_cmd`]).
+    ///
     /// Fails if this sandbox already has a container - each `Sandbox`
     /// value owns at most one container over its lifetime; a caller
     /// wanting a fresh one builds a fresh `Sandbox`.
@@ -111,8 +124,15 @@ impl Sandbox {
             ));
         }
 
+        let entrypoint = self
+            .config
+            .tool_agent_path
+            .is_some()
+            .then(|| vec![TOOL_AGENT_MOUNT_PATH.to_string()]);
+
         let body = ContainerCreateBody {
             image: Some(self.config.image.clone()),
+            entrypoint,
             cmd: (!cmd.is_empty()).then_some(cmd),
             host_config: Some(self.build_host_config()?),
             ..Default::default()
@@ -160,6 +180,12 @@ impl Sandbox {
         )];
         if let Some(host_path) = &self.workspace_mount {
             binds.push(format!("{}:{WORKSPACE_MOUNT_PATH}:rw", host_path.display()));
+        }
+        if let Some(tool_agent_path) = &self.config.tool_agent_path {
+            binds.push(format!(
+                "{}:{TOOL_AGENT_MOUNT_PATH}:ro",
+                tool_agent_path.display()
+            ));
         }
 
         Ok(HostConfig {
@@ -459,6 +485,7 @@ mod tests {
             disk_limit_bytes: None,
             network: NetworkPolicy::None,
             wall_clock_limit: std::time::Duration::from_secs(30),
+            tool_agent_path: None,
         }
     }
 
@@ -525,6 +552,32 @@ mod tests {
         let sandbox = Sandbox::with_docker(docker(), config);
         let host_config = sandbox.build_host_config().expect("should build");
         assert_eq!(host_config.network_mode, Some("bridge".to_string()));
+    }
+
+    #[test]
+    fn test_no_tool_agent_path_means_no_extra_bind_and_only_the_socket_mount() {
+        let sandbox = Sandbox::with_docker(docker(), test_config("alpine:latest"));
+        let binds = sandbox
+            .build_host_config()
+            .expect("should build")
+            .binds
+            .expect("the socket mount is always present");
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_tool_agent_path_adds_a_read_only_bind_mount() {
+        let mut config = test_config("alpine:latest");
+        config.tool_agent_path = Some(PathBuf::from("/host/munibot_toolagent"));
+        let sandbox = Sandbox::with_docker(docker(), config);
+        let binds = sandbox
+            .build_host_config()
+            .expect("should build")
+            .binds
+            .unwrap();
+        assert!(binds.contains(&format!(
+            "/host/munibot_toolagent:{TOOL_AGENT_MOUNT_PATH}:ro"
+        )));
     }
 
     #[test]
@@ -681,6 +734,61 @@ mod tests {
 
         sandbox.remove().await.expect("cleanup should succeed");
         std::fs::remove_dir_all(&host_dir).ok();
+    }
+
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_tool_agent_path_overrides_the_image_entrypoint_and_runs_the_mounted_binary() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+
+        let host_workspace =
+            std::env::temp_dir().join(format!("munibot_ai_tool_agent_mount_workspace_{nanos}"));
+        std::fs::create_dir_all(&host_workspace).unwrap();
+
+        // stands in for a real munibot_toolagent binary: a script that
+        // proves it ran (not the image's own entrypoint) by writing its
+        // arguments to the workspace mount, where the host can read them
+        // back after the container exits
+        let host_script_dir =
+            std::env::temp_dir().join(format!("munibot_ai_tool_agent_mount_script_{nanos}"));
+        std::fs::create_dir_all(&host_script_dir).unwrap();
+        let script_path = host_script_dir.join("fake-toolagent");
+        std::fs::write(
+            &script_path,
+            "#!/bin/sh\necho \"ran with args: $*\" > /workspace/output.txt\n",
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&script_path, perms).unwrap();
+
+        // an image with its own ENTRYPOINT, to prove the override actually
+        // beats it rather than merely never having one to beat in the
+        // first place
+        let mut config = test_config("alpine:latest");
+        config.tool_agent_path = Some(script_path);
+        let mut sandbox =
+            Sandbox::with_docker(docker(), config).with_workspace_mount(&host_workspace);
+
+        sandbox
+            .create(vec!["--socket".to_string(), "sock".to_string()])
+            .await
+            .expect("should create");
+        sandbox.start().await.expect("should start");
+
+        // give the script a moment to run and exit on its own
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        let output = std::fs::read_to_string(host_workspace.join("output.txt"))
+            .expect("the mounted script should have run and written its output");
+        assert_eq!(output.trim(), "ran with args: --socket sock");
+
+        sandbox.remove().await.expect("cleanup should succeed");
+        std::fs::remove_dir_all(&host_workspace).ok();
+        std::fs::remove_dir_all(&host_script_dir).ok();
     }
 
     #[tokio::test]

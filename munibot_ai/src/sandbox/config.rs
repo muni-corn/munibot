@@ -163,6 +163,10 @@ impl SandboxSettings {
             disk_limit_bytes: None,
             network: self.network.resolve(),
             wall_clock_limit: self.wall_clock_limit,
+            // resolved and threaded onto SandboxConfig by the caller (see
+            // commit 205) rather than here, since resolving the tool agent
+            // path can fail and this method's signature is infallible
+            tool_agent_path: None,
         }
     }
 
@@ -227,6 +231,20 @@ pub struct SandboxConfig {
     /// wedged container can never live forever even if the turn that
     /// started it never comes back to tear it down.
     pub wall_clock_limit: Duration,
+    /// The host path of a `munibot_toolagent` binary to bind-mount
+    /// read-only into the container at
+    /// [`crate::sandbox::container::TOOL_AGENT_MOUNT_PATH`], with the
+    /// container's entrypoint overridden to run it directly.
+    ///
+    /// `None` leaves the image's own entrypoint and bind mounts alone -
+    /// what every `Sandbox` used before this field existed, and what a
+    /// test exercising raw container mechanics (a resource limit, the
+    /// workspace mount, wall-clock enforcement) with an arbitrary command
+    /// still wants today. `Some` is what makes bring-your-own-image
+    /// possible at all: an image that has never heard of munibot still
+    /// hosts the tool agent, mounted rather than baked in. See
+    /// `docs/plans/ai/milestone-7-projects.md`, commit 204.
+    pub tool_agent_path: Option<PathBuf>,
 }
 
 impl Default for SandboxConfig {
@@ -239,6 +257,7 @@ impl Default for SandboxConfig {
             disk_limit_bytes: None,
             network: NetworkPolicy::default(),
             wall_clock_limit: Duration::from_secs(30 * 60),
+            tool_agent_path: None,
         }
     }
 }
