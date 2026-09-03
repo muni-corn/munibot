@@ -27,6 +27,7 @@ use tracing::info;
 use crate::app::App;
 
 mod attachments;
+pub mod pipeline_launcher;
 mod webhooks;
 
 /// Builds and serves the gui's axum app: the dioxus fullstack app, the

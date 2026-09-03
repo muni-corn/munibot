@@ -45,6 +45,8 @@ redis_pool = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 chrono.workspace = true
+octocrab = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 
 [dev-dependencies]
 hmac.workspace = true
@@ -62,6 +64,7 @@ server = [
   "dep:munibot_ai",
   "dep:munibot_vcs",
   "dep:munibot_github",
+  "dep:octocrab",
   "dep:anyhow",
   "dep:async-trait",
   "dep:axum",
@@ -71,6 +74,7 @@ server = [
   "dep:bytes",
   "dep:redis",
   "dep:redis_pool",
+  "dep:thiserror",
   "dep:tokio",
   "dep:tracing",
 ]
