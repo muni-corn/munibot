@@ -17,7 +17,7 @@ use schemars::JsonSchema;
 use serde_json::Value;
 
 use crate::{
-    sandbox::{protocol::ToolResult, rpc::RpcClient},
+    sandbox::{protocol::ToolResult, rpc::RpcClient, session::WorkspaceSession},
     tools::{RiskTier, Tool, ToolCtx, ToolOutcome, wrap_untrusted},
     types::ToolSchema,
 };
@@ -111,12 +111,12 @@ struct ReadArgs {
 }
 
 pub struct ReadTool {
-    session: Arc<SandboxSession>,
+    workspace: Arc<WorkspaceSession>,
 }
 
 impl ReadTool {
-    pub fn new(session: Arc<SandboxSession>) -> Self {
-        Self { session }
+    pub fn new(workspace: Arc<WorkspaceSession>) -> Self {
+        Self { workspace }
     }
 }
 
@@ -144,11 +144,15 @@ impl Tool for ReadTool {
             return ToolOutcome::fatal(error);
         }
 
+        let session = match self.workspace.sandbox_session().await {
+            Ok(session) => session,
+            Err(error) => return ToolOutcome::fatal(error),
+        };
         let path = path_argument(&input);
 
-        match call(&self.session, self.name(), input, READ_TIMEOUT, ctx).await {
+        match call(&session, self.name(), input, READ_TIMEOUT, ctx).await {
             Ok(text) => {
-                self.session.mark_read(&path);
+                session.mark_read(&path);
                 ToolOutcome::ok(wrap_untrusted(self.name(), &text))
             }
             Err(outcome) => outcome,
@@ -166,21 +170,21 @@ struct WriteArgs {
 /// Overwrites a file the session has not read are refused - see
 /// [`SandboxSession`]'s own doc comment.
 pub struct WriteTool {
-    session: Arc<SandboxSession>,
+    workspace: Arc<WorkspaceSession>,
 }
 
 impl WriteTool {
-    pub fn new(session: Arc<SandboxSession>) -> Self {
-        Self { session }
+    pub fn new(workspace: Arc<WorkspaceSession>) -> Self {
+        Self { workspace }
     }
 
     /// Whether `path` already exists in the repository, probed with a
     /// throwaway `read` call rather than a dedicated existence check the
     /// agent protocol has no verb for.
-    async fn exists(&self, path: &str, ctx: &ToolCtx) -> bool {
+    async fn exists(&self, session: &SandboxSession, path: &str, ctx: &ToolCtx) -> bool {
         let probe = serde_json::json!({"path": path, "limit": 1});
         matches!(
-            self.session
+            session
                 .client
                 .call("read", probe, READ_TIMEOUT, &ctx.cancellation)
                 .await,
@@ -214,18 +218,22 @@ impl Tool for WriteTool {
             return ToolOutcome::fatal(error);
         }
 
+        let session = match self.workspace.sandbox_session().await {
+            Ok(session) => session,
+            Err(error) => return ToolOutcome::fatal(error),
+        };
         let path = path_argument(&input);
 
-        if !self.session.has_read(&path) && self.exists(&path, ctx).await {
+        if !session.has_read(&path) && self.exists(&session, &path, ctx).await {
             return ToolOutcome::err(format!(
                 "{path:?} already exists and hasn't been read this session :< read it first so \
                  you don't overwrite something you haven't looked at"
             ));
         }
 
-        match call(&self.session, self.name(), input, WRITE_TIMEOUT, ctx).await {
+        match call(&session, self.name(), input, WRITE_TIMEOUT, ctx).await {
             Ok(text) => {
-                self.session.mark_read(&path);
+                session.mark_read(&path);
                 ToolOutcome::ok(text)
             }
             Err(outcome) => outcome,
@@ -243,12 +251,12 @@ struct EditArgs {
 }
 
 pub struct EditTool {
-    session: Arc<SandboxSession>,
+    workspace: Arc<WorkspaceSession>,
 }
 
 impl EditTool {
-    pub fn new(session: Arc<SandboxSession>) -> Self {
-        Self { session }
+    pub fn new(workspace: Arc<WorkspaceSession>) -> Self {
+        Self { workspace }
     }
 }
 
@@ -276,7 +284,12 @@ impl Tool for EditTool {
             return ToolOutcome::fatal(error);
         }
 
-        match call(&self.session, self.name(), input, EDIT_TIMEOUT, ctx).await {
+        let session = match self.workspace.sandbox_session().await {
+            Ok(session) => session,
+            Err(error) => return ToolOutcome::fatal(error),
+        };
+
+        match call(&session, self.name(), input, EDIT_TIMEOUT, ctx).await {
             Ok(text) => ToolOutcome::ok(text),
             Err(outcome) => outcome,
         }
@@ -291,12 +304,12 @@ struct GrepArgs {
 }
 
 pub struct GrepTool {
-    session: Arc<SandboxSession>,
+    workspace: Arc<WorkspaceSession>,
 }
 
 impl GrepTool {
-    pub fn new(session: Arc<SandboxSession>) -> Self {
-        Self { session }
+    pub fn new(workspace: Arc<WorkspaceSession>) -> Self {
+        Self { workspace }
     }
 }
 
@@ -324,7 +337,12 @@ impl Tool for GrepTool {
             return ToolOutcome::fatal(error);
         }
 
-        match call(&self.session, self.name(), input, GREP_TIMEOUT, ctx).await {
+        let session = match self.workspace.sandbox_session().await {
+            Ok(session) => session,
+            Err(error) => return ToolOutcome::fatal(error),
+        };
+
+        match call(&session, self.name(), input, GREP_TIMEOUT, ctx).await {
             Ok(text) => ToolOutcome::ok(wrap_untrusted(self.name(), &text)),
             Err(outcome) => outcome,
         }
@@ -338,12 +356,12 @@ struct GlobArgs {
 }
 
 pub struct GlobTool {
-    session: Arc<SandboxSession>,
+    workspace: Arc<WorkspaceSession>,
 }
 
 impl GlobTool {
-    pub fn new(session: Arc<SandboxSession>) -> Self {
-        Self { session }
+    pub fn new(workspace: Arc<WorkspaceSession>) -> Self {
+        Self { workspace }
     }
 }
 
@@ -371,7 +389,12 @@ impl Tool for GlobTool {
             return ToolOutcome::fatal(error);
         }
 
-        match call(&self.session, self.name(), input, GLOB_TIMEOUT, ctx).await {
+        let session = match self.workspace.sandbox_session().await {
+            Ok(session) => session,
+            Err(error) => return ToolOutcome::fatal(error),
+        };
+
+        match call(&session, self.name(), input, GLOB_TIMEOUT, ctx).await {
             Ok(text) => ToolOutcome::ok(wrap_untrusted(self.name(), &text)),
             Err(outcome) => outcome,
         }
@@ -391,12 +414,12 @@ struct BashArgs {
 /// describes: two calls to it in the same batch must never run at the same
 /// time.
 pub struct BashTool {
-    session: Arc<SandboxSession>,
+    workspace: Arc<WorkspaceSession>,
 }
 
 impl BashTool {
-    pub fn new(session: Arc<SandboxSession>) -> Self {
-        Self { session }
+    pub fn new(workspace: Arc<WorkspaceSession>) -> Self {
+        Self { workspace }
     }
 }
 
@@ -429,7 +452,12 @@ impl Tool for BashTool {
             return ToolOutcome::fatal(error);
         }
 
-        match call(&self.session, self.name(), input, BASH_TIMEOUT, ctx).await {
+        let session = match self.workspace.sandbox_session().await {
+            Ok(session) => session,
+            Err(error) => return ToolOutcome::fatal(error),
+        };
+
+        match call(&session, self.name(), input, BASH_TIMEOUT, ctx).await {
             Ok(text) => ToolOutcome::ok(wrap_untrusted(self.name(), &text)),
             Err(outcome) => outcome,
         }
@@ -496,7 +524,7 @@ mod tests {
         ))
     }
 
-    async fn session_with<F>(name: &str, respond: F) -> Arc<SandboxSession>
+    async fn session_with<F>(name: &str, respond: F) -> Arc<WorkspaceSession>
     where
         F: Fn(&ToolRequest) -> ToolResult + Send + Sync + 'static,
     {
@@ -507,18 +535,19 @@ mod tests {
         let client = RpcClient::connect(&path, Duration::from_secs(2))
             .await
             .expect("should connect");
-        SandboxSession::new(Arc::new(client))
+        WorkspaceSession::already_connected(SandboxSession::new(Arc::new(client)))
     }
 
     #[tokio::test]
     async fn test_read_tool_marks_the_path_as_read_on_success() {
-        let session = session_with("read_marks", |_| {
+        let workspace = session_with("read_marks", |_| {
             ToolResult::Ok("1: fn main() {}".to_string())
         })
         .await;
+        let session = workspace.sandbox_session().await.unwrap();
         assert!(!session.has_read("src/main.rs"));
 
-        let tool = ReadTool::new(Arc::clone(&session));
+        let tool = ReadTool::new(Arc::clone(&workspace));
         let outcome = tool
             .invoke(json!({"path": "src/main.rs"}), &ctx(RiskTier::Sandbox))
             .await;
@@ -631,13 +660,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_write_tool_marks_the_path_as_read_after_a_successful_write() {
-        let session = session_with("write_marks_read", |request| match request.tool.as_str() {
+        let workspace = session_with("write_marks_read", |request| match request.tool.as_str() {
             "read" => ToolResult::Err("not found".to_string()),
             _ => ToolResult::Ok("wrote 5 bytes".to_string()),
         })
         .await;
 
-        let write_tool = WriteTool::new(Arc::clone(&session));
+        let write_tool = WriteTool::new(Arc::clone(&workspace));
         write_tool
             .invoke(
                 json!({"path": "brand_new.rs", "content": "hi"}),
@@ -645,6 +674,7 @@ mod tests {
             )
             .await;
 
+        let session = workspace.sandbox_session().await.unwrap();
         assert!(
             session.has_read("brand_new.rs"),
             "a file just written should count as read for any later overwrite this session"
@@ -759,8 +789,8 @@ mod tests {
         let client = RpcClient::connect(&path, Duration::from_secs(2))
             .await
             .expect("should connect");
-        let session = SandboxSession::new(Arc::new(client));
-        let tool = ReadTool::new(session);
+        let workspace = WorkspaceSession::already_connected(SandboxSession::new(Arc::new(client)));
+        let tool = ReadTool::new(workspace);
 
         let outcome = tool
             .invoke(json!({"path": "f.rs"}), &ctx(RiskTier::Sandbox))

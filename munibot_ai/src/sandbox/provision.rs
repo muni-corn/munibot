@@ -1,115 +1,93 @@
 //! Provisions a sandbox for one turn, according to a persona's
 //! [`SandboxPolicy`].
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use crate::{
     persona::SandboxPolicy,
     sandbox::{
         config::SandboxConfig,
-        container::Sandbox,
-        tools::{BashTool, EditTool, GlobTool, GrepTool, ReadTool, SandboxSession, WriteTool},
+        session::WorkspaceSession,
+        tools::{BashTool, EditTool, GlobTool, GrepTool, ReadTool, WriteTool},
     },
     tools::{Tool, ToolRegistry},
     types::AiError,
 };
 
-/// How long [`provision_if_needed`] waits for the tool agent's socket to
-/// become connectable after starting the container.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-
 /// A sandbox provisioned for one turn: the six sandbox tools already
-/// layered onto whatever base registry the turn would otherwise use.
+/// layered onto whatever base registry the turn would otherwise use,
+/// bound to a [`WorkspaceSession`] that provisions lazily - see that
+/// type's own doc comment for what "provisioned" means here and why
+/// nothing is actually created yet.
 ///
 /// Holding this alive for the turn's own duration - never storing it on
-/// `Ai` itself - is what "tears down afterwards" means: the container and
-/// its host-side workspace directory are cleaned up (the container via
-/// [`Sandbox`]'s own best-effort `Drop`, the workspace directory via this
-/// type's) the moment nothing references this any more.
+/// `Ai` itself - is what "tears down afterwards" means: whatever
+/// container the session ends up provisioning, and its host-side
+/// workspace directory, are cleaned up the moment nothing references this
+/// any more.
 pub struct ProvisionedSandbox {
     /// The base registry with the six sandbox tools added on top.
     pub tools: Arc<ToolRegistry>,
-    // ordering matters for Drop: the container is torn down before the
-    // workspace directory it was bind-mounted from is removed out from
-    // under it, since struct fields drop top-to-bottom
-    _sandbox: Sandbox,
-    _workspace: WorkspaceGuard,
+    session: Arc<WorkspaceSession>,
 }
 
-/// Removes the host-side checkout directory a [`Sandbox`] borrowed as its
-/// workspace mount, once nothing needs it any more.
-///
-/// [`Sandbox`] itself only ever cleans up the socket directory it
-/// generated - the workspace directory came from the caller (this
-/// module), so cleaning it up is this module's job too.
-struct WorkspaceGuard(PathBuf);
-
-impl Drop for WorkspaceGuard {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).ok();
+impl ProvisionedSandbox {
+    /// Forces the underlying [`WorkspaceSession`] to provision right now,
+    /// instead of waiting for the first sandboxed tool call. What
+    /// [`crate::persona::SandboxPolicy::Required`] uses (see `Ai::prepare`)
+    /// to keep failing the turn immediately when a sandbox can't actually
+    /// be created, rather than only discovering that on the model's first
+    /// tool call - the one piece of eagerness this milestone's own laziness
+    /// deliberately keeps, because "required" means the persona cannot do
+    /// its job at all without one.
+    pub async fn force_provision(&self) -> Result<(), AiError> {
+        self.session.sandbox_session().await?;
+        Ok(())
     }
 }
 
-/// Provisions a sandbox and layers its six tools onto `base_tools`, unless
-/// `policy` is [`SandboxPolicy::Forbidden`].
+/// Adds the six sandbox tools, bound to a fresh [`WorkspaceSession`], onto
+/// `base_tools`, unless `policy` is [`SandboxPolicy::Forbidden`].
 ///
-/// [`SandboxPolicy::Optional`] is provisioned exactly as eagerly as
-/// [`SandboxPolicy::Required`] here - true lazy provisioning (nothing
-/// created until the first sandbox tool call actually happens) is a scoped
-/// -down simplification tracked in
-/// `docs/notes/sandbox-verification-gaps.md`, not yet built.
+/// Provisions nothing eagerly: a [`WorkspaceSession`] only reserves a
+/// scratch workspace directory at construction, so this always succeeds
+/// immediately for [`SandboxPolicy::Optional`] and
+/// [`SandboxPolicy::Required`] alike (barring a filesystem error) - the
+/// tools are present in the schema from the very first moment a turn
+/// starts, and a real container is only created the first time one of
+/// them is actually called. See `docs/plans/ai/milestone-7-projects.md`,
+/// commit 218, for why this resolves gap 9 more completely than the
+/// eager-vs-degrade distinction alone could.
 ///
 /// Nothing is checked out into the workspace here - that is
-/// [`Sandbox::checkout`]'s job, and needs a repository to check out that
-/// this function has no source for yet (a chat-delegated turn has no
-/// issue or pull request behind it; that context arrives with the
-/// pipeline in milestone 5). A sandbox provisioned this way starts with an
-/// empty workspace a persona can still `write`/`bash` its way through.
+/// [`crate::sandbox::container::Sandbox::checkout`]'s job, and needs a
+/// repository to check out that this function has no source for yet (a
+/// chat-delegated turn has no issue or pull request behind it). A
+/// sandbox provisioned this way starts with an empty workspace a persona
+/// can still `write`/`bash` its way through.
 pub async fn provision_if_needed(
     policy: SandboxPolicy,
     config: SandboxConfig,
     base_tools: &Arc<ToolRegistry>,
 ) -> Result<Option<ProvisionedSandbox>, AiError> {
-    if policy == crate::persona::SandboxPolicy::Forbidden {
+    if policy == SandboxPolicy::Forbidden {
         return Ok(None);
     }
 
-    let workspace = std::env::temp_dir().join(format!(
-        "munibot-sandbox-workspace-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&workspace).map_err(|error| {
-        AiError::Other(format!("couldn't prepare a sandbox workspace :< {error}"))
-    })?;
-    let workspace_guard = WorkspaceGuard(workspace.clone());
+    let session = WorkspaceSession::new(config)?;
+    let tools = Arc::new(base_tools.with_overlay(sandboxed_tools(Arc::clone(&session))));
 
-    let mut sandbox = Sandbox::new(config)?.with_workspace_mount(&workspace);
-    let cmd = sandbox.tool_agent_cmd();
-    sandbox.create(cmd).await?;
-    sandbox.start().await?;
-    let client = Arc::new(sandbox.connect_tool_agent(CONNECT_TIMEOUT).await?);
-
-    let session = SandboxSession::new(client);
-    let tools = Arc::new(base_tools.with_overlay(sandboxed_tools(session)));
-
-    Ok(Some(ProvisionedSandbox {
-        tools,
-        _sandbox: sandbox,
-        _workspace: workspace_guard,
-    }))
+    Ok(Some(ProvisionedSandbox { tools, session }))
 }
 
-fn sandboxed_tools(session: Arc<SandboxSession>) -> [Arc<dyn Tool>; 6] {
+fn sandboxed_tools(workspace: Arc<WorkspaceSession>) -> [Arc<dyn Tool>; 6] {
     [
-        Arc::new(ReadTool::new(Arc::clone(&session))),
-        Arc::new(WriteTool::new(Arc::clone(&session))),
-        Arc::new(EditTool::new(Arc::clone(&session))),
-        Arc::new(GrepTool::new(Arc::clone(&session))),
-        Arc::new(GlobTool::new(Arc::clone(&session))),
-        Arc::new(BashTool::new(session)),
+        Arc::new(ReadTool::new(Arc::clone(&workspace))),
+        Arc::new(WriteTool::new(Arc::clone(&workspace))),
+        Arc::new(EditTool::new(Arc::clone(&workspace))),
+        Arc::new(GrepTool::new(Arc::clone(&workspace))),
+        Arc::new(GlobTool::new(Arc::clone(&workspace))),
+        Arc::new(BashTool::new(workspace)),
     ]
 }
 
@@ -126,52 +104,30 @@ mod tests {
         assert!(result.is_none());
     }
 
-    /// Combines both assertions - the connect failure itself, and that its
-    /// scratch workspace directory is cleaned up regardless - in one test
-    /// rather than two, since counting `munibot-sandbox-workspace-*`
-    /// directories in the shared system temp dir is inherently racy
-    /// against any *other* test doing the same thing concurrently.
+    /// The whole point of commit 218: this must succeed immediately, with
+    /// no podman involved at all, regardless of whether `config.image`
+    /// could ever actually be provisioned - a broken image only fails the
+    /// first sandboxed tool call that actually needs it (see
+    /// `crate::sandbox::session`'s own tests for that half).
     #[tokio::test]
-    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
-    async fn test_a_failed_provision_still_cleans_up_its_workspace_directory() {
+    async fn test_optional_and_required_policies_provision_immediately_without_touching_podman() {
         let base = Arc::new(ToolRegistry::new());
         let config = SandboxConfig {
-            image: "alpine:latest".to_string(),
+            image: "definitely-does-not-exist-anywhere:latest".to_string(),
             ..Default::default()
         };
 
-        let workspaces_before = matching_workspace_dirs();
-
-        // alpine has no munibot_toolagent baked in, so connecting will
-        // fail - this exercises provisioning up through container start,
-        // not a full working tool agent (that needs the real
-        // Containerfile image; see docs/notes/sandbox-verification-gaps.md)
-        let result = provision_if_needed(SandboxPolicy::Required, config, &base).await;
-        assert!(
-            result.is_err(),
-            "connecting to a tool agent that was never started should fail cleanly, not hang"
-        );
-
-        let new_workspaces: Vec<_> = matching_workspace_dirs()
-            .into_iter()
-            .filter(|dir| !workspaces_before.contains(dir))
-            .collect();
-        assert!(
-            new_workspaces.is_empty(),
-            "a failed provision should leave no scratch workspace directory behind, found \
-             {new_workspaces:?}"
-        );
-    }
-
-    fn matching_workspace_dirs() -> Vec<std::ffi::OsString> {
-        std::fs::read_dir(std::env::temp_dir())
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.file_name())
-            .filter(|name| {
-                name.to_string_lossy()
-                    .starts_with("munibot-sandbox-workspace-")
-            })
-            .collect()
+        for policy in [SandboxPolicy::Optional, SandboxPolicy::Required] {
+            let provisioned = provision_if_needed(policy, config.clone(), &base)
+                .await
+                .expect("should succeed without ever touching podman")
+                .expect("should provision something for a non-Forbidden policy");
+            for name in ["read", "write", "edit", "grep", "glob", "bash"] {
+                assert!(
+                    provisioned.tools.get(name).is_some(),
+                    "{name} should be present in the schema immediately"
+                );
+            }
+        }
     }
 }

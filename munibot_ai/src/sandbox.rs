@@ -55,4 +55,5 @@ pub mod container;
 pub mod protocol;
 pub mod provision;
 pub mod rpc;
+pub mod session;
 pub mod tools;
