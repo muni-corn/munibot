@@ -93,6 +93,32 @@ impl ProjectManager {
         }
     }
 
+    /// Registers `spec` unless
+    /// `[ai.projects].auto_register_installations` is disabled, in which
+    /// case this logs why and returns `Ok(None)` rather than silently
+    /// dropping the attempt - what a GitHub App installation event for a
+    /// not-yet-registered repository should call, matching
+    /// [`ProjectsSettings::auto_register_installations`]'s own doc
+    /// comment. A repository munibot already knows about (a projects-page
+    /// registration, a `manage_project` tool call) never goes through
+    /// this gate at all - it calls [`Self::register`] directly.
+    pub async fn register_from_installation(
+        &self,
+        spec: RegisterProjectSpec,
+    ) -> Result<Option<Project>, ProjectError> {
+        if !self.settings.auto_register_installations {
+            tracing::info!(
+                slug = %spec.slug,
+                repo = %spec.repo,
+                "ignoring a github app installation event for an unregistered repository :< \
+                 [ai.projects].auto_register_installations is disabled"
+            );
+            return Ok(None);
+        }
+
+        self.register(spec).await.map(Some)
+    }
+
     /// Registers a project: clones (or, on a repeat registration, fetches)
     /// its repository, checks out a default workspace to inspect, detects
     /// which image strategy applies, and builds that image if one is
@@ -308,6 +334,19 @@ mod tests {
         (ProjectManager::new(store.clone(), settings), store)
     }
 
+    fn manager_with_auto_register(
+        root: PathBuf,
+        auto_register_installations: bool,
+    ) -> (ProjectManager, Arc<InMemoryProjectStore>) {
+        let store = Arc::new(InMemoryProjectStore::new());
+        let settings = ProjectsSettings {
+            root,
+            auto_register_installations,
+            ..ProjectsSettings::default()
+        };
+        (ProjectManager::new(store.clone(), settings), store)
+    }
+
     fn spec(upstream: &TestUpstream, munibot_user_id: i64, slug: &str) -> RegisterProjectSpec {
         RegisterProjectSpec {
             munibot_user_id,
@@ -470,5 +509,57 @@ mod tests {
             .output()
             .await;
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test]
+    async fn test_register_from_installation_registers_when_auto_register_is_enabled() {
+        let upstream = TestUpstream::new(&[("README.md", "hello")]).await;
+        let root = std::env::temp_dir().join(format!(
+            "munibot_ai_manager_root_auto_on_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let (manager, store) = manager_with_auto_register(root.clone(), true);
+
+        let project = manager
+            .register_from_installation(spec(&upstream, 1, "cocoa"))
+            .await
+            .expect("should succeed")
+            .expect("auto-register enabled should actually register");
+
+        assert_eq!(project.slug, "cocoa");
+        assert_eq!(store.list_projects().await.unwrap().len(), 1);
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test]
+    async fn test_register_from_installation_is_a_no_op_when_auto_register_is_disabled() {
+        let upstream = TestUpstream::new(&[("README.md", "hello")]).await;
+        let root = std::env::temp_dir().join(format!(
+            "munibot_ai_manager_root_auto_off_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let (manager, store) = manager_with_auto_register(root.clone(), false);
+
+        let result = manager
+            .register_from_installation(spec(&upstream, 1, "cocoa"))
+            .await
+            .expect("should succeed without erroring");
+
+        assert!(
+            result.is_none(),
+            "disabled auto-registration should be a no-op, not an error"
+        );
+        assert!(store.list_projects().await.unwrap().is_empty());
+        assert!(
+            !root.exists(),
+            "nothing should have been cloned at all when auto-registration is disabled"
+        );
     }
 }

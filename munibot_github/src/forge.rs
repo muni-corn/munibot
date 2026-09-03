@@ -43,6 +43,50 @@ impl GitHubForge {
             tokens: InstallationTokenCache::new(minter),
         })
     }
+
+    /// The repository's own clone url and default branch - what
+    /// registering a project needs that a webhook delivery's own minimal
+    /// repository object never carries (see
+    /// `crate::webhook::installation`'s own doc comment on why).
+    pub async fn repository_metadata(
+        &self,
+        owner: &str,
+        name: &str,
+    ) -> Result<RepositoryMetadata, VcsError> {
+        let repo = self
+            .client
+            .repos(owner, name)
+            .get()
+            .await
+            .map_err(map_error)?;
+
+        let clone_url = repo
+            .clone_url
+            .ok_or_else(|| VcsError::Other(format!("{owner}/{name} has no clone url")))?;
+        let default_branch = repo
+            .default_branch
+            .ok_or_else(|| VcsError::Other(format!("{owner}/{name} has no default branch")))?;
+
+        Ok(RepositoryMetadata {
+            owner: owner.to_string(),
+            name: name.to_string(),
+            clone_url: clone_url.to_string(),
+            default_branch,
+        })
+    }
+}
+
+/// A repository's identity and everything needed to clone it - what
+/// `munibot_ai::project::RegisterProjectSpec` needs, without this crate
+/// depending on `munibot_ai` to build one directly (see
+/// `docs/plans/ai/overview.md`'s dependency graph: forge integration
+/// never depends on ai).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RepositoryMetadata {
+    pub owner: String,
+    pub name: String,
+    pub clone_url: String,
+    pub default_branch: String,
 }
 
 /// Classifies an octocrab-reported GitHub API error into the forge-agnostic

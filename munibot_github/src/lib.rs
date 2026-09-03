@@ -12,5 +12,8 @@ mod webhook;
 
 pub use auth::{InstallationTokenCache, OctocrabTokenMinter, TokenMinter};
 pub use error::GitHubError;
-pub use forge::GitHubForge;
-pub use webhook::{issue_text, normalize_webhook, verify_signature};
+pub use forge::{GitHubForge, RepositoryMetadata};
+pub use webhook::{
+    InstallationEvent, InstalledRepositoryRef, issue_text, normalize_webhook,
+    parse_installation_event, verify_signature,
+};
