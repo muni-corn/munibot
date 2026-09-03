@@ -173,7 +173,7 @@ Everything this document says about pipelines describes a subsystem that is **fu
 tested, and has no production caller**. Concretely, as things stand:
 
 - Nothing in any binary constructs an `Executor`, so **no pipeline can start**. `WebhookConfig` is
-  hardcoded to `triggers: Vec::new()` and `dispatch: None` (`munibot_gui/src/server.rs:71-72`), so a
+  hardcoded to `triggers: Vec::new()` and `dispatch: None` (`munibot_gui/src/server.rs:82-83`), so a
   webhook delivery is verified, normalized, and then dropped for want of a trigger to match.
 - `PipelineRegistry::is_running` therefore always answers `false`, so `/pipelines` will list any rows
   that exist but never show a run as live, and the abort button never renders.
@@ -181,10 +181,21 @@ tested, and has no production caller**. Concretely, as things stand:
   not happen yet.
 - Nothing builds `munibot-sandbox:latest`. Until you run
   `podman build -t munibot-sandbox:latest -f Containerfile .` by hand, every sandboxed persona fails
-  at container creation.
+  at container creation, unless it's bound to a project instead (see `docs/ai-projects.md`) -- a
+  project's own image is built and cached independently of this one.
 
-`docs/plans/ai/milestone-7-projects.md` is the plan that closes all of this. Read `/pipelines` and
-the section below as documentation of intended behaviour, not of current behaviour.
+Projects and workspaces (`docs/ai-projects.md`) are further along -- registering one from the
+operator projects page, and binding a chat conversation to it, both work end to end today. Two of
+its own pieces share this section's "built but not connected" shape, though:
+
+- `ProjectManager::register_from_installation` exists and is tested, but the GitHub webhook handler
+  never calls it, so an installation event never registers a project automatically yet.
+- `ManageProjectTool` exists and is tested, but no persona's tool selection includes it, so nothing
+  can register a project by asking munibot to, yet.
+
+`docs/plans/ai/milestone-7-projects.md` is the plan that closes all of this. Read `/pipelines`,
+`/projects`, and the section below as documentation of intended behaviour, not of current
+behaviour.
 
 ## Aborting a pipeline
 
@@ -357,6 +368,8 @@ affect whether the safety check it's recording actually did its job.
 
 - `docs/plans/ai/milestone-6-hardening.md` -- the plan this document itself was written to satisfy
   (commit 199), and the plan for everything else in this milestone.
+- `docs/ai-projects.md` -- what a project and a workspace are, the three image strategies, how to
+  register a project, and what to check when an image build fails.
 - `docs/plans/ai/milestone-7-projects.md` -- projects, workspaces, and the wiring that makes the
   pipeline sections above describe reality. Its opening table is the current, evidenced list of
   everything in the AI stack that is built but not connected.
