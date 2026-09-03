@@ -12,6 +12,7 @@ mod clone;
 mod config;
 mod error;
 mod store;
+mod strategy;
 mod types;
 mod worktree;
 
@@ -19,6 +20,7 @@ pub use clone::{bare_repo_path, clone_or_fetch_project};
 pub use config::ProjectsSettings;
 pub use error::ProjectError;
 pub use store::{DieselProjectStore, InMemoryProjectStore, ProjectStore};
+pub use strategy::{SkipReason, detect_image_strategy};
 pub use types::{
     ImageStatus, ImageStrategy, NewProject, NewWorkspace, Project, ProjectId, Workspace,
     WorkspaceId,
