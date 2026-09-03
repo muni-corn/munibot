@@ -23,6 +23,7 @@ use munibot_ai::{
     },
     moderation::OpenAiModerator,
     persona::AiConfig,
+    pipeline::{ConcurrencyConfig, DieselPipelineStore, PipelineRegistry},
     project::{DieselProjectStore, ProjectManager, ProjectsSettings},
     provider::ProviderResolver,
     safety::DieselSafetyEventAuditor,
@@ -31,7 +32,65 @@ use munibot_ai::{
     usage::DieselUsageRecorder,
 };
 use munibot_core::db::DbPool;
+use munibot_gui::server::pipeline_launcher::PipelineLauncher;
 use tracing::{info, warn};
+
+/// Builds the pipeline launcher, or `None` when `GITHUB_APP_ID` isn't
+/// set - a deployment with no GitHub App configured at all is one where
+/// the autonomous pipeline is simply off, the same `Option` convention
+/// `ai` itself and `OpenAiModerator::from_env` both already establish.
+///
+/// A malformed `GITHUB_APP_ID` (not a number) or an `AiConfig` that
+/// fails to resolve a `PersonaRegistry` from (a pipeline role's persona
+/// misconfigured the same way any chat persona could be) both log and
+/// return `None` rather than failing the whole server's startup over a
+/// feature that was always optional.
+fn build_pipeline_launcher(
+    config: &AiConfig,
+    pool: DbPool,
+    project_manager: Arc<ProjectManager>,
+    registry: Arc<PipelineRegistry>,
+) -> Option<Arc<PipelineLauncher>> {
+    let Ok(app_id) = std::env::var("GITHUB_APP_ID") else {
+        info!("GITHUB_APP_ID isn't set; the autonomous pipeline is disabled");
+        return None;
+    };
+    let Ok(app_id) = app_id.parse::<u64>() else {
+        warn!("GITHUB_APP_ID isn't a number; the autonomous pipeline is disabled");
+        return None;
+    };
+    let Ok(private_key) = std::env::var("GITHUB_APP_PRIVATE_KEY") else {
+        warn!(
+            "GITHUB_APP_ID is set but GITHUB_APP_PRIVATE_KEY isn't; the autonomous pipeline is \
+             disabled"
+        );
+        return None;
+    };
+    let bot_login =
+        std::env::var("GITHUB_BOT_LOGIN").unwrap_or_else(|_| "munibot[bot]".to_string());
+
+    let launcher = match PipelineLauncher::new(
+        app_id,
+        private_key,
+        bot_login,
+        Arc::new(DieselPipelineStore::new(pool.clone())),
+        project_manager,
+        config,
+        registry,
+    ) {
+        Ok(launcher) => launcher,
+        Err(error) => {
+            warn!(%error, "couldn't build the pipeline launcher; the autonomous pipeline is disabled");
+            return None;
+        }
+    };
+
+    Some(Arc::new(
+        launcher
+            .with_auditor(Arc::new(DieselToolAuditor::new(pool.clone())))
+            .with_usage_recorder(Arc::new(DieselUsageRecorder::new(pool))),
+    ))
+}
 
 /// The model the default persona is configured with, if one resolves to one.
 ///
@@ -86,28 +145,45 @@ fn delegable_personas(config: &AiConfig) -> Vec<DelegablePersona> {
 /// exists (see that type's own doc comment for why it can't just hold an
 /// `Arc<Ai>` from the start).
 ///
-/// The project manager is built unconditionally, before `ai` -- the same
-/// "always-on infrastructure" precedent this module's own caller already
-/// sets for it -- specifically so it can be wired into `ai` via
-/// `with_project_manager` while `ai` is still owned, not yet behind the
-/// `Arc` a chat-bound conversation's `coder` turns would otherwise never
-/// be able to resolve a real project workspace through. Returned
-/// alongside `ai` so the caller can also inject it as an axum
-/// `Extension` for the project server functions and, later, webhook
-/// dispatch.
+/// The project manager and pipeline registry are both built
+/// unconditionally, before `ai` -- the same "always-on infrastructure"
+/// precedent this module's own caller already sets for the project
+/// manager -- specifically so the project manager can be wired into
+/// `ai` via `with_project_manager` while `ai` was still owned, not yet
+/// behind the `Arc` a chat-bound conversation's `coder` turns would
+/// otherwise never be able to resolve a real project workspace through.
+/// Both are returned alongside `ai` so the caller can also inject them
+/// as axum `Extension`s for the project and pipeline-monitor server
+/// functions.
+///
+/// The pipeline launcher, in contrast, really is optional: `None`
+/// whenever `GITHUB_APP_ID` isn't configured, the same convention `ai`
+/// itself follows for `ai.enabled` - see [`build_pipeline_launcher`].
 pub async fn build(
     config: &AiConfig,
     pool: DbPool,
     projects_settings: ProjectsSettings,
-) -> anyhow::Result<(Option<Arc<Ai>>, Arc<ProjectManager>)> {
+) -> anyhow::Result<(
+    Option<Arc<Ai>>,
+    Arc<ProjectManager>,
+    Arc<PipelineRegistry>,
+    Option<Arc<PipelineLauncher>>,
+)> {
     let project_manager = Arc::new(ProjectManager::new(
         Arc::new(DieselProjectStore::new(pool.clone())),
         projects_settings,
     ));
+    let pipeline_registry = Arc::new(PipelineRegistry::new(ConcurrencyConfig::default()));
+    let pipeline_launcher = build_pipeline_launcher(
+        config,
+        pool.clone(),
+        project_manager.clone(),
+        pipeline_registry.clone(),
+    );
 
     if !config.enabled {
         info!("ai.enabled is false; skipping ai setup");
-        return Ok((None, project_manager));
+        return Ok((None, project_manager, pipeline_registry, pipeline_launcher));
     }
 
     let mut tools = ToolRegistry::from_env();
@@ -209,5 +285,10 @@ pub async fn build(
     let ai = Arc::new(ai);
     delegator_cell.set(Arc::downgrade(&ai) as std::sync::Weak<dyn Delegator>);
 
-    Ok((Some(ai), project_manager))
+    Ok((
+        Some(ai),
+        project_manager,
+        pipeline_registry,
+        pipeline_launcher,
+    ))
 }

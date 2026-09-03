@@ -14,11 +14,7 @@ use axum_session::{SessionConfig, SessionLayer, SessionStore};
 use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_redispool::SessionRedisPool;
 use dioxus::prelude::*;
-use munibot_ai::{
-    Ai,
-    pipeline::{ConcurrencyConfig, PipelineRegistry},
-    project::ProjectManager,
-};
+use munibot_ai::{Ai, pipeline::PipelineRegistry, project::ProjectManager};
 use munibot_api::auth::server::User;
 use munibot_core::{config::DiscordConfig, db::establish_pool};
 use redis_pool::RedisPool;
@@ -29,6 +25,8 @@ use crate::app::App;
 mod attachments;
 pub mod pipeline_launcher;
 mod webhooks;
+
+use pipeline_launcher::PipelineLauncher;
 
 /// Builds and serves the gui's axum app: the dioxus fullstack app, the
 /// discord oauth routes, and the redis-backed session/auth layers.
@@ -52,10 +50,20 @@ mod webhooks;
 /// already behind the `Arc` this function receives it as - see that
 /// function's own doc comment. Injected here as an `Extension` too, for
 /// the project server functions.
+///
+/// `pipeline_registry` is likewise built by `munibot::ai::build`, so the
+/// exact same instance backs both the webhook-triggered launcher's own
+/// concurrency slots and every pipeline-monitor server function's
+/// `is_running`/abort calls, rather than two registries that never agree
+/// with each other. `pipeline_launcher` is `None` whenever
+/// `GITHUB_APP_ID` isn't configured - see `munibot::ai::build`'s own doc
+/// comment.
 pub async fn run(
     discord_config: DiscordConfig,
     ai: Option<Arc<Ai>>,
     project_manager: Arc<ProjectManager>,
+    pipeline_registry: Arc<PipelineRegistry>,
+    pipeline_launcher: Option<Arc<PipelineLauncher>>,
 ) -> anyhow::Result<()> {
     let pool = establish_pool()
         .await
@@ -79,17 +87,8 @@ pub async fn run(
         webhook_secret: std::env::var("GITHUB_WEBHOOK_SECRET").ok(),
         bot_login: std::env::var("GITHUB_BOT_LOGIN").unwrap_or_else(|_| "munibot[bot]".to_string()),
         project_manager: project_manager.clone(),
-        // no pipeline is registered to dispatch to yet - that arrives
-        // with the launcher itself (see
-        // docs/plans/ai/milestone-7-projects.md phase 26, commit 235)
-        dispatch: None,
+        dispatch: pipeline_launcher.map(|launcher| launcher as Arc<dyn webhooks::PipelineDispatch>),
     });
-
-    // one registry per process, shared by every pipeline-monitor server
-    // function and (once a real pipeline is actually started somewhere)
-    // whatever runs it -- see docs/notes/pipeline-sandbox-wiring-gap.md
-    // for what still needs wiring before any pipeline actually runs here
-    let pipeline_registry = Arc::new(PipelineRegistry::new(ConcurrencyConfig::default()));
 
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
