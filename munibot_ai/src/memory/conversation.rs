@@ -46,6 +46,14 @@ pub struct Conversation {
     /// `Ai::prepare` can tell, from the same load it already does, whether
     /// this conversation still needs one.
     pub title: Option<String>,
+    /// The `ai::project` project this conversation is bound to, if any -
+    /// an opaque foreign id rather than `crate::project::ProjectId`:
+    /// `ai::memory` sits below `ai::project` in the dependency graph, so
+    /// it cannot name that module's types. Read here so `Ai::prepare` can
+    /// resolve a real worktree for a `coder` turn, from the same load it
+    /// already does, instead of a fresh scratch workspace every time -
+    /// see `Ai::resolve_workspace_override`.
+    pub project_id: Option<i64>,
     pub last_active_at: DateTime<Utc>,
 }
 
@@ -104,6 +112,7 @@ mod tests {
             persona_id: "companion".to_string(),
             summary: None,
             title: None,
+            project_id: None,
             last_active_at: Utc::now(),
         };
         assert_eq!(conversation.summary, None);

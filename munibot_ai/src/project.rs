@@ -18,6 +18,8 @@ mod image_cache;
 mod manager;
 mod store;
 mod strategy;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod tool_backend;
 mod types;
 mod worktree;

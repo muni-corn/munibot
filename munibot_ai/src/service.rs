@@ -21,7 +21,7 @@ use crate::{
     harness::{Harness, HarnessEvent, TurnOutcome, TurnRequest},
     limits::{ConcurrencyGuard, RateLimiter, Scope, SpendCapEnforcer},
     memory::{
-        CompactionSettings, ConversationScope, MemoryStore, SessionStore, Summariser,
+        CompactionSettings, Conversation, ConversationScope, MemoryStore, SessionStore, Summariser,
         TitleGenerator, assemble_context, compact_if_needed,
     },
     moderation::ModerationGate,
@@ -221,6 +221,11 @@ pub struct Ai {
     /// until [`Self::with_sandbox_config`] sets one - [`Self::new`] already
     /// calls that from the [`AiConfig`] it was given.
     sandbox_config: crate::sandbox::config::SandboxConfig,
+    /// `None` until [`Self::with_project_manager`] enables it. Without it,
+    /// [`Self::prepare`] never looks up a conversation's bound project even
+    /// if one is set on the row - every `coder` turn gets a fresh scratch
+    /// workspace, exactly the behaviour every turn had before this existed.
+    project_manager: Option<Arc<crate::project::ProjectManager>>,
 }
 
 /// Writes `record` through `recorder` if one is configured, logging and
@@ -292,10 +297,12 @@ fn rate_limit_scopes_for(req: &AiTurnRequest) -> Vec<Scope> {
 async fn provision_or_degrade(
     policy: SandboxPolicy,
     config: crate::sandbox::config::SandboxConfig,
+    workspace: Option<std::path::PathBuf>,
     base_tools: &Arc<ToolRegistry>,
 ) -> Result<Option<crate::sandbox::provision::ProvisionedSandbox>, AiError> {
     let provisioned =
-        crate::sandbox::provision::provision_if_needed(policy, config, base_tools).await?;
+        crate::sandbox::provision::provision_if_needed(policy, config, workspace, base_tools)
+            .await?;
 
     let Some(provisioned) = provisioned else {
         return Ok(None);
@@ -402,6 +409,7 @@ impl Ai {
             moderation_gate: None,
             safety_auditor: None,
             sandbox_config: crate::sandbox::config::SandboxConfig::default(),
+            project_manager: None,
         }
     }
 
@@ -475,6 +483,19 @@ impl Ai {
     /// configured - see `docs/plans/ai/milestone-7-projects.md`, commit 205.
     pub fn with_sandbox_config(mut self, config: crate::sandbox::config::SandboxConfig) -> Self {
         self.sandbox_config = config;
+        self
+    }
+
+    /// Enables resolving a real, persistent worktree for any conversation
+    /// bound to a project, instead of every `coder` turn getting a fresh
+    /// scratch workspace regardless.
+    ///
+    /// Without this, [`Self::prepare`] never consults
+    /// `Conversation::project_id` at all - a bound conversation behaves
+    /// exactly as an unbound one until this is called. See
+    /// [`Self::resolve_workspace_override`].
+    pub fn with_project_manager(mut self, manager: Arc<crate::project::ProjectManager>) -> Self {
+        self.project_manager = Some(manager);
         self
     }
 
@@ -1088,8 +1109,14 @@ impl Ai {
 
         let system = self.render_system_prompt(persona, req).await?;
 
-        let sandbox =
-            provision_or_degrade(persona.sandbox, self.sandbox_config.clone(), &self.tools).await?;
+        let workspace_override = self.resolve_workspace_override(&conversation).await;
+        let sandbox = provision_or_degrade(
+            persona.sandbox,
+            self.sandbox_config.clone(),
+            workspace_override,
+            &self.tools,
+        )
+        .await?;
         let tools = sandbox
             .as_ref()
             .map(|provisioned| provisioned.tools.clone())
@@ -1135,6 +1162,66 @@ impl Ai {
             sandbox,
             moderation_policy: persona.moderation_policy,
         })))
+    }
+
+    /// Resolves the worktree a conversation bound to a project should
+    /// provision its sandbox over, or `None` for a fresh scratch
+    /// workspace - either because the conversation is not bound to a
+    /// project, or because this `Ai` has no [`Self::with_project_manager`]
+    /// configured at all.
+    ///
+    /// Never fails the turn: a project that was removed after a
+    /// conversation was bound to it, or any other lookup error, is logged
+    /// and treated the same as no binding at all - a stale binding must
+    /// degrade to a scratch workspace, not break every future turn in
+    /// that conversation.
+    async fn resolve_workspace_override(
+        &self,
+        conversation: &Conversation,
+    ) -> Option<std::path::PathBuf> {
+        let manager = self.project_manager.as_ref()?;
+        let project_id = conversation.project_id?;
+
+        let project = match manager
+            .get_project(crate::project::ProjectId(project_id))
+            .await
+        {
+            Ok(project) => project,
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    conversation_id = conversation.id.0,
+                    project_id,
+                    "couldn't look up a conversation's bound project; falling back to a scratch workspace"
+                );
+                return None;
+            }
+        };
+
+        // a dedicated branch, never `project.default_branch` itself: that
+        // branch is already checked out by the project's own "default"
+        // workspace (created at registration), and `git worktree` refuses
+        // to check the same branch out twice
+        let branch = format!("munibot/chat-{}", conversation.id.0);
+        match manager
+            .workspace_for(
+                &project,
+                &branch,
+                crate::project::WorkspaceOwner::Conversation(conversation.id.0 as i64),
+            )
+            .await
+        {
+            Ok(workspace) => Some(workspace.path),
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    conversation_id = conversation.id.0,
+                    project_id,
+                    "couldn't resolve a workspace for a conversation's bound project; falling back to a scratch workspace"
+                );
+                None
+            }
+        }
     }
 
     /// Renders a persona's system prompt with the variables every persona
@@ -1246,9 +1333,21 @@ impl crate::tools::Delegator for Ai {
 
         // held for the rest of this function - tears down once the
         // delegated turn finishes, the same reasoning Ai::prepare's own
-        // provisioning documents
-        let sandbox =
-            provision_or_degrade(persona.sandbox, self.sandbox_config.clone(), &self.tools).await?;
+        // provisioning documents.
+        //
+        // always a scratch workspace, never a project's worktree: unlike
+        // Ai::prepare, this has no loaded Conversation to check project_id
+        // on, only ctx.conversation_id, and SessionStore has no lookup by
+        // id alone. a delegated coder persona sharing the outer turn's
+        // project workspace is a reasonable follow-up, not something this
+        // milestone's own commit 226 promised
+        let sandbox = provision_or_degrade(
+            persona.sandbox,
+            self.sandbox_config.clone(),
+            None,
+            &self.tools,
+        )
+        .await?;
         let tools = sandbox
             .as_ref()
             .map(|provisioned| provisioned.tools.clone())
@@ -3601,5 +3700,112 @@ mod tests {
             .await
             .expect("an Optional persona's turn must still complete when provisioning fails");
         assert_eq!(outcome.text, Some("hi anyway".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_workspace_override_returns_none_without_a_project_manager() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = ai_with(MemoryPolicy::None, provider);
+        let conversation = Conversation {
+            id: ConversationId(1),
+            scope: ConversationScope::new(Platform::Web, "chat-1"),
+            persona_id: "companion".to_string(),
+            summary: None,
+            title: None,
+            project_id: Some(42),
+            last_active_at: chrono::Utc::now(),
+        };
+
+        assert!(ai.resolve_workspace_override(&conversation).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_workspace_override_returns_none_for_an_unbound_conversation() {
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let root = std::env::temp_dir().join(format!(
+            "munibot_ai_service_unbound_workspace_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let (manager, _store) = crate::project::test_support::manager_with_root(root.clone());
+        let ai = ai_with(MemoryPolicy::None, provider).with_project_manager(Arc::new(manager));
+        let conversation = Conversation {
+            id: ConversationId(1),
+            scope: ConversationScope::new(Platform::Web, "chat-1"),
+            persona_id: "companion".to_string(),
+            summary: None,
+            title: None,
+            project_id: None,
+            last_active_at: chrono::Utc::now(),
+        };
+
+        assert!(ai.resolve_workspace_override(&conversation).await.is_none());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// The whole point of this wiring: a conversation bound to a project
+    /// resolves to that project's own worktree, checked out from the real
+    /// upstream - not a fabricated path, and not the scratch workspace an
+    /// unbound conversation gets.
+    #[tokio::test]
+    async fn test_resolve_workspace_override_returns_the_projects_worktree_for_a_bound_conversation()
+     {
+        use crate::project::test_support::{TestUpstream, manager_with_root, minimal_spec};
+
+        let upstream = TestUpstream::new(&[("README.md", "hello")]).await;
+        let root = std::env::temp_dir().join(format!(
+            "munibot_ai_service_bound_workspace_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let (manager, _store) = manager_with_root(root.clone());
+        let project = manager
+            .register(minimal_spec(&upstream, 1, "cocoa"))
+            .await
+            .expect("should register");
+
+        let sessions = Arc::new(InMemorySessionStore::new());
+        let scope = ConversationScope::new(Platform::Web, "chat-1");
+        let conversation = sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .expect("should create a conversation");
+        sessions.bind_project_for_test(conversation.id, project.id.0);
+        let bound = sessions
+            .load_or_create(&scope, "companion")
+            .await
+            .expect("should reload the now-bound conversation");
+        assert_eq!(bound.project_id, Some(project.id.0));
+
+        let provider = Arc::new(MockProvider::new().respond_text("hi"));
+        let ai = Ai::from_parts(
+            personas_with_memory(MemoryPolicy::None),
+            Arc::new(ToolRegistry::new()),
+            sessions,
+            Arc::new(FixedProviderSource(provider)),
+        )
+        .with_project_manager(Arc::new(manager));
+
+        let workspace = ai
+            .resolve_workspace_override(&bound)
+            .await
+            .expect("a bound conversation should resolve a real workspace, not a scratch one");
+
+        assert_eq!(
+            workspace,
+            project
+                .local_path
+                .join(format!("worktrees/chat-{}", bound.id.0))
+        );
+        assert!(
+            workspace.join("README.md").is_file(),
+            "the resolved workspace should be a real checkout of the project's upstream"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }

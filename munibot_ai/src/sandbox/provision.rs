@@ -1,7 +1,7 @@
 //! Provisions a sandbox for one turn, according to a persona's
 //! [`SandboxPolicy`].
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use crate::{
     persona::SandboxPolicy,
@@ -46,35 +46,43 @@ impl ProvisionedSandbox {
     }
 }
 
-/// Adds the six sandbox tools, bound to a fresh [`WorkspaceSession`], onto
+/// Adds the six sandbox tools, bound to a [`WorkspaceSession`], onto
 /// `base_tools`, unless `policy` is [`SandboxPolicy::Forbidden`].
 ///
-/// Provisions nothing eagerly: a [`WorkspaceSession`] only reserves a
-/// scratch workspace directory at construction, so this always succeeds
-/// immediately for [`SandboxPolicy::Optional`] and
+/// `workspace` chooses which kind of session that is: `None` reserves a
+/// fresh scratch directory ([`WorkspaceSession::new`]), cleaned up the
+/// moment nothing references this any more; `Some(path)` provisions
+/// lazily over that existing, persistent directory instead
+/// ([`WorkspaceSession::over_workspace`]) - a project's own worktree,
+/// from `ProjectManager::workspace_for`, for a conversation bound to a
+/// project. Either way, nothing is checked out here that was not
+/// already on disk: that is `ProjectManager`'s own job for the
+/// persistent case, and simply not this function's problem for the
+/// scratch case, which starts empty.
+///
+/// Provisions nothing eagerly: constructing either kind of
+/// [`WorkspaceSession`] does no podman work at all, so this always
+/// succeeds immediately for [`SandboxPolicy::Optional`] and
 /// [`SandboxPolicy::Required`] alike (barring a filesystem error) - the
 /// tools are present in the schema from the very first moment a turn
 /// starts, and a real container is only created the first time one of
 /// them is actually called. See `docs/plans/ai/milestone-7-projects.md`,
 /// commit 218, for why this resolves gap 9 more completely than the
 /// eager-vs-degrade distinction alone could.
-///
-/// Nothing is checked out into the workspace here - that is
-/// [`crate::sandbox::container::Sandbox::checkout`]'s job, and needs a
-/// repository to check out that this function has no source for yet (a
-/// chat-delegated turn has no issue or pull request behind it). A
-/// sandbox provisioned this way starts with an empty workspace a persona
-/// can still `write`/`bash` its way through.
 pub async fn provision_if_needed(
     policy: SandboxPolicy,
     config: SandboxConfig,
+    workspace: Option<PathBuf>,
     base_tools: &Arc<ToolRegistry>,
 ) -> Result<Option<ProvisionedSandbox>, AiError> {
     if policy == SandboxPolicy::Forbidden {
         return Ok(None);
     }
 
-    let session = WorkspaceSession::new(config)?;
+    let session = match workspace {
+        Some(path) => WorkspaceSession::over_workspace(path, config),
+        None => WorkspaceSession::new(config)?,
+    };
     let tools = Arc::new(base_tools.with_overlay(sandboxed_tools(Arc::clone(&session))));
 
     Ok(Some(ProvisionedSandbox { tools, session }))
@@ -98,9 +106,14 @@ mod tests {
     #[tokio::test]
     async fn test_forbidden_policy_provisions_nothing() {
         let base = Arc::new(ToolRegistry::new());
-        let result = provision_if_needed(SandboxPolicy::Forbidden, SandboxConfig::default(), &base)
-            .await
-            .expect("should succeed");
+        let result = provision_if_needed(
+            SandboxPolicy::Forbidden,
+            SandboxConfig::default(),
+            None,
+            &base,
+        )
+        .await
+        .expect("should succeed");
         assert!(result.is_none());
     }
 
@@ -118,7 +131,7 @@ mod tests {
         };
 
         for policy in [SandboxPolicy::Optional, SandboxPolicy::Required] {
-            let provisioned = provision_if_needed(policy, config.clone(), &base)
+            let provisioned = provision_if_needed(policy, config.clone(), None, &base)
                 .await
                 .expect("should succeed without ever touching podman")
                 .expect("should provision something for a non-Forbidden policy");
@@ -129,5 +142,41 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A conversation bound to a project must provision over that
+    /// project's own worktree, never a fresh scratch directory - the
+    /// whole point of threading `workspace` through this function at
+    /// all.
+    #[tokio::test]
+    async fn test_a_workspace_override_provisions_over_that_exact_directory_instead_of_scratch() {
+        let base = Arc::new(ToolRegistry::new());
+        let existing = std::env::temp_dir().join(format!(
+            "munibot_ai_provision_override_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&existing).unwrap();
+
+        let provisioned = provision_if_needed(
+            SandboxPolicy::Optional,
+            SandboxConfig::default(),
+            Some(existing.clone()),
+            &base,
+        )
+        .await
+        .expect("should succeed without ever touching podman")
+        .expect("should provision something for a non-Forbidden policy");
+
+        assert_eq!(provisioned.session.workspace_path(), existing.as_path());
+
+        drop(provisioned);
+        assert!(
+            existing.is_dir(),
+            "an overridden workspace is persistent - it must survive the session that used it"
+        );
+        std::fs::remove_dir_all(&existing).ok();
     }
 }

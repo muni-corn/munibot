@@ -327,97 +327,10 @@ impl ProjectManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::project::{ImageStrategy, InMemoryProjectStore};
-
-    /// A local bare repository with one commit on `main`, real git
-    /// plumbing, zero network - matching every other `crate::project`
-    /// test module's own strategy.
-    struct TestUpstream {
-        bare_path: PathBuf,
-    }
-
-    impl TestUpstream {
-        async fn new(files: &[(&str, &str)]) -> Self {
-            let unique = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
-            let bare_path =
-                std::env::temp_dir().join(format!("munibot_ai_manager_upstream_{unique}"));
-            let work_dir = std::env::temp_dir().join(format!("munibot_ai_manager_work_{unique}"));
-            std::fs::create_dir_all(&work_dir).unwrap();
-
-            run(&[
-                "init",
-                "--bare",
-                "--initial-branch",
-                "main",
-                &bare_path.display().to_string(),
-            ])
-            .await;
-
-            let work_dir_str = work_dir.display().to_string();
-            run(&["-C", &work_dir_str, "init", "--initial-branch", "main"]).await;
-            run(&[
-                "-C",
-                &work_dir_str,
-                "config",
-                "user.email",
-                "muni@example.com",
-            ])
-            .await;
-            run(&["-C", &work_dir_str, "config", "user.name", "muni"]).await;
-            run(&["-C", &work_dir_str, "config", "commit.gpgsign", "false"]).await;
-            for (name, content) in files {
-                let path = work_dir.join(name);
-                if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent).unwrap();
-                }
-                std::fs::write(path, content).unwrap();
-            }
-            run(&["-C", &work_dir_str, "add", "."]).await;
-            run(&["-C", &work_dir_str, "commit", "-m", "initial commit"]).await;
-            run(&[
-                "-C",
-                &work_dir_str,
-                "push",
-                &bare_path.display().to_string(),
-                "main",
-            ])
-            .await;
-            std::fs::remove_dir_all(&work_dir).ok();
-
-            Self { bare_path }
-        }
-
-        fn url(&self) -> String {
-            format!("file://{}", self.bare_path.display())
-        }
-    }
-
-    impl Drop for TestUpstream {
-        fn drop(&mut self) {
-            std::fs::remove_dir_all(&self.bare_path).ok();
-        }
-    }
-
-    async fn run(args: &[&str]) {
-        let status = tokio::process::Command::new("git")
-            .args(args)
-            .status()
-            .await
-            .unwrap();
-        assert!(status.success(), "git {args:?} failed");
-    }
-
-    fn manager_with_root(root: PathBuf) -> (ProjectManager, Arc<InMemoryProjectStore>) {
-        let store = Arc::new(InMemoryProjectStore::new());
-        let settings = ProjectsSettings {
-            root,
-            ..ProjectsSettings::default()
-        };
-        (ProjectManager::new(store.clone(), settings), store)
-    }
+    use crate::project::{
+        ImageStrategy, InMemoryProjectStore,
+        test_support::{TestUpstream, manager_with_root, minimal_spec as spec},
+    };
 
     fn manager_with_auto_register(
         root: PathBuf,
@@ -430,20 +343,6 @@ mod tests {
             ..ProjectsSettings::default()
         };
         (ProjectManager::new(store.clone(), settings), store)
-    }
-
-    fn spec(upstream: &TestUpstream, munibot_user_id: i64, slug: &str) -> RegisterProjectSpec {
-        RegisterProjectSpec {
-            munibot_user_id,
-            slug: slug.to_string(),
-            display_name: "Cocoa".to_string(),
-            repo: RepoRef::new(munibot_vcs::Forge::GitHub, "muni-corn", "cocoa"),
-            clone_url: upstream.url(),
-            default_branch: "main".to_string(),
-            network_policy: SandboxNetworkConfig::None,
-            trigger: None,
-            token: None,
-        }
     }
 
     #[tokio::test]

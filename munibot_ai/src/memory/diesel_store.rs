@@ -126,6 +126,7 @@ fn to_conversation(row: AiConversation) -> Conversation {
         persona_id: row.persona_id,
         summary: row.summary,
         title: row.title,
+        project_id: row.project_id,
         last_active_at: DateTime::<Utc>::from_naive_utc_and_offset(row.last_active_at, Utc),
     }
 }

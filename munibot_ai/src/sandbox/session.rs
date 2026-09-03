@@ -139,6 +139,17 @@ impl WorkspaceSession {
         })
     }
 
+    /// The host-side directory this session's container mounts as its
+    /// workspace - scratch for [`Self::new`], an existing worktree for
+    /// [`Self::over_workspace`]. Test-only, like [`Self::already_connected`]:
+    /// `crate::sandbox::provision`'s own tests use this to confirm an
+    /// override was actually honoured; production code never needs to
+    /// know where a session's workspace lives on disk.
+    #[cfg(test)]
+    pub(crate) fn workspace_path(&self) -> &std::path::Path {
+        &self.workspace
+    }
+
     /// The connected sandbox session, provisioning a real container on
     /// the first call - every later call reuses the exact same
     /// connection.

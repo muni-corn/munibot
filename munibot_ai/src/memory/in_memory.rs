@@ -60,6 +60,20 @@ impl InMemorySessionStore {
             state: RwLock::new(State::new()),
         }
     }
+
+    /// Binds an already-loaded conversation to a project, bypassing
+    /// [`SessionStore`] entirely - there is no trait method for this, since
+    /// production binding goes through `ai::set_conversation_project`
+    /// directly against the database, never through a `SessionStore`.
+    /// `Ai::prepare`'s own tests use this to exercise its project-workspace
+    /// resolution without a real database.
+    #[cfg(test)]
+    pub(crate) fn bind_project_for_test(&self, conversation_id: ConversationId, project_id: i64) {
+        let mut state = self.state.write().unwrap();
+        if let Some(conversation) = state.conversations.get_mut(&conversation_id) {
+            conversation.project_id = Some(project_id);
+        }
+    }
 }
 
 impl Default for InMemorySessionStore {
@@ -107,6 +121,7 @@ impl SessionStore for InMemorySessionStore {
             persona_id: persona_id.to_string(),
             summary: None,
             title: None,
+            project_id: None,
             last_active_at: Utc::now(),
         };
 
