@@ -23,6 +23,7 @@ fn record(status: ToolCallStatus) -> ToolCallRecord {
         output: "12:00".to_string(),
         duration: Duration::from_millis(5),
         status,
+        pipeline_id: None,
     }
 }
 

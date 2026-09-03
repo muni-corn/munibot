@@ -167,6 +167,10 @@ pub struct AiUsage {
     pub iterations: i32,
     pub succeeded: bool,
     pub created_at: NaiveDateTime,
+    /// The pipeline run this usage was recorded under, if any -
+    /// `Option`, the same as `conversation_id`: a plain chat turn has
+    /// no pipeline behind it at all.
+    pub pipeline_id: Option<i64>,
 }
 
 /// Insertable shape for `ai_usage`.
@@ -185,6 +189,7 @@ pub struct NewAiUsage {
     pub iterations: i32,
     pub succeeded: bool,
     pub created_at: NaiveDateTime,
+    pub pipeline_id: Option<i64>,
 }
 
 // ai_tool_calls
@@ -203,6 +208,9 @@ pub struct AiToolCall {
     pub duration_ms: i64,
     pub status: String,
     pub created_at: NaiveDateTime,
+    /// The pipeline run this tool call was made under, if any - see
+    /// `AiUsage::pipeline_id`'s own doc comment.
+    pub pipeline_id: Option<i64>,
 }
 
 /// Insertable shape for `ai_tool_calls`.
@@ -216,6 +224,7 @@ pub struct NewAiToolCall {
     pub duration_ms: i64,
     pub status: String,
     pub created_at: NaiveDateTime,
+    pub pipeline_id: Option<i64>,
 }
 
 // ai_memories

@@ -26,6 +26,14 @@ pub struct ToolCallRecord {
     pub output: String,
     pub duration: Duration,
     pub status: ToolCallStatus,
+    /// The pipeline run this tool call was made under, if any - see
+    /// `crate::usage::UsageRecord::pipeline_id`'s own doc comment for why
+    /// this is a plain id rather than `crate::pipeline::PipelineId`.
+    /// Always `None` from [`Self::from_outcome`] today: nothing that
+    /// calls it yet has a pipeline to attribute a call to. Wiring a real
+    /// value through is `docs/plans/ai/milestone-7-projects.md` commit
+    /// 230's job.
+    pub pipeline_id: Option<i64>,
 }
 
 impl ToolCallRecord {
@@ -45,6 +53,7 @@ impl ToolCallRecord {
             output: truncate(&outcome_text(outcome), MAX_FIELD_LEN),
             duration,
             status: outcome_status(outcome),
+            pipeline_id: None,
         }
     }
 }

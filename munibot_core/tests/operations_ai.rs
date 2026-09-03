@@ -735,6 +735,7 @@ fn usage_row(conversation_id: Option<i64>, user_id: Option<i64>, succeeded: bool
         iterations: 2,
         succeeded,
         created_at: Utc::now().naive_utc(),
+        pipeline_id: None,
     }
 }
 
@@ -760,6 +761,21 @@ async fn test_record_usage_on_a_failed_turn() {
     ai::record_usage(&db.pool, usage_row(None, None, false))
         .await
         .expect("record failed");
+}
+
+#[tokio::test]
+async fn test_record_usage_accepts_a_real_pipeline_id() {
+    let db = TestDb::new().await;
+    let pipeline = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 1)
+        .await
+        .expect("create_pipeline failed");
+
+    ai::record_usage(&db.pool, NewAiUsage {
+        pipeline_id: Some(pipeline.id),
+        ..usage_row(None, None, true)
+    })
+    .await
+    .expect("a usage row naming a real pipeline id should satisfy the foreign key");
 }
 
 #[tokio::test]
@@ -1036,6 +1052,7 @@ fn tool_call_row(conversation_id: Option<i64>, status: &str) -> NewAiToolCall {
         duration_ms: 5,
         status: status.to_string(),
         created_at: Utc::now().naive_utc(),
+        pipeline_id: None,
     }
 }
 
@@ -1049,6 +1066,30 @@ async fn test_record_tool_call_writes_a_row() {
     ai::record_tool_call(&db.pool, tool_call_row(Some(conversation.id), "ok"))
         .await
         .expect("record failed");
+}
+
+#[tokio::test]
+async fn test_record_tool_call_round_trips_a_real_pipeline_id() {
+    let db = TestDb::new().await;
+    let conversation = ai::get_or_create_conversation(&db.pool, "web", "c1", "companion", None)
+        .await
+        .unwrap();
+    let pipeline = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 1)
+        .await
+        .expect("create_pipeline failed");
+
+    ai::record_tool_call(&db.pool, NewAiToolCall {
+        pipeline_id: Some(pipeline.id),
+        ..tool_call_row(Some(conversation.id), "ok")
+    })
+    .await
+    .expect("record failed");
+
+    let rows = ai::list_tool_calls_for_conversation(&db.pool, conversation.id)
+        .await
+        .expect("list failed");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].pipeline_id, Some(pipeline.id));
 }
 
 #[tokio::test]

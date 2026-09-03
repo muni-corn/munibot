@@ -25,6 +25,7 @@ impl ToolAuditor for DieselToolAuditor {
             duration_ms: i64::try_from(record.duration.as_millis()).unwrap_or(i64::MAX),
             status: record.status.as_key().to_string(),
             created_at: chrono::Utc::now().naive_utc(),
+            pipeline_id: record.pipeline_id,
         };
 
         if let Err(error) = ai::record_tool_call(&self.pool, row).await {

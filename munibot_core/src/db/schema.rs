@@ -203,6 +203,7 @@ diesel::table! {
         #[max_length = 16]
         status -> Varchar,
         created_at -> Datetime,
+        pipeline_id -> Nullable<Bigint>,
     }
 }
 
@@ -224,6 +225,7 @@ diesel::table! {
         iterations -> Integer,
         succeeded -> Bool,
         created_at -> Datetime,
+        pipeline_id -> Nullable<Bigint>,
     }
 }
 
@@ -381,7 +383,9 @@ diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
 diesel::joinable!(ai_pipeline_events -> ai_pipelines (pipeline_id));
 diesel::joinable!(ai_pipelines -> ai_projects (project_id));
 diesel::joinable!(ai_tool_calls -> ai_conversations (conversation_id));
+diesel::joinable!(ai_tool_calls -> ai_pipelines (pipeline_id));
 diesel::joinable!(ai_usage -> ai_conversations (conversation_id));
+diesel::joinable!(ai_usage -> ai_pipelines (pipeline_id));
 diesel::joinable!(ai_usage -> users (user_id));
 diesel::joinable!(ai_user_settings -> users (user_id));
 diesel::joinable!(ai_workspaces -> ai_projects (project_id));

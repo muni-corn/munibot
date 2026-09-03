@@ -28,6 +28,13 @@ pub struct UsageRecord {
     /// and a usage table that only records successes understates spend
     /// exactly when something is going wrong.
     pub succeeded: bool,
+    /// The pipeline run this turn belongs to, if any - an opaque foreign
+    /// id rather than `crate::pipeline::PipelineId`: `ai::usage` sits
+    /// below `ai::pipeline` in the dependency graph (see
+    /// `crate::project::Project::pipeline_id`'s own doc comment for the
+    /// same reasoning), so it cannot name that module's types. `None`
+    /// for every plain chat turn, which has no pipeline behind it at all.
+    pub pipeline_id: Option<i64>,
 }
 
 /// Records what a turn cost.
@@ -55,6 +62,7 @@ mod tests {
             cost: Cost::from_micros(500),
             iterations: 2,
             succeeded: true,
+            pipeline_id: None,
         }
     }
 

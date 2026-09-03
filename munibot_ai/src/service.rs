@@ -605,6 +605,7 @@ impl Ai {
             cost: turn_usage.cost,
             iterations: turn_usage.iterations,
             succeeded: result.is_ok(),
+            pipeline_id: None,
         })
         .await;
 
@@ -787,6 +788,7 @@ impl Ai {
                 cost,
                 iterations,
                 succeeded,
+                pipeline_id: None,
             };
 
             while let Some(event) = inner.next().await {

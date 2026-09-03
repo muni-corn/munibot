@@ -28,6 +28,7 @@ fn record(succeeded: bool) -> UsageRecord {
         cost: Cost::from_micros(5_000),
         iterations: 2,
         succeeded,
+        pipeline_id: None,
     }
 }
 

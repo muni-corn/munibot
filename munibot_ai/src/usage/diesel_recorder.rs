@@ -33,6 +33,7 @@ impl UsageRecorder for DieselUsageRecorder {
             iterations: i32::try_from(record.iterations).unwrap_or(i32::MAX),
             succeeded: record.succeeded,
             created_at: chrono::Utc::now().naive_utc(),
+            pipeline_id: record.pipeline_id,
         };
 
         ai::record_usage(&self.pool, row)
