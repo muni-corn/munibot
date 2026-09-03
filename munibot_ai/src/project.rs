@@ -10,6 +10,7 @@
 
 mod clone;
 mod config;
+mod devenv_image;
 mod error;
 mod image;
 mod store;
@@ -19,6 +20,7 @@ mod worktree;
 
 pub use clone::{bare_repo_path, clone_or_fetch_project};
 pub use config::ProjectsSettings;
+pub use devenv_image::build_devenv_image;
 pub use error::ProjectError;
 pub use image::build_containerfile_image;
 pub use store::{DieselProjectStore, InMemoryProjectStore, ProjectStore};
