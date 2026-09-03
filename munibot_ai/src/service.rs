@@ -1457,6 +1457,7 @@ mod tests {
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
             sandbox: crate::sandbox::config::SandboxSettings::default(),
+            projects: crate::project::ProjectsSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1504,6 +1505,7 @@ mod tests {
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
             sandbox: crate::sandbox::config::SandboxSettings::default(),
+            projects: crate::project::ProjectsSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1553,6 +1555,7 @@ mod tests {
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
             sandbox: crate::sandbox::config::SandboxSettings::default(),
+            projects: crate::project::ProjectsSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1601,6 +1604,7 @@ mod tests {
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
             sandbox: crate::sandbox::config::SandboxSettings::default(),
+            projects: crate::project::ProjectsSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };
@@ -1648,6 +1652,7 @@ mod tests {
             spend_caps: crate::persona::config::SpendCapConfig::default(),
             abuse: crate::persona::config::AbuseConfig::default(),
             sandbox: crate::sandbox::config::SandboxSettings::default(),
+            projects: crate::project::ProjectsSettings::default(),
             max_delegation_depth: 2,
             personas: HashMap::new(),
         };

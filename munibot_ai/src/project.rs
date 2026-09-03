@@ -8,8 +8,10 @@
 //! `ai::pipeline` - keep it below `ai::pipeline` in the dependency graph in
 //! `docs/plans/ai/overview.md`.
 
+mod config;
 mod error;
 mod types;
 
+pub use config::ProjectsSettings;
 pub use error::ProjectError;
 pub use types::{ImageStatus, ImageStrategy, Project, ProjectId, Workspace, WorkspaceId};

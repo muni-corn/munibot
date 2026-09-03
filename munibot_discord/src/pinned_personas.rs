@@ -93,6 +93,7 @@ mod tests {
             spend_caps: munibot_ai::persona::SpendCapConfig::default(),
             abuse: munibot_ai::persona::AbuseConfig::default(),
             sandbox: munibot_ai::sandbox::config::SandboxSettings::default(),
+            projects: munibot_ai::project::ProjectsSettings::default(),
             max_delegation_depth: 2,
             personas,
         };

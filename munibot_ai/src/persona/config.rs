@@ -342,6 +342,13 @@ pub struct AiConfig {
     /// exactly.
     #[serde(default)]
     pub sandbox: SandboxSettings,
+    /// Where projects live on disk, GitHub App auto-registration, and
+    /// workspace collection. Built-in defaults apply even with no
+    /// `[ai.projects]` section at all, matching
+    /// [`ProjectsSettings::default`](crate::project::ProjectsSettings::default)
+    /// exactly.
+    #[serde(default)]
+    pub projects: crate::project::ProjectsSettings,
     /// How many levels deep a chain of delegations may go before the
     /// `delegate` tool refuses rather than starting another nested turn -
     /// see `ToolCtx::delegation_depth`. A companion delegating to a
@@ -381,6 +388,7 @@ impl Default for AiConfig {
             spend_caps: SpendCapConfig::default(),
             abuse: AbuseConfig::default(),
             sandbox: SandboxSettings::default(),
+            projects: crate::project::ProjectsSettings::default(),
             max_delegation_depth: default_max_delegation_depth(),
         }
     }
