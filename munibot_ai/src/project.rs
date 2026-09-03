@@ -13,6 +13,7 @@ mod config;
 mod error;
 mod store;
 mod types;
+mod worktree;
 
 pub use clone::{bare_repo_path, clone_or_fetch_project};
 pub use config::ProjectsSettings;
@@ -21,4 +22,8 @@ pub use store::{DieselProjectStore, InMemoryProjectStore, ProjectStore};
 pub use types::{
     ImageStatus, ImageStrategy, NewProject, NewWorkspace, Project, ProjectId, Workspace,
     WorkspaceId,
+};
+pub use worktree::{
+    WorktreeEntry, create_worktree, existing_branches, list_worktrees, prune_worktrees,
+    reconcile_workspaces, remove_worktree,
 };

@@ -73,7 +73,15 @@ pub async fn clone_or_fetch_project(
         "remote.origin.fetch",
         ORIGIN_FETCH_REFSPEC,
     ])
-    .await
+    .await?;
+
+    // a bare clone only populates refs/heads/* (frozen at clone time,
+    // never advanced again); fetching once immediately, now that the
+    // refspec above is in place, is what makes refs/remotes/origin/* -
+    // the ref worktree creation and every later fetch actually use -
+    // exist from the very first moment rather than only after some
+    // unrelated later caller happens to fetch first
+    fetch_bare_repo(&bare_repo, token).await
 }
 
 /// Fetches an existing bare repository, advancing every
@@ -435,13 +443,14 @@ mod tests {
             .expect("initial clone should succeed");
         let bare_repo = bare_repo_path(&project_root);
 
-        // before any fetch, there is no refs/remotes/origin/main yet - a
-        // bare clone's own refs/heads/* are the only thing populated
-        assert!(
-            rev_parse(&bare_repo, "refs/remotes/origin/main")
-                .await
-                .is_none()
-        );
+        // the initial clone_or_fetch_project call fetches once immediately
+        // after cloning, so refs/remotes/origin/main already exists and
+        // matches upstream's current head - callers (worktree creation)
+        // never have to special-case "just cloned, never fetched"
+        let initial_sha = rev_parse(&bare_repo, "refs/remotes/origin/main")
+            .await
+            .expect("the initial clone should already populate this ref");
+        assert_eq!(initial_sha, upstream.head_sha("main").await);
 
         upstream
             .commit_and_push("main", &[("README.md", "v2")])
