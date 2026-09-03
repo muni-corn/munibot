@@ -20,6 +20,7 @@ mod handoff_schema;
 mod interaction;
 mod plan;
 mod resume;
+mod sandbox;
 mod state;
 mod store;
 mod web_chat_interaction;
@@ -51,6 +52,7 @@ pub use interaction::{
 };
 pub use plan::{Plan, Subtask, SubtaskStatus};
 pub use resume::{ResumeError, resume_all};
+pub use sandbox::ProjectSandboxLifecycle;
 pub use state::{InteractionRequest, PipelineId, PipelineState, SubtaskId};
 pub use store::{DieselPipelineStore, InMemoryPipelineStore, PipelineStore, PipelineStoreError};
 pub use web_chat_interaction::{PendingReplyRegistry, WebChatAdapter};

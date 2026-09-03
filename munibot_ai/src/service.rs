@@ -294,7 +294,13 @@ fn rate_limit_scopes_for(req: &AiTurnRequest) -> Vec<Scope> {
 /// turn failure - the one piece of eagerness this milestone's laziness
 /// deliberately keeps. See `docs/plans/ai/milestone-7-projects.md`,
 /// commits 206, 218, and 219.
-async fn provision_or_degrade(
+///
+/// `pub(crate)`: `crate::pipeline::sandbox::ProjectSandboxLifecycle` reuses
+/// this exact same eager-vs-lazy split for a pipeline role's own sandbox,
+/// always at `SandboxPolicy::Required` - a pipeline role that needs a
+/// sandbox at all cannot do its job without one, the same reasoning a
+/// `Required` persona's chat turn already gets.
+pub(crate) async fn provision_or_degrade(
     policy: SandboxPolicy,
     config: crate::sandbox::config::SandboxConfig,
     workspace: Option<std::path::PathBuf>,
