@@ -17,7 +17,7 @@ use dioxus::prelude::*;
 use munibot_ai::{
     Ai,
     pipeline::{ConcurrencyConfig, PipelineRegistry},
-    project::{DieselProjectStore, ProjectManager, ProjectsSettings},
+    project::ProjectManager,
 };
 use munibot_api::auth::server::User;
 use munibot_core::{config::DiscordConfig, db::establish_pool};
@@ -45,15 +45,16 @@ mod webhooks;
 /// functions check for that themselves rather than the gui refusing to
 /// start, so the rest of the site stays usable with the companion turned off.
 ///
-/// `projects_settings` builds a `ProjectManager` unconditionally, the same
-/// "always-on infrastructure" precedent `pipeline_registry` below already
-/// sets - a project's own root directory and build concurrency limit have
-/// sensible defaults even with no `[ai.projects]` section at all, so there
-/// is no reason to gate this on `ai.enabled` the way `ai` itself is.
+/// `project_manager` is built by `munibot::ai::build` before `ai` itself,
+/// specifically so it can also be wired into `ai` (via
+/// `Ai::with_project_manager`) while `ai` was still owned rather than
+/// already behind the `Arc` this function receives it as - see that
+/// function's own doc comment. Injected here as an `Extension` too, for
+/// the project server functions.
 pub async fn run(
     discord_config: DiscordConfig,
     ai: Option<Arc<Ai>>,
-    projects_settings: ProjectsSettings,
+    project_manager: Arc<ProjectManager>,
 ) -> anyhow::Result<()> {
     let pool = establish_pool()
         .await
@@ -88,15 +89,6 @@ pub async fn run(
     // whatever runs it -- see docs/notes/pipeline-sandbox-wiring-gap.md
     // for what still needs wiring before any pipeline actually runs here
     let pipeline_registry = Arc::new(PipelineRegistry::new(ConcurrencyConfig::default()));
-
-    // one manager per process, shared by every project server function --
-    // registering, listing, removing, and rebuilding a project's image all
-    // go through this one facade rather than each function holding its own
-    // store and settings
-    let project_manager = Arc::new(ProjectManager::new(
-        Arc::new(DieselProjectStore::new(pool.clone())),
-        projects_settings,
-    ));
 
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()

@@ -72,7 +72,8 @@ async fn main() -> anyhow::Result<()> {
     // permission is already in place for their very first request
     munibot::permissions::sync_operators(&config, &ai_pool).await;
 
-    let ai = munibot::ai::build(&ai_config, ai_pool).await?;
+    let (ai, project_manager) =
+        munibot::ai::build(&ai_config, ai_pool, ai_config.projects.clone()).await?;
 
     // start the bots alongside the gui server, unless explicitly disabled for
     // local gui development (so `dx serve` reloads don't reconnect discord)
@@ -82,5 +83,5 @@ async fn main() -> anyhow::Result<()> {
         info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }
 
-    munibot_gui::server::run(config.discord, ai, ai_config.projects).await
+    munibot_gui::server::run(config.discord, ai, project_manager).await
 }

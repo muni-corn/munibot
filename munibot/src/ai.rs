@@ -23,6 +23,7 @@ use munibot_ai::{
     },
     moderation::OpenAiModerator,
     persona::AiConfig,
+    project::{DieselProjectStore, ProjectManager, ProjectsSettings},
     provider::ProviderResolver,
     safety::DieselSafetyEventAuditor,
     tools::{DelegablePersona, DelegateTool, Delegator, DelegatorCell, ToolRegistry},
@@ -73,7 +74,9 @@ fn delegable_personas(config: &AiConfig) -> Vec<DelegablePersona> {
         .collect()
 }
 
-/// Builds the AI service, or `None` when `ai.enabled` is `false` in config.
+/// Builds the AI service and the project manager every chat conversation
+/// and pipeline run shares, or `None` for the service half when
+/// `ai.enabled` is `false` in config.
 ///
 /// `pool` backs every diesel-based piece: conversation persistence, the
 /// memory tools and store, usage recording, tool auditing, rate limit
@@ -82,10 +85,29 @@ fn delegable_personas(config: &AiConfig) -> Vec<DelegablePersona> {
 /// registered here too, its `DelegatorCell` completed once `ai` itself
 /// exists (see that type's own doc comment for why it can't just hold an
 /// `Arc<Ai>` from the start).
-pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc<Ai>>> {
+///
+/// The project manager is built unconditionally, before `ai` -- the same
+/// "always-on infrastructure" precedent this module's own caller already
+/// sets for it -- specifically so it can be wired into `ai` via
+/// `with_project_manager` while `ai` is still owned, not yet behind the
+/// `Arc` a chat-bound conversation's `coder` turns would otherwise never
+/// be able to resolve a real project workspace through. Returned
+/// alongside `ai` so the caller can also inject it as an axum
+/// `Extension` for the project server functions and, later, webhook
+/// dispatch.
+pub async fn build(
+    config: &AiConfig,
+    pool: DbPool,
+    projects_settings: ProjectsSettings,
+) -> anyhow::Result<(Option<Arc<Ai>>, Arc<ProjectManager>)> {
+    let project_manager = Arc::new(ProjectManager::new(
+        Arc::new(DieselProjectStore::new(pool.clone())),
+        projects_settings,
+    ));
+
     if !config.enabled {
         info!("ai.enabled is false; skipping ai setup");
-        return Ok(None);
+        return Ok((None, project_manager));
     }
 
     let mut tools = ToolRegistry::from_env();
@@ -182,8 +204,10 @@ pub async fn build(config: &AiConfig, pool: DbPool) -> anyhow::Result<Option<Arc
         }
     }
 
+    ai = ai.with_project_manager(project_manager.clone());
+
     let ai = Arc::new(ai);
     delegator_cell.set(Arc::downgrade(&ai) as std::sync::Weak<dyn Delegator>);
 
-    Ok(Some(ai))
+    Ok((Some(ai), project_manager))
 }
