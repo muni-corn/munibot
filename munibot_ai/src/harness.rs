@@ -91,7 +91,8 @@ impl Harness {
         skip_all,
         fields(
             model = %request.model,
-            conversation_id = request.ctx.conversation_id.0,
+            conversation_id = request.ctx.conversation_id.map(|id| id.0),
+            pipeline_id = request.ctx.pipeline_id,
             delegation_depth = request.ctx.delegation_depth,
         )
     )]
@@ -802,6 +803,7 @@ impl Harness {
         if let Some(auditor) = &self.auditor {
             let record = ToolCallRecord::from_outcome(
                 ctx.conversation_id,
+                ctx.pipeline_id,
                 tool.name(),
                 arguments,
                 &outcome,
@@ -917,7 +919,8 @@ mod tests {
             platform: Platform::Discord,
             granted_tier,
             guild_id: None,
-            conversation_id: ConversationId(1),
+            conversation_id: Some(ConversationId(1)),
+            pipeline_id: None,
             cancellation: tokio_util::sync::CancellationToken::new(),
             delegation_depth: 0,
             remaining_budget: crate::harness::Budget::default(),

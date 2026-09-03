@@ -12,12 +12,14 @@ use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    audit::ToolAuditor,
     harness::{Harness, TurnRequest},
     persona::PersonaRegistry,
-    pipeline::{AgentRole, persona_for},
+    pipeline::{AgentRole, PipelineId, persona_for},
     service::ProviderSource,
-    tools::{ConversationId, Platform, RiskTier, ToolCtx, ToolRegistry},
+    tools::{Platform, RiskTier, ToolCtx, ToolRegistry},
     types::{AiError, Cost, History, Message, Usage},
+    usage::{UsageRecord, UsageRecorder},
 };
 
 /// Why running one agent turn failed.
@@ -42,9 +44,17 @@ pub enum DispatchError {
 /// and, once a sandbox exists for this run, the tool registry a sandboxed
 /// role should use instead of whatever base registry the dispatcher would
 /// otherwise reach for.
+///
+/// Carries `pipeline_id`, never a `ConversationId` - a pipeline run has
+/// no stored conversation behind it at all. Before
+/// `docs/plans/ai/milestone-7-projects.md` commit 230, this field held a
+/// fabricated `ConversationId(pipeline_id.0)` instead, which collided
+/// with a *real* conversation id the moment anything (memory, the
+/// `todo_write` tool) recorded under it - the two id spaces are not the
+/// same space, and pretending they were was the bug, not a convenience.
 pub struct AgentContext {
     pub task: String,
-    pub conversation_id: ConversationId,
+    pub pipeline_id: PipelineId,
     pub cancellation: CancellationToken,
     /// The executor's own sandbox lifecycle (see `crate::pipeline::executor`)
     /// owns provisioning a sandbox and layering its tools on -- this is
@@ -55,10 +65,10 @@ pub struct AgentContext {
 }
 
 impl AgentContext {
-    pub fn new(task: impl Into<String>, conversation_id: ConversationId) -> Self {
+    pub fn new(task: impl Into<String>, pipeline_id: PipelineId) -> Self {
         Self {
             task: task.into(),
-            conversation_id,
+            pipeline_id,
             cancellation: CancellationToken::new(),
             tools: None,
         }
@@ -120,6 +130,12 @@ pub struct HarnessDispatcher {
     providers: Arc<dyn ProviderSource>,
     personas: Arc<PersonaRegistry>,
     tools: Arc<ToolRegistry>,
+    /// `None` until [`Self::with_auditor`] enables it - matching every
+    /// other optional-recorder builder in this crate (see
+    /// `crate::service::Ai::with_tool_auditor`'s own doc comment).
+    tool_auditor: Option<Arc<dyn ToolAuditor>>,
+    /// `None` until [`Self::with_usage_recorder`] enables it.
+    usage_recorder: Option<Arc<dyn UsageRecorder>>,
 }
 
 impl HarnessDispatcher {
@@ -132,7 +148,24 @@ impl HarnessDispatcher {
             providers,
             personas,
             tools,
+            tool_auditor: None,
+            usage_recorder: None,
         }
+    }
+
+    /// Enables auditing every tool call a pipeline turn makes, the same
+    /// as [`crate::service::Ai::with_tool_auditor`] does for a chat turn.
+    pub fn with_auditor(mut self, auditor: Arc<dyn ToolAuditor>) -> Self {
+        self.tool_auditor = Some(auditor);
+        self
+    }
+
+    /// Enables recording a [`UsageRecord`] after every pipeline turn, on
+    /// failure as well as success - the same as
+    /// [`crate::service::Ai::with_usage_recorder`] does for a chat turn.
+    pub fn with_usage_recorder(mut self, recorder: Arc<dyn UsageRecorder>) -> Self {
+        self.usage_recorder = Some(recorder);
+        self
     }
 }
 
@@ -140,7 +173,7 @@ impl HarnessDispatcher {
 impl AgentDispatcher for HarnessDispatcher {
     #[tracing::instrument(
         skip_all,
-        fields(role = ?role, conversation_id = context.conversation_id.0)
+        fields(role = ?role, pipeline_id = context.pipeline_id.0)
     )]
     async fn invoke_agent(
         &self,
@@ -161,6 +194,7 @@ impl AgentDispatcher for HarnessDispatcher {
         let mut history = History::new();
         history.push(Message::user(context.task));
 
+        let pipeline_id = context.pipeline_id;
         let ctx = ToolCtx {
             // no human user initiated this turn -- the pipeline itself did
             user_id: 0,
@@ -170,7 +204,11 @@ impl AgentDispatcher for HarnessDispatcher {
             // permissions the way a chat invocation is
             granted_tier: RiskTier::Sandbox,
             guild_id: None,
-            conversation_id: context.conversation_id,
+            // no stored conversation behind a pipeline turn at all -- see
+            // AgentContext's own doc comment on why this is pipeline_id,
+            // never a fabricated ConversationId standing in for it
+            conversation_id: None,
+            pipeline_id: Some(pipeline_id.0),
             cancellation: context.cancellation,
             delegation_depth: 0,
             remaining_budget: persona.budget.clone(),
@@ -187,12 +225,33 @@ impl AgentDispatcher for HarnessDispatcher {
         }
 
         let tools = context.tools.unwrap_or_else(|| self.tools.clone());
-        let harness = Harness::new(provider, tools);
-        let outcome = harness
-            .run_turn(request)
-            .await
-            .map_err(|error| DispatchError::Turn(role, error))?;
+        let mut harness = Harness::new(provider, tools);
+        if let Some(auditor) = &self.tool_auditor {
+            harness = harness.with_auditor(auditor.clone());
+        }
 
+        let (result, turn_usage) = harness.run_turn_recording_usage(request).await;
+
+        if let Some(recorder) = &self.usage_recorder {
+            let record = UsageRecord {
+                conversation_id: None,
+                user_id: None,
+                guild_id: None,
+                provider: persona.model.provider().to_string(),
+                model: persona.model.model().to_string(),
+                persona_id: persona.id.0.clone(),
+                usage: turn_usage.usage,
+                cost: turn_usage.cost,
+                iterations: turn_usage.iterations,
+                succeeded: result.is_ok(),
+                pipeline_id: Some(pipeline_id.0),
+            };
+            if let Err(error) = recorder.record(record).await {
+                tracing::warn!(%error, pipeline_id = pipeline_id.0, "failed to record pipeline usage");
+            }
+        }
+
+        let outcome = result.map_err(|error| DispatchError::Turn(role, error))?;
         let handoff = outcome.handoff.ok_or(DispatchError::NoHandoff(role))?;
 
         Ok(AgentOutput {
@@ -263,7 +322,17 @@ impl AgentDispatcher for MockAgentDispatcher {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
+    use crate::{
+        persona::{AiConfig, BudgetConfig, MemoryPolicy, PersonaConfig, PersonaId, SandboxPolicy},
+        pipeline::{IssueAnalysis, IssueClassification, RecommendedAction, ReproductionStatus},
+        provider::{MockProvider, Provider, ProviderRegistry},
+        tools::ToolSelection,
+        types::ModelRef,
+        usage::UsageRecorder,
+    };
 
     fn output(handoff: Value) -> AgentOutput {
         AgentOutput {
@@ -282,7 +351,7 @@ mod tests {
         let first = dispatcher
             .invoke_agent(
                 AgentRole::SoftwareArchitect,
-                AgentContext::new("write a plan", ConversationId(1)),
+                AgentContext::new("write a plan", PipelineId(1)),
             )
             .await
             .unwrap();
@@ -291,7 +360,7 @@ mod tests {
         let second = dispatcher
             .invoke_agent(
                 AgentRole::ArchitectureReviewer,
-                AgentContext::new("review the plan", ConversationId(1)),
+                AgentContext::new("review the plan", PipelineId(1)),
             )
             .await
             .unwrap();
@@ -306,7 +375,7 @@ mod tests {
         dispatcher
             .invoke_agent(
                 AgentRole::SoftwareArchitect,
-                AgentContext::new("write a plan", ConversationId(1)),
+                AgentContext::new("write a plan", PipelineId(1)),
             )
             .await
             .unwrap();
@@ -326,7 +395,7 @@ mod tests {
         let error = dispatcher
             .invoke_agent(
                 AgentRole::Builder,
-                AgentContext::new("implement it", ConversationId(1)),
+                AgentContext::new("implement it", PipelineId(1)),
             )
             .await
             .expect_err("should surface the scripted error");
@@ -343,7 +412,7 @@ mod tests {
         dispatcher
             .invoke_agent(
                 AgentRole::Builder,
-                AgentContext::new("implement it", ConversationId(1)),
+                AgentContext::new("implement it", PipelineId(1)),
             )
             .await
             .ok();
@@ -351,7 +420,165 @@ mod tests {
 
     #[test]
     fn test_agent_context_new_starts_with_a_fresh_cancellation_token() {
-        let context = AgentContext::new("do something", ConversationId(1));
+        let context = AgentContext::new("do something", PipelineId(1));
         assert!(!context.cancellation.is_cancelled());
+    }
+
+    /// A [`ProviderSource`] that always returns the same fixed provider,
+    /// the same small test double `service.rs`'s own test module keeps.
+    struct FixedProviderSource(Arc<dyn Provider>);
+
+    impl ProviderSource for FixedProviderSource {
+        fn resolve(&self, _model: &ModelRef) -> Result<Arc<dyn Provider>, AiError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// A [`UsageRecorder`] that keeps everything it was asked to record.
+    #[derive(Default)]
+    struct FakeUsageRecorder {
+        records: Mutex<Vec<UsageRecord>>,
+    }
+
+    impl FakeUsageRecorder {
+        fn records(&self) -> Vec<UsageRecord> {
+            self.records.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl UsageRecorder for FakeUsageRecorder {
+        async fn record(&self, record: UsageRecord) -> Result<(), AiError> {
+            self.records.lock().unwrap().push(record);
+            Ok(())
+        }
+    }
+
+    /// A real, offline-resolved [`PersonaRegistry`] with one persona at
+    /// `issue-analyst`'s own conventional id and embedded prompt - enough
+    /// for [`persona_for`] to resolve [`AgentRole::IssueAnalyst`] against
+    /// it exactly as `HarnessDispatcher` does in production.
+    fn issue_analyst_personas() -> Arc<PersonaRegistry> {
+        let mut config = AiConfig {
+            enabled: true,
+            default_persona: None,
+            default_model: None,
+            prompt_dir: None,
+            crisis_resources: Vec::new(),
+            rate_limits: crate::persona::config::RateLimitConfig::default(),
+            spend_caps: crate::persona::config::SpendCapConfig::default(),
+            abuse: crate::persona::config::AbuseConfig::default(),
+            sandbox: crate::sandbox::config::SandboxSettings::default(),
+            projects: crate::project::ProjectsSettings::default(),
+            max_delegation_depth: 2,
+            personas: HashMap::new(),
+        };
+        config
+            .personas
+            .insert(PersonaId::new("issue-analyst"), PersonaConfig {
+                model: Some(ModelRef::new("anthropic", "claude-opus-5")),
+                prompt: "issue-analyst.md".to_string(),
+                display_name: Some("Issue Analyst".to_string()),
+                description: "triages an incoming issue".to_string(),
+                temperature: None,
+                tools: ToolSelection::none(),
+                budget: BudgetConfig::default(),
+                memory: MemoryPolicy::None,
+                sandbox: SandboxPolicy::default(),
+                delegable: false,
+                moderation_fail_closed: None,
+            });
+        let providers = ProviderRegistry::from_available(["anthropic".to_string()]);
+        Arc::new(PersonaRegistry::load(&config, &providers).expect("should resolve"))
+    }
+
+    fn analysis() -> IssueAnalysis {
+        IssueAnalysis {
+            classification: IssueClassification::Bug,
+            reproduction_status: ReproductionStatus::Reproduced,
+            summary: "crashes on startup".to_string(),
+            reproduction_details: "ran with no config".to_string(),
+            recommended_action: RecommendedAction::Proceed,
+            relevant_files: vec![],
+        }
+    }
+
+    /// The whole point of commit 230: a real pipeline turn's usage is
+    /// recorded under the pipeline's own id, never a conversation id at
+    /// all - not the fabricated one this same commit deletes, and not a
+    /// real one either, since a pipeline turn has no conversation behind
+    /// it.
+    #[tokio::test]
+    async fn test_harness_dispatcher_records_usage_under_the_pipelines_own_id() {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider::new().respond_tool_use(
+            "c1",
+            "handoff",
+            serde_json::to_value(analysis()).unwrap(),
+        ));
+        let recorder = Arc::new(FakeUsageRecorder::default());
+
+        let dispatcher = HarnessDispatcher::new(
+            Arc::new(FixedProviderSource(provider)),
+            issue_analyst_personas(),
+            Arc::new(ToolRegistry::new()),
+        )
+        .with_usage_recorder(recorder.clone());
+
+        let output = dispatcher
+            .invoke_agent(
+                AgentRole::IssueAnalyst,
+                AgentContext::new("investigate the crash", PipelineId(99)),
+            )
+            .await
+            .expect("should succeed");
+        assert_eq!(output.handoff["summary"], "crashes on startup");
+
+        let records = recorder.records();
+        assert_eq!(records.len(), 1, "exactly one turn should be recorded");
+        assert_eq!(records[0].pipeline_id, Some(99));
+        assert_eq!(
+            records[0].conversation_id, None,
+            "a pipeline turn has no conversation behind it at all"
+        );
+        assert!(records[0].succeeded);
+    }
+
+    /// Usage is recorded on a failed turn too, matching
+    /// `crate::service::Ai`'s own chat-path philosophy: a turn that
+    /// errors partway through still spent money on the iterations it
+    /// completed before failing.
+    #[tokio::test]
+    async fn test_harness_dispatcher_records_usage_even_when_the_turn_fails() {
+        let provider: Arc<dyn Provider> = Arc::new(
+            MockProvider::new().respond_error(AiError::Provider("the model is down".to_string())),
+        );
+        let recorder = Arc::new(FakeUsageRecorder::default());
+
+        let dispatcher = HarnessDispatcher::new(
+            Arc::new(FixedProviderSource(provider)),
+            issue_analyst_personas(),
+            Arc::new(ToolRegistry::new()),
+        )
+        .with_usage_recorder(recorder.clone());
+
+        let error = dispatcher
+            .invoke_agent(
+                AgentRole::IssueAnalyst,
+                AgentContext::new("investigate the crash", PipelineId(7)),
+            )
+            .await
+            .expect_err("a provider error should fail the turn");
+        assert!(matches!(
+            error,
+            DispatchError::Turn(AgentRole::IssueAnalyst, _)
+        ));
+
+        let records = recorder.records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].pipeline_id, Some(7));
+        assert!(
+            !records[0].succeeded,
+            "a failed turn is still recorded, just marked unsuccessful"
+        );
     }
 }

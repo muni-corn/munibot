@@ -165,6 +165,7 @@ mod tests {
             duration_ms: 5,
             status: "ok".to_string(),
             created_at: now,
+            pipeline_id: None,
         }
         .into();
 

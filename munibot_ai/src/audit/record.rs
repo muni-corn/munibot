@@ -29,31 +29,33 @@ pub struct ToolCallRecord {
     /// The pipeline run this tool call was made under, if any - see
     /// `crate::usage::UsageRecord::pipeline_id`'s own doc comment for why
     /// this is a plain id rather than `crate::pipeline::PipelineId`.
-    /// Always `None` from [`Self::from_outcome`] today: nothing that
-    /// calls it yet has a pipeline to attribute a call to. Wiring a real
-    /// value through is `docs/plans/ai/milestone-7-projects.md` commit
-    /// 230's job.
     pub pipeline_id: Option<i64>,
 }
 
 impl ToolCallRecord {
     /// Builds a record from a tool's outcome, truncating both fields to
     /// [`MAX_FIELD_LEN`] characters.
+    ///
+    /// `conversation_id` and `pipeline_id` are taken exactly as a
+    /// [`crate::tools::ToolCtx`] carries them - never both `Some` at
+    /// once in practice, since a call is audited under whichever one
+    /// the invocation actually had.
     pub fn from_outcome(
-        conversation_id: ConversationId,
+        conversation_id: Option<ConversationId>,
+        pipeline_id: Option<i64>,
         tool_name: &str,
         input: &Value,
         outcome: &ToolOutcome,
         duration: Duration,
     ) -> Self {
         Self {
-            conversation_id: Some(conversation_id),
+            conversation_id,
             tool_name: tool_name.to_string(),
             input: truncate(&input.to_string(), MAX_FIELD_LEN),
             output: truncate(&outcome_text(outcome), MAX_FIELD_LEN),
             duration,
             status: outcome_status(outcome),
-            pipeline_id: None,
+            pipeline_id,
         }
     }
 }
@@ -140,7 +142,8 @@ mod tests {
     #[test]
     fn test_from_outcome_maps_ok_to_the_ok_status() {
         let record = ToolCallRecord::from_outcome(
-            ConversationId(1),
+            Some(ConversationId(1)),
+            None,
             "current_time",
             &json!({}),
             &ToolOutcome::Ok("12:00".to_string()),
@@ -153,7 +156,8 @@ mod tests {
     #[test]
     fn test_from_outcome_maps_err_to_the_err_status() {
         let record = ToolCallRecord::from_outcome(
-            ConversationId(1),
+            Some(ConversationId(1)),
+            None,
             "search",
             &json!({}),
             &ToolOutcome::Err("invalid arguments".to_string()),
@@ -166,7 +170,8 @@ mod tests {
     #[test]
     fn test_from_outcome_maps_fatal_to_the_fatal_status_using_the_errors_message() {
         let record = ToolCallRecord::from_outcome(
-            ConversationId(1),
+            Some(ConversationId(1)),
+            None,
             "bash",
             &json!({}),
             &ToolOutcome::Fatal(AiError::Cancelled),
@@ -179,7 +184,8 @@ mod tests {
     #[test]
     fn test_from_outcome_carries_the_conversation_id() {
         let record = ToolCallRecord::from_outcome(
-            ConversationId(42),
+            Some(ConversationId(42)),
+            None,
             "current_time",
             &json!({}),
             &ToolOutcome::Ok("12:00".to_string()),
@@ -192,7 +198,8 @@ mod tests {
     fn test_from_outcome_truncates_a_long_input_and_output() {
         let long_output = "a".repeat(MAX_FIELD_LEN + 100);
         let record = ToolCallRecord::from_outcome(
-            ConversationId(1),
+            Some(ConversationId(1)),
+            None,
             "web_fetch",
             &json!({"url": "a".repeat(MAX_FIELD_LEN + 100)}),
             &ToolOutcome::Ok(long_output),
@@ -206,7 +213,8 @@ mod tests {
     #[test]
     fn test_short_input_and_output_are_not_truncated() {
         let record = ToolCallRecord::from_outcome(
-            ConversationId(1),
+            Some(ConversationId(1)),
+            None,
             "current_time",
             &json!({"timezone": "UTC"}),
             &ToolOutcome::Ok("12:00".to_string()),

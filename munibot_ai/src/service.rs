@@ -1129,7 +1129,10 @@ impl Ai {
             platform: req.scope.platform,
             granted_tier: req.granted_tier,
             guild_id: req.guild_id,
-            conversation_id: conversation.id,
+            conversation_id: Some(conversation.id),
+            // every chat turn goes through Ai::prepare, which has no
+            // pipeline behind it at all - see ToolCtx's own doc comment
+            pipeline_id: None,
             cancellation: req.cancellation.clone(),
             // a turn started directly by a human is always depth 0; the
             // delegate tool increments this for the nested turn it starts
@@ -1816,7 +1819,8 @@ mod tests {
             platform: Platform::Web,
             granted_tier: RiskTier::Safe,
             guild_id: None,
-            conversation_id: crate::tools::ConversationId(1),
+            conversation_id: Some(crate::tools::ConversationId(1)),
+            pipeline_id: None,
             cancellation: CancellationToken::new(),
             delegation_depth: 0,
             remaining_budget: Budget {

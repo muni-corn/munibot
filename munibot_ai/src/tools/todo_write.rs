@@ -35,16 +35,23 @@ struct TodoWriteArgs {
     todos: Vec<TodoItem>,
 }
 
+/// Which invocation a todo list belongs to: a chat conversation or a
+/// pipeline run, never a fabricated identifier standing in for whichever
+/// one an invocation lacks - see `crate::tools::ToolCtx`'s own doc
+/// comment on why `conversation_id` and `pipeline_id` are never both
+/// `Some` at once.
+type TodoScopeKey = (Option<ConversationId>, Option<i64>);
+
 /// A scratchpad for tracking progress through a long research or pipeline run.
 ///
-/// Stored per conversation, in memory only for now - a persona working through
-/// many steps can keep its plan visible rather than losing track partway
-/// through. Each call replaces the whole list rather than appending to it,
-/// matching how the model is expected to resend its complete current plan every
-/// time it updates.
+/// Stored per conversation or per pipeline run, in memory only for now - a
+/// persona working through many steps can keep its plan visible rather than
+/// losing track partway through. Each call replaces the whole list rather
+/// than appending to it, matching how the model is expected to resend its
+/// complete current plan every time it updates.
 #[derive(Default)]
 pub struct TodoWriteTool {
-    lists: Mutex<HashMap<ConversationId, Vec<TodoItem>>>,
+    lists: Mutex<HashMap<TodoScopeKey, Vec<TodoItem>>>,
 }
 
 impl TodoWriteTool {
@@ -53,13 +60,18 @@ impl TodoWriteTool {
         Self::default()
     }
 
-    /// The current todo list for a conversation, for a platform adapter to
-    /// render alongside the tool's own `ToolFinished` event.
-    pub fn current(&self, conversation_id: ConversationId) -> Vec<TodoItem> {
+    /// The current todo list for a conversation or pipeline run, for a
+    /// platform adapter to render alongside the tool's own `ToolFinished`
+    /// event.
+    pub fn current(
+        &self,
+        conversation_id: Option<ConversationId>,
+        pipeline_id: Option<i64>,
+    ) -> Vec<TodoItem> {
         self.lists
             .lock()
             .unwrap()
-            .get(&conversation_id)
+            .get(&(conversation_id, pipeline_id))
             .cloned()
             .unwrap_or_default()
     }
@@ -95,7 +107,7 @@ impl Tool for TodoWriteTool {
         self.lists
             .lock()
             .unwrap()
-            .insert(ctx.conversation_id, args.todos);
+            .insert((ctx.conversation_id, ctx.pipeline_id), args.todos);
 
         ToolOutcome::ok(format!("recorded {count} todo item(s)"))
     }
@@ -114,11 +126,20 @@ mod tests {
             platform: Platform::Discord,
             granted_tier: RiskTier::Safe,
             guild_id: None,
-            conversation_id,
+            conversation_id: Some(conversation_id),
+            pipeline_id: None,
             cancellation: tokio_util::sync::CancellationToken::new(),
             delegation_depth: 0,
             remaining_budget: crate::harness::Budget::default(),
             delegation_spend: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
+        }
+    }
+
+    fn pipeline_ctx(pipeline_id: i64) -> ToolCtx {
+        ToolCtx {
+            conversation_id: None,
+            pipeline_id: Some(pipeline_id),
+            ..ctx(ConversationId(0))
         }
     }
 
@@ -163,7 +184,7 @@ mod tests {
         )
         .await;
 
-        let stored = tool.current(ConversationId(1));
+        let stored = tool.current(Some(ConversationId(1)), None);
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].content, "research");
         assert_eq!(stored[0].status, TodoStatus::InProgress);
@@ -179,7 +200,7 @@ mod tests {
         tool.invoke(todos(&[("second", TodoStatus::Pending)]), &ctx(id))
             .await;
 
-        let stored = tool.current(id);
+        let stored = tool.current(Some(id), None);
         assert_eq!(
             stored.len(),
             1,
@@ -203,14 +224,42 @@ mod tests {
         )
         .await;
 
-        assert_eq!(tool.current(ConversationId(1))[0].content, "a");
-        assert_eq!(tool.current(ConversationId(2))[0].content, "b");
+        assert_eq!(tool.current(Some(ConversationId(1)), None)[0].content, "a");
+        assert_eq!(tool.current(Some(ConversationId(2)), None)[0].content, "b");
+    }
+
+    /// The scratchpad's whole reason to key on a `(conversation_id,
+    /// pipeline_id)` pair rather than either alone: a pipeline whose
+    /// numeric id happens to equal a real conversation's id must never
+    /// share that conversation's own list - the exact collision a
+    /// fabricated `ConversationId(pipeline_id.0)` used to risk (see
+    /// `crate::pipeline::dispatch::AgentContext`'s own doc comment).
+    #[tokio::test]
+    async fn test_a_pipeline_and_a_conversation_with_the_same_numeric_id_never_collide() {
+        let tool = TodoWriteTool::new();
+
+        tool.invoke(
+            todos(&[("chat task", TodoStatus::Pending)]),
+            &ctx(ConversationId(1)),
+        )
+        .await;
+        tool.invoke(
+            todos(&[("pipeline task", TodoStatus::Pending)]),
+            &pipeline_ctx(1),
+        )
+        .await;
+
+        assert_eq!(
+            tool.current(Some(ConversationId(1)), None)[0].content,
+            "chat task"
+        );
+        assert_eq!(tool.current(None, Some(1))[0].content, "pipeline task");
     }
 
     #[tokio::test]
     async fn test_unknown_conversation_returns_an_empty_list() {
         let tool = TodoWriteTool::new();
-        assert!(tool.current(ConversationId(99)).is_empty());
+        assert!(tool.current(Some(ConversationId(99)), None).is_empty());
     }
 
     #[tokio::test]

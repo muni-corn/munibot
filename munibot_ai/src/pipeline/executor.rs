@@ -20,7 +20,7 @@ use crate::{
         InteractionError, PipelineEvent, PipelineId, PipelineState, PipelineStore,
         PipelineStoreError, advance,
     },
-    tools::{ConversationId, ToolRegistry},
+    tools::ToolRegistry,
 };
 
 /// Why one executor run stopped short of finishing normally.
@@ -391,7 +391,7 @@ impl Executor {
 
             let events_so_far = self.store.events(pipeline_id).await?;
             let task = task_brief(role, &state, &events_so_far);
-            let mut context = AgentContext::new(task, ConversationId(pipeline_id.0.unsigned_abs()));
+            let mut context = AgentContext::new(task, pipeline_id);
             context.cancellation = self.cancellation.clone();
             if let Some(tools) = &sandbox_tools {
                 context = context.with_tools(tools.clone());

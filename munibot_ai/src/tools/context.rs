@@ -91,7 +91,24 @@ pub struct ToolCtx {
     pub granted_tier: RiskTier,
     /// The Discord guild this invocation happened in, when there is one.
     pub guild_id: Option<u64>,
-    pub conversation_id: ConversationId,
+    /// `None` for a pipeline turn (see `pipeline_id`), which has no
+    /// stored conversation behind it at all - every chat invocation has
+    /// one.
+    pub conversation_id: Option<ConversationId>,
+    /// The pipeline run this invocation belongs to, if any - an opaque
+    /// id rather than `crate::pipeline::PipelineId`: `ai::tools` sits
+    /// below `ai::pipeline` in the dependency graph, so it cannot name
+    /// that module's types (see `crate::project::Project::pipeline_id`'s
+    /// own doc comment for the same reasoning). `None` for every chat
+    /// invocation, which has no pipeline behind it at all.
+    ///
+    /// `conversation_id` and this are never both `Some` at once: a chat
+    /// turn has a conversation and no pipeline, a pipeline turn has a
+    /// pipeline and no conversation - never a fabricated identifier
+    /// standing in for whichever one this invocation lacks. See
+    /// `docs/plans/ai/milestone-7-projects.md` commit 230's own note on
+    /// why `AgentContext` used to do exactly that.
+    pub pipeline_id: Option<i64>,
     pub cancellation: CancellationToken,
     /// How many delegations deep this invocation already is: `0` for a
     /// turn started directly by a human, incremented by the `delegate`
@@ -157,7 +174,8 @@ mod tests {
             platform: Platform::Discord,
             granted_tier,
             guild_id: Some(42),
-            conversation_id: ConversationId(7),
+            conversation_id: Some(ConversationId(7)),
+            pipeline_id: None,
             cancellation: CancellationToken::new(),
             delegation_depth: 0,
             remaining_budget: Budget::default(),
