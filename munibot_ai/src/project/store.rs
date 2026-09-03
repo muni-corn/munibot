@@ -93,6 +93,24 @@ impl InMemoryProjectStore {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Backdates a workspace's `last_used_at` directly - there is no
+    /// production path that would ever do this (a real session only ever
+    /// moves it forward, via [`ProjectStore::touch_workspace`]), so this
+    /// exists purely for tests that need to simulate a workspace old
+    /// enough for the collection sweep (`crate::project::collect`) to
+    /// actually act on.
+    #[cfg(test)]
+    pub(crate) fn force_last_used_at_for_test(&self, id: WorkspaceId, at: chrono::DateTime<Utc>) {
+        if let Some(workspace) = self
+            .workspaces
+            .lock()
+            .expect("workspace store lock poisoned")
+            .get_mut(&id)
+        {
+            workspace.last_used_at = at;
+        }
+    }
 }
 
 #[async_trait]

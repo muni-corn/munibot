@@ -9,6 +9,7 @@
 //! `docs/plans/ai/overview.md`.
 
 mod clone;
+mod collect;
 mod config;
 mod devenv_image;
 mod error;
@@ -21,6 +22,7 @@ mod types;
 mod worktree;
 
 pub use clone::{bare_repo_path, clone_or_fetch_project};
+pub use collect::collect_unused_workspaces;
 pub use config::ProjectsSettings;
 pub use devenv_image::build_devenv_image;
 pub use error::ProjectError;
