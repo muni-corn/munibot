@@ -15,8 +15,9 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::post,
 };
+use munibot_ai::project::ProjectManager;
 use munibot_github::{issue_text, normalize_webhook, verify_signature};
-use munibot_vcs::{ForgeEvent, RepoTriggerConfig};
+use munibot_vcs::{ForgeEvent, RepoRef, TriggerMode};
 use tracing::Instrument;
 
 /// Starts a pipeline run for one matched trigger.
@@ -33,8 +34,11 @@ pub trait PipelineDispatch: Send + Sync {
 
 /// Everything the webhook route needs beyond the request itself: the
 /// shared secret github signs deliveries with, munibot's own bot login (to
-/// filter out its own comments), which repositories are configured to
-/// trigger a run and how, and where to send a match.
+/// filter out its own comments), the project store a delivery's own
+/// repository is looked up against (trigger mode and label live on the
+/// project row - see `Project::trigger`'s own doc comment - not a TOML
+/// section, so the projects page can edit them without a restart), and
+/// where to send a match.
 ///
 /// `webhook_secret` and `dispatch` are both `Option`: a deployment with no
 /// `GITHUB_WEBHOOK_SECRET` configured, or no pipeline registered yet, is a
@@ -44,8 +48,33 @@ pub trait PipelineDispatch: Send + Sync {
 pub struct WebhookConfig {
     pub webhook_secret: Option<String>,
     pub bot_login: String,
-    pub triggers: Vec<RepoTriggerConfig>,
+    pub project_manager: Arc<ProjectManager>,
     pub dispatch: Option<Arc<dyn PipelineDispatch>>,
+}
+
+/// The trigger mode a delivery's own repository is currently configured
+/// with, read fresh from the project store on every delivery rather than
+/// cached - an operator editing a project's trigger on the projects page
+/// must take effect on the very next delivery, not the next restart.
+/// `None` for an unregistered repository, or one registered but not yet
+/// given a trigger at all.
+///
+/// A linear scan, the same reasoning
+/// `munibot_gui::server::pipeline_launcher::PipelineLauncher::project_for`'s
+/// own doc comment gives: the expected project count is small, and a
+/// dedicated `get_project_by_repo` query has no caller besides this one
+/// and that one yet.
+async fn trigger_for(project_manager: &ProjectManager, repo: &RepoRef) -> Option<TriggerMode> {
+    match project_manager.list_projects().await {
+        Ok(projects) => projects
+            .into_iter()
+            .find(|project| &project.repo == repo)
+            .and_then(|project| project.trigger),
+        Err(error) => {
+            tracing::warn!(%error, "couldn't look up registered projects for a webhook delivery");
+            None
+        }
+    }
 }
 
 /// The one route this module adds: `POST /webhooks/github`.
@@ -112,16 +141,12 @@ async fn process_delivery(
         }
     };
 
-    let Some(trigger) = config
-        .triggers
-        .iter()
-        .find(|trigger| trigger.enabled && trigger.repo == event.issue().repo)
-    else {
+    let Some(trigger_mode) = trigger_for(&config.project_manager, &event.issue().repo).await else {
         return;
     };
 
     let (title, body_text) = issue_text(&event_type, &body).unwrap_or_default();
-    if !trigger.mode.matches(&event, &title, &body_text) {
+    if !trigger_mode.matches(&event, &title, &body_text) {
         return;
     }
 
@@ -144,7 +169,8 @@ mod tests {
         body::Body,
         http::{Request, header},
     };
-    use munibot_vcs::{Forge, RepoRef, TriggerMode};
+    use munibot_ai::project::{InMemoryProjectStore, NewProject, ProjectStore, ProjectsSettings};
+    use munibot_vcs::Forge;
     use tower::ServiceExt;
 
     use super::*;
@@ -186,6 +212,42 @@ mod tests {
         router().layer(Extension(Arc::new(config)))
     }
 
+    fn munibot_repo() -> RepoRef {
+        RepoRef::new(Forge::GitHub, "musicaloft", "munibot")
+    }
+
+    /// A `ProjectManager` with no registered projects at all - the
+    /// "nothing is configured for this repository" case.
+    async fn empty_project_manager() -> Arc<ProjectManager> {
+        Arc::new(ProjectManager::new(
+            Arc::new(InMemoryProjectStore::new()),
+            ProjectsSettings::default(),
+        ))
+    }
+
+    /// A `ProjectManager` with one project registered for
+    /// `munibot_repo`, on `trigger` - no real clone at all, since
+    /// `webhooks.rs` never reaches anything that would need one.
+    async fn project_manager_with_trigger(trigger: Option<TriggerMode>) -> Arc<ProjectManager> {
+        let store = Arc::new(InMemoryProjectStore::new());
+        store
+            .upsert_project(&NewProject {
+                slug: "munibot".to_string(),
+                display_name: "munibot".to_string(),
+                repo: munibot_repo(),
+                clone_url: "https://example.invalid/munibot.git".to_string(),
+                default_branch: "main".to_string(),
+                local_path: std::path::PathBuf::from("/tmp/does-not-matter"),
+                image_strategy: munibot_ai::project::ImageStrategy::Base,
+                network_policy: munibot_ai::sandbox::config::SandboxNetworkConfig::None,
+                trigger,
+                installation_id: None,
+            })
+            .await
+            .expect("upsert failed");
+        Arc::new(ProjectManager::new(store, ProjectsSettings::default()))
+    }
+
     fn request(event_type: &str, body: Bytes, signature: &str) -> Request<Body> {
         Request::builder()
             .method("POST")
@@ -202,7 +264,7 @@ mod tests {
         let config = WebhookConfig {
             webhook_secret: None,
             bot_login: "munibot[bot]".to_string(),
-            triggers: vec![],
+            project_manager: empty_project_manager().await,
             dispatch: None,
         };
         let response = app(config)
@@ -226,11 +288,7 @@ mod tests {
         let config = WebhookConfig {
             webhook_secret: Some(SECRET.to_string()),
             bot_login: "munibot[bot]".to_string(),
-            triggers: vec![RepoTriggerConfig {
-                repo: RepoRef::new(Forge::GitHub, "musicaloft", "munibot"),
-                mode: TriggerMode::AllIssues,
-                enabled: true,
-            }],
+            project_manager: project_manager_with_trigger(Some(TriggerMode::AllIssues)).await,
             dispatch: Some(dispatch.clone()),
         };
 
@@ -265,7 +323,33 @@ mod tests {
         let config = WebhookConfig {
             webhook_secret: Some(SECRET.to_string()),
             bot_login: "munibot[bot]".to_string(),
-            triggers: vec![],
+            project_manager: empty_project_manager().await,
+            dispatch: Some(dispatch.clone()),
+        };
+
+        let response = app(config)
+            .oneshot(request("issues", body, &signature))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(dispatch.events.lock().unwrap().is_empty());
+    }
+
+    /// A project registered for the repository but with no trigger
+    /// configured yet (`Project::trigger` is `None`) must behave
+    /// exactly like an unregistered one - not dispatch, not panic.
+    #[tokio::test]
+    async fn test_does_not_dispatch_for_a_registered_project_with_no_trigger_configured() {
+        let (body, signature) = signed_body(SECRET, ISSUE_OPENED);
+        let dispatch = Arc::new(RecordingDispatch {
+            events: Mutex::new(vec![]),
+        });
+        let config = WebhookConfig {
+            webhook_secret: Some(SECRET.to_string()),
+            bot_login: "munibot[bot]".to_string(),
+            project_manager: project_manager_with_trigger(None).await,
             dispatch: Some(dispatch.clone()),
         };
 
@@ -287,11 +371,7 @@ mod tests {
         let config = WebhookConfig {
             webhook_secret: Some(SECRET.to_string()),
             bot_login: "munibot[bot]".to_string(),
-            triggers: vec![RepoTriggerConfig {
-                repo: RepoRef::new(Forge::GitHub, "musicaloft", "munibot"),
-                mode: TriggerMode::AllIssues,
-                enabled: true,
-            }],
+            project_manager: project_manager_with_trigger(Some(TriggerMode::AllIssues)).await,
             dispatch: Some(dispatch.clone()),
         };
 

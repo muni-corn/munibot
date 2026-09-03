@@ -78,10 +78,10 @@ pub async fn run(
     let webhook_config = Arc::new(webhooks::WebhookConfig {
         webhook_secret: std::env::var("GITHUB_WEBHOOK_SECRET").ok(),
         bot_login: std::env::var("GITHUB_BOT_LOGIN").unwrap_or_else(|_| "munibot[bot]".to_string()),
-        // no repository has a trigger configured yet, and no pipeline is
-        // registered to dispatch to -- both arrive with the pipeline
-        // itself (see docs/plans/ai/milestone-5-autonomous.md phase 21)
-        triggers: Vec::new(),
+        project_manager: project_manager.clone(),
+        // no pipeline is registered to dispatch to yet - that arrives
+        // with the launcher itself (see
+        // docs/plans/ai/milestone-7-projects.md phase 26, commit 235)
         dispatch: None,
     });
 
