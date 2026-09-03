@@ -12,6 +12,7 @@ use crate::{
             composer::Composer,
             delegation::{DelegationEntry, record_delegation_finished, record_delegation_started},
             message_list::MessageList,
+            project_picker::ProjectPicker,
             tool_activity::{
                 ToolActivityEntry, ToolActivityResult, record_finished, record_started,
             },
@@ -150,7 +151,8 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
     rsx! {
         document::Title { "chat ~ munibot" }
         div { class: "flex h-full flex-col",
-            div { class: "flex justify-end p-2",
+            div { class: "flex items-center justify-between p-2",
+                ProjectPicker { conversation_id }
                 Link {
                     to: Route::Transcript {
                         conversation_id,

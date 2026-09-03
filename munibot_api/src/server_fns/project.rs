@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 use crate::{chat::ChatError, project::WorkspaceSummary};
 use crate::{
     chat::ChatResult,
-    project::{ProjectDetail, ProjectSummary, RegisterProjectForm},
+    project::{ProjectDetail, ProjectPickerEntry, ProjectSummary, RegisterProjectForm},
 };
 
 /// Builds a project's wire summary from the domain type, recomputing its
@@ -236,16 +236,38 @@ pub async fn rebuild_project_image(project_id: i64) -> ChatResult<ProjectSummary
     Ok(summarize(&rebuilt, workspace_count))
 }
 
+/// Every registered project, by display name - what the chat page's
+/// project picker lists. Any signed-in user, not just an operator: see
+/// [`ProjectPickerEntry`]'s own doc comment for why.
+#[server(
+    auth: crate::auth::server::AuthSession,
+    manager: axum::extract::Extension<std::sync::Arc<munibot_ai::project::ProjectManager>>,
+)]
+pub async fn list_projects_for_picker() -> ChatResult<Vec<ProjectPickerEntry>> {
+    auth.current_user.clone().ok_or(ChatError::NotSignedIn)?;
+
+    let mut entries: Vec<ProjectPickerEntry> = manager
+        .list_projects()
+        .await?
+        .into_iter()
+        .map(|project| ProjectPickerEntry {
+            id: project.id.0,
+            display_name: project.display_name,
+            image_status: project.image_status.label().to_string(),
+        })
+        .collect();
+    entries.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+    Ok(entries)
+}
+
 /// Binds a conversation to a project (or unbinds it, with `project_id:
 /// None`) - what the chat page's project picker calls. Owner-gated, not
 /// operator-gated: managing a project is an operator's job, but binding
 /// one's *own* conversation to an already-registered project is not.
 ///
-/// This only records the binding; `munibot_ai::service::Ai` does not yet
-/// consult it, so `coder` turns still run in a fresh scratch workspace
-/// regardless. Wiring `Ai::prepare` to resolve a real worktree via
-/// `ProjectManager::workspace_for` for bound conversations is follow-up
-/// work.
+/// A bound conversation's `coder` turns provision over that project's own
+/// worktree from then on, rather than a fresh scratch workspace every
+/// time - see `munibot_ai::service::Ai::resolve_workspace_override`.
 #[server(
     auth: crate::auth::server::AuthSession,
     pool: axum::extract::Extension<munibot_core::db::DbPool>,

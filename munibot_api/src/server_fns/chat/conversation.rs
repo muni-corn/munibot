@@ -205,6 +205,23 @@ pub async fn get_conversation_messages(
     Ok(messages)
 }
 
+/// One conversation's own summary - what the chat page loads alongside
+/// its messages to show the project picker's current binding, without
+/// pulling the whole sidebar's `list_conversations` list just for one
+/// row of it.
+#[server(
+    auth: crate::auth::server::AuthSession,
+    pool: axum::extract::Extension<munibot_core::db::DbPool>,
+)]
+pub async fn get_conversation(conversation_id: i64) -> ChatResult<ConversationSummary> {
+    let user = auth
+        .current_user
+        .clone()
+        .ok_or(crate::chat::ChatError::NotSignedIn)?;
+    let row = owned_conversation(&pool, conversation_id, user.id).await?;
+    Ok(row.into())
+}
+
 /// Renames a conversation, returning it as saved.
 #[server(
     auth: crate::auth::server::AuthSession,

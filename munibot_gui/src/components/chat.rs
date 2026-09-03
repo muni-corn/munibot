@@ -7,5 +7,6 @@ pub mod delegation;
 pub mod markdown;
 pub mod message_list;
 pub mod persona_picker;
+pub mod project_picker;
 pub mod tool_activity;
 pub mod turn_failure;

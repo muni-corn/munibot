@@ -67,3 +67,20 @@ pub struct RegisterProjectForm {
     pub clone_url: String,
     pub default_branch: String,
 }
+
+/// One registered project, projected just far enough for the chat page's
+/// project picker to list and label it - never the full `ProjectSummary`
+/// `list_projects` returns, which is operator-only. Binding one's own
+/// conversation to an already-registered project is not an operator
+/// action (see `set_conversation_project`'s own doc comment), so listing
+/// which projects exist to bind to cannot be either.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProjectPickerEntry {
+    pub id: i64,
+    pub display_name: String,
+    /// `"unbuilt"` | `"built"` | `"failed"` - the same form
+    /// `ProjectSummary::image_status` uses, shown next to a project's
+    /// name so picking one that isn't ready yet is a visible choice, not
+    /// a silent surprise on the next `coder` turn.
+    pub image_status: String,
+}
