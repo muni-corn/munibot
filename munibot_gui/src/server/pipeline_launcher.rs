@@ -6,14 +6,17 @@
 //!
 //! Every one of those types was built and tested in an earlier commit;
 //! this module is almost entirely composition - see
-//! `docs/plans/ai/milestone-7-projects.md` phase 26, commit 232.
+//! `docs/plans/ai/milestone-7-projects.md` phase 26, commits 232-233.
 //!
-//! Deliberately does not implement `super::webhooks::PipelineDispatch`
-//! itself - that's commit 233's own job, over this launcher's
-//! [`PipelineLauncher::launch`].
+//! Also implements `super::webhooks::PipelineDispatch` over
+//! [`PipelineLauncher::launch`] (commit 233) - what makes a matched
+//! webhook trigger actually start a run, once `super::webhooks`'s own
+//! trigger source is backed by the project store rather than the
+//! hardcoded empty list it still is today (commit 234).
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use munibot_ai::{
     audit::ToolAuditor,
     persona::{AiConfig, PersonaRegistry},
@@ -30,9 +33,11 @@ use munibot_ai::{
     usage::UsageRecorder,
 };
 use munibot_github::GitHubForge;
-use munibot_vcs::{IssueRef, IssueSource, VcsError};
+use munibot_vcs::{ForgeEvent, IssueRef, IssueSource, VcsError};
 use octocrab::models::{AppId, InstallationId};
 use tracing::Instrument;
+
+use super::webhooks::PipelineDispatch;
 
 /// Why [`PipelineLauncher::launch`] couldn't start a run.
 #[derive(Debug, thiserror::Error)]
@@ -290,6 +295,33 @@ impl PipelineLauncher {
     }
 }
 
+#[async_trait]
+impl PipelineDispatch for PipelineLauncher {
+    /// Best-effort, matching this trait's own `dispatch` signature (no
+    /// `Result` to propagate to `handle_webhook`, which has already
+    /// committed to returning `202` regardless): a failure here is
+    /// logged, never surfaced to GitHub as a delivery failure it would
+    /// only retry identically.
+    async fn dispatch(&self, event: ForgeEvent) {
+        let issue = event.issue().clone();
+        match self.launch(issue.clone()).await {
+            Ok(LaunchOutcome::Started(id)) => {
+                tracing::info!(pipeline_id = id.0, issue = %issue, "started a pipeline run");
+            }
+            Ok(LaunchOutcome::Queued(id)) => {
+                tracing::info!(
+                    pipeline_id = id.0,
+                    issue = %issue,
+                    "queued a pipeline run - no concurrency slot free right now"
+                );
+            }
+            Err(error) => {
+                tracing::error!(%error, issue = %issue, "couldn't start a pipeline run for a matched trigger");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use munibot_ai::{
@@ -408,5 +440,22 @@ mod tests {
             panic!("a placeholder, non-PEM private key should fail to parse");
         };
         assert!(matches!(error, LauncherError::Forge(_)));
+    }
+
+    /// `PipelineDispatch::dispatch` has no `Result` to propagate a
+    /// failure through at all - `handle_webhook` has already committed
+    /// to a `202` regardless - so the only thing to prove here is that
+    /// it never panics even when nothing is registered for the matched
+    /// repository, logging the failure and returning instead.
+    #[tokio::test]
+    async fn test_dispatch_never_panics_for_an_unregistered_repository() {
+        let store = Arc::new(InMemoryProjectStore::new());
+        let launcher = launcher_with_projects(store).await;
+
+        launcher
+            .dispatch(munibot_vcs::ForgeEvent::IssueOpened {
+                issue: munibot_vcs::IssueRef::new(cocoa_repo(), 1),
+            })
+            .await;
     }
 }
