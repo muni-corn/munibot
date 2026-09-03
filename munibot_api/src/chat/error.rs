@@ -53,6 +53,19 @@ pub enum ChatError {
     #[error("that pipeline doesn't exist")]
     PipelineNotFound,
 
+    /// The referenced project doesn't exist.
+    #[error("that project doesn't exist")]
+    ProjectNotFound,
+
+    /// Registration tried to reuse a slug another project already has.
+    #[error("a project with that slug already exists")]
+    ProjectSlugTaken,
+
+    /// Refused because a pipeline is currently running against this
+    /// project - see `munibot_ai::project::ProjectError::PipelineRunning`.
+    #[error("can't do that while a pipeline is running against this project")]
+    ProjectPipelineRunning,
+
     /// Wraps a generic server function error so `ChatResult` propagates
     /// cleanly.
     #[error(transparent)]
@@ -71,6 +84,9 @@ impl AsStatusCode for ChatError {
             Self::AttachmentRejected(_) => StatusCode::BAD_REQUEST,
             Self::AttachmentNotFound => StatusCode::NOT_FOUND,
             Self::PipelineNotFound => StatusCode::NOT_FOUND,
+            Self::ProjectNotFound => StatusCode::NOT_FOUND,
+            Self::ProjectSlugTaken => StatusCode::CONFLICT,
+            Self::ProjectPipelineRunning => StatusCode::CONFLICT,
             Self::ServerFnError(e) => e.as_status_code(),
         }
     }
@@ -108,6 +124,22 @@ impl From<diesel::result::Error> for ChatError {
             code: StatusCode::INTERNAL_SERVER_ERROR.into(),
             details: None,
         })
+    }
+}
+
+#[cfg(feature = "server")]
+impl From<munibot_ai::project::ProjectError> for ChatError {
+    fn from(e: munibot_ai::project::ProjectError) -> Self {
+        match e {
+            munibot_ai::project::ProjectError::NotFound(_) => Self::ProjectNotFound,
+            munibot_ai::project::ProjectError::SlugTaken(_) => Self::ProjectSlugTaken,
+            munibot_ai::project::ProjectError::PipelineRunning => Self::ProjectPipelineRunning,
+            other => Self::ServerFnError(ServerFnError::ServerError {
+                message: other.to_string(),
+                code: StatusCode::INTERNAL_SERVER_ERROR.into(),
+                details: None,
+            }),
+        }
     }
 }
 
@@ -177,11 +209,60 @@ mod tests {
     }
 
     #[test]
+    fn test_project_not_found_is_not_found() {
+        assert_eq!(
+            ChatError::ProjectNotFound.as_status_code(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn test_project_slug_taken_is_conflict() {
+        assert_eq!(
+            ChatError::ProjectSlugTaken.as_status_code(),
+            StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn test_project_pipeline_running_is_conflict() {
+        assert_eq!(
+            ChatError::ProjectPipelineRunning.as_status_code(),
+            StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
     fn test_variants_are_distinguishable_by_matching_not_just_by_message() {
         // this is the whole point of ChatError existing rather than a single
         // generic failure: a caller must be able to match structurally
         assert!(matches!(ChatError::NotSignedIn, ChatError::NotSignedIn));
         assert!(matches!(ChatError::AiDisabled, ChatError::AiDisabled));
         assert!(!matches!(ChatError::NotSignedIn, ChatError::AiDisabled));
+    }
+
+    #[test]
+    #[cfg(feature = "server")]
+    fn test_project_error_conversions_preserve_the_specific_variant() {
+        assert!(matches!(
+            ChatError::from(munibot_ai::project::ProjectError::NotFound(
+                munibot_ai::project::ProjectId(1)
+            )),
+            ChatError::ProjectNotFound
+        ));
+        assert!(matches!(
+            ChatError::from(munibot_ai::project::ProjectError::SlugTaken(
+                "cocoa".to_string()
+            )),
+            ChatError::ProjectSlugTaken
+        ));
+        assert!(matches!(
+            ChatError::from(munibot_ai::project::ProjectError::PipelineRunning),
+            ChatError::ProjectPipelineRunning
+        ));
+        assert!(matches!(
+            ChatError::from(munibot_ai::project::ProjectError::Other("boom".to_string())),
+            ChatError::ServerFnError(_)
+        ));
     }
 }

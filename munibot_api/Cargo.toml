@@ -38,6 +38,7 @@ base64 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 lettre = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
+munibot_vcs = { path = "../munibot_vcs", optional = true }
 
 [features]
 default = []
@@ -46,6 +47,7 @@ server = [
   "dioxus/server",
   "dep:munibot_core",
   "dep:munibot_ai",
+  "dep:munibot_vcs",
   "dep:anyhow",
   "dep:async-trait",
   "dep:axum",

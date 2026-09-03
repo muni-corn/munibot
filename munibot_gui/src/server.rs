@@ -17,6 +17,7 @@ use dioxus::prelude::*;
 use munibot_ai::{
     Ai,
     pipeline::{ConcurrencyConfig, PipelineRegistry},
+    project::{DieselProjectStore, ProjectManager, ProjectsSettings},
 };
 use munibot_api::auth::server::User;
 use munibot_core::{config::DiscordConfig, db::establish_pool};
@@ -43,7 +44,17 @@ mod webhooks;
 /// `ai` is `None` when `ai.enabled` is false in config — chat server
 /// functions check for that themselves rather than the gui refusing to
 /// start, so the rest of the site stays usable with the companion turned off.
-pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::Result<()> {
+///
+/// `projects_settings` builds a `ProjectManager` unconditionally, the same
+/// "always-on infrastructure" precedent `pipeline_registry` below already
+/// sets - a project's own root directory and build concurrency limit have
+/// sensible defaults even with no `[ai.projects]` section at all, so there
+/// is no reason to gate this on `ai.enabled` the way `ai` itself is.
+pub async fn run(
+    discord_config: DiscordConfig,
+    ai: Option<Arc<Ai>>,
+    projects_settings: ProjectsSettings,
+) -> anyhow::Result<()> {
     let pool = establish_pool()
         .await
         .expect("couldn't establish database connection pool for the gui");
@@ -78,6 +89,15 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
     // for what still needs wiring before any pipeline actually runs here
     let pipeline_registry = Arc::new(PipelineRegistry::new(ConcurrencyConfig::default()));
 
+    // one manager per process, shared by every project server function --
+    // registering, listing, removing, and rebuilding a project's image all
+    // go through this one facade rather than each function holding its own
+    // store and settings
+    let project_manager = Arc::new(ProjectManager::new(
+        Arc::new(DieselProjectStore::new(pool.clone())),
+        projects_settings,
+    ));
+
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), App)
@@ -96,7 +116,8 @@ pub async fn run(discord_config: DiscordConfig, ai: Option<Arc<Ai>>) -> anyhow::
         .layer(Extension(discord_config))
         .layer(Extension(ai))
         .layer(Extension(webhook_config))
-        .layer(Extension(pipeline_registry));
+        .layer(Extension(pipeline_registry))
+        .layer(Extension(project_manager));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "listening");

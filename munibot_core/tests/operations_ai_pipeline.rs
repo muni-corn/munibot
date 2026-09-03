@@ -200,3 +200,62 @@ async fn test_list_pipelines_returns_full_rows_most_recently_created_first() {
     assert_eq!(pipelines[0].id, second.id);
     assert_eq!(pipelines[1].id, first.id);
 }
+
+#[tokio::test]
+async fn test_list_pipelines_for_project_only_lists_that_projects_pipelines() {
+    use chrono::Utc;
+    use diesel::prelude::*;
+    use diesel_async::RunQueryDsl;
+    use munibot_core::db::{models::NewAiProject, schema::ai_pipelines};
+
+    let db = TestDb::new().await;
+    let for_project = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 1)
+        .await
+        .expect("create failed");
+    let unrelated = ai::create_pipeline(&db.pool, "github", "musicaloft", "munibot", 2)
+        .await
+        .expect("create failed");
+
+    let now = Utc::now().naive_utc();
+    let project = ai::upsert_project(&db.pool, &NewAiProject {
+        slug: "cocoa".to_string(),
+        display_name: "Cocoa".to_string(),
+        forge: "github".to_string(),
+        repo_owner: "muni-corn".to_string(),
+        repo_name: "cocoa".to_string(),
+        clone_url: "https://github.com/muni-corn/cocoa.git".to_string(),
+        default_branch: "main".to_string(),
+        local_path: "/tmp/cocoa".to_string(),
+        image_strategy: "base".to_string(),
+        image_tag: None,
+        image_source_hash: None,
+        image_built_at: None,
+        image_error: None,
+        network_policy: "none".to_string(),
+        trigger_mode: None,
+        trigger_label: None,
+        created_at: now,
+        updated_at: now,
+    })
+    .await
+    .expect("project creation failed");
+
+    // create_pipeline has no project_id parameter yet (nothing writes it
+    // in production until a later commit wires pipelines to projects) -
+    // set it directly to exercise the read path this test is actually
+    // about
+    let mut conn = db.pool.get().await.expect("couldn't get db connection");
+    diesel::update(ai_pipelines::table.find(for_project.id))
+        .set(ai_pipelines::project_id.eq(Some(project.id)))
+        .execute(&mut conn)
+        .await
+        .expect("update failed");
+    drop(conn);
+
+    let for_project_rows = ai::list_pipelines_for_project(&db.pool, project.id)
+        .await
+        .expect("query failed");
+    assert_eq!(for_project_rows.len(), 1);
+    assert_eq!(for_project_rows[0].id, for_project.id);
+    assert!(!for_project_rows.iter().any(|row| row.id == unrelated.id));
+}

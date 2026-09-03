@@ -82,5 +82,5 @@ async fn main() -> anyhow::Result<()> {
         info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }
 
-    munibot_gui::server::run(config.discord, ai).await
+    munibot_gui::server::run(config.discord, ai, ai_config.projects).await
 }

@@ -29,7 +29,7 @@ pub use limits::{
 };
 pub use pipeline::{
     append_pipeline_event, create_pipeline, get_pipeline, list_pipeline_events, list_pipeline_ids,
-    list_pipelines,
+    list_pipelines, list_pipelines_for_project,
 };
 pub use project::{
     create_workspace, delete_project, delete_workspace, get_project, get_project_by_slug,

@@ -80,6 +80,23 @@ pub async fn list_pipelines(pool: &DbPool) -> QueryResult<Vec<AiPipeline>> {
         .await
 }
 
+/// Every pipeline ever started against one project, most recently
+/// created first - what a project's own "is anything running against
+/// this" check (before letting an operator remove it) folds through
+/// `advance` to find a non-terminal one.
+pub async fn list_pipelines_for_project(
+    pool: &DbPool,
+    project_id: i64,
+) -> QueryResult<Vec<AiPipeline>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    ai_pipelines::table
+        .filter(ai_pipelines::project_id.eq(project_id))
+        .order(ai_pipelines::id.desc())
+        .select(AiPipeline::as_select())
+        .load(&mut conn)
+        .await
+}
+
 /// Appends one event, assigning it the next sequence number in this
 /// pipeline's own log.
 ///

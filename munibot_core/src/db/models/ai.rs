@@ -455,6 +455,11 @@ pub struct AiPipeline {
     pub repo_name: String,
     pub issue_number: u64,
     pub created_at: NaiveDateTime,
+    /// Which project this run belongs to, if any - `NULL` for a run
+    /// started before commit 208 added this column, or one whose project
+    /// was later removed (`ON DELETE SET NULL` - the historical record of
+    /// a pipeline that ran survives its project being deleted).
+    pub project_id: Option<i64>,
 }
 
 /// Insertable shape for `ai_pipelines`.
