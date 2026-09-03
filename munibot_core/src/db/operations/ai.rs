@@ -169,6 +169,23 @@ pub async fn rename_conversation(
     Ok(())
 }
 
+/// Binds a conversation to a project, or unbinds it with `None`. A bound
+/// conversation's `coder` turns get a real worktree
+/// (`ProjectManager::workspace_for`, in `munibot_ai`) instead of a fresh
+/// scratch workspace every time.
+pub async fn set_conversation_project(
+    pool: &DbPool,
+    conversation_id: i64,
+    project_id: Option<i64>,
+) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::update(ai_conversations::table.find(conversation_id))
+        .set(ai_conversations::project_id.eq(project_id))
+        .execute(&mut conn)
+        .await?;
+    Ok(())
+}
+
 /// Archives a conversation, hiding it from the listing without deleting it.
 pub async fn archive_conversation(pool: &DbPool, conversation_id: i64) -> QueryResult<()> {
     let mut conn = pool.get().await.expect("couldn't get db connection");

@@ -29,7 +29,7 @@ fn check_ownership(owner_user_id: Option<i64>, user_id: i64) -> ChatResult<()> {
 /// can never use the difference to discover whether an id they don't own
 /// exists at all.
 #[cfg(feature = "server")]
-pub(super) async fn owned_conversation(
+pub(crate) async fn owned_conversation(
     pool: &munibot_core::db::DbPool,
     conversation_id: i64,
     user_id: i64,

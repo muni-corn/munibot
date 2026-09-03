@@ -17,6 +17,9 @@ pub struct ConversationSummary {
     pub archived: bool,
     pub created_at: String,
     pub last_active_at: String,
+    /// The project this conversation is bound to, if any - see
+    /// `munibot_api::server_fns::project::set_conversation_project`.
+    pub project_id: Option<i64>,
 }
 
 #[cfg(feature = "server")]
@@ -39,6 +42,7 @@ impl From<munibot_core::db::models::AiConversation> for ConversationSummary {
                 chrono::Utc,
             )
             .to_rfc3339(),
+            project_id: row.project_id,
         }
     }
 }
@@ -68,6 +72,7 @@ mod tests {
                 "%Y-%m-%d %H:%M:%S",
             )
             .unwrap(),
+            project_id: None,
         }
     }
 

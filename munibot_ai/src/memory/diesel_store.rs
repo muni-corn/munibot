@@ -352,6 +352,7 @@ mod tests {
             archived_at: None,
             created_at: Utc::now().naive_utc(),
             last_active_at: Utc::now().naive_utc(),
+            project_id: None,
         };
 
         let conversation = to_conversation(row);
@@ -373,6 +374,7 @@ mod tests {
             archived_at: None,
             created_at: Utc::now().naive_utc(),
             last_active_at: Utc::now().naive_utc(),
+            project_id: None,
         };
 
         let conversation = to_conversation(row);

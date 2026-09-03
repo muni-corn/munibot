@@ -235,3 +235,41 @@ pub async fn rebuild_project_image(project_id: i64) -> ChatResult<ProjectSummary
     let workspace_count = manager.list_workspaces(rebuilt.id).await?.len();
     Ok(summarize(&rebuilt, workspace_count))
 }
+
+/// Binds a conversation to a project (or unbinds it, with `project_id:
+/// None`) - what the chat page's project picker calls. Owner-gated, not
+/// operator-gated: managing a project is an operator's job, but binding
+/// one's *own* conversation to an already-registered project is not.
+///
+/// This only records the binding; `munibot_ai::service::Ai` does not yet
+/// consult it, so `coder` turns still run in a fresh scratch workspace
+/// regardless. Wiring `Ai::prepare` to resolve a real worktree via
+/// `ProjectManager::workspace_for` for bound conversations is follow-up
+/// work.
+#[server(
+    auth: crate::auth::server::AuthSession,
+    pool: axum::extract::Extension<munibot_core::db::DbPool>,
+    manager: axum::extract::Extension<std::sync::Arc<munibot_ai::project::ProjectManager>>,
+)]
+pub async fn set_conversation_project(
+    conversation_id: i64,
+    project_id: Option<i64>,
+) -> ChatResult<()> {
+    use munibot_core::db::operations::ai;
+
+    let user = auth.current_user.clone().ok_or(ChatError::NotSignedIn)?;
+    crate::server_fns::chat::conversation::owned_conversation(&pool, conversation_id, user.id)
+        .await?;
+
+    // validate the project actually exists before binding to it - a
+    // stale or made-up id must fail loudly here, not silently produce a
+    // conversation bound to nothing the next time a turn looks it up
+    if let Some(project_id) = project_id {
+        manager
+            .get_project(munibot_ai::project::ProjectId(project_id))
+            .await?;
+    }
+
+    ai::set_conversation_project(&pool, conversation_id, project_id).await?;
+    Ok(())
+}

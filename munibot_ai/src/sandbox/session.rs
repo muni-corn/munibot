@@ -15,13 +15,27 @@ use crate::{
 /// agent's socket to become connectable after starting the container.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Removes the host-side checkout directory a [`Sandbox`] borrowed as its
-/// workspace mount, once nothing needs it any more.
-struct WorkspaceGuard(PathBuf);
+/// Whether the workspace directory a [`Sandbox`] borrows as its mount
+/// should be removed once nothing needs this session any more.
+///
+/// `Scratch` - a fresh temp directory [`WorkspaceSession::new`] created
+/// for exactly this session - is cleaned up on drop, the same as before
+/// project-backed workspaces existed. `Persistent` - an existing worktree
+/// [`WorkspaceSession::over_workspace`] was pointed at, owned by a
+/// project's own `ai_workspaces` row - is left alone: a persistent
+/// workspace surviving the session that used it is the entire point of
+/// it being persistent (see `docs/plans/ai/milestone-7-projects.md`'s
+/// architecture section).
+enum WorkspaceGuard {
+    Scratch(PathBuf),
+    Persistent,
+}
 
 impl Drop for WorkspaceGuard {
     fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).ok();
+        if let Self::Scratch(path) = self {
+            std::fs::remove_dir_all(path).ok();
+        }
     }
 }
 
@@ -74,15 +88,31 @@ pub struct WorkspaceSession {
 impl WorkspaceSession {
     /// Reserves a scratch workspace directory - cheap, and safe to do
     /// even if nothing ever actually calls [`Self::sandbox_session`] -
-    /// but creates no container yet.
+    /// but creates no container yet. Removed once this session is
+    /// dropped - see [`WorkspaceGuard::Scratch`].
     pub fn new(config: SandboxConfig) -> Result<Arc<Self>, AiError> {
         let workspace = fresh_workspace_dir("munibot-sandbox-workspace")?;
         Ok(Arc::new(Self {
             config,
             workspace: workspace.clone(),
             cell: OnceCell::new(),
-            _workspace_guard: WorkspaceGuard(workspace),
+            _workspace_guard: WorkspaceGuard::Scratch(workspace),
         }))
+    }
+
+    /// Provisions lazily over an existing, persistent workspace directory
+    /// (a project's own worktree, from `ProjectManager::workspace_for`)
+    /// rather than a fresh scratch one.
+    ///
+    /// Never removes `workspace`: it outlives this session by design,
+    /// and belongs to whatever `ai_workspaces` row created it.
+    pub fn over_workspace(workspace: PathBuf, config: SandboxConfig) -> Arc<Self> {
+        Arc::new(Self {
+            config,
+            workspace,
+            cell: OnceCell::new(),
+            _workspace_guard: WorkspaceGuard::Persistent,
+        })
     }
 
     /// Wraps an already-connected [`SandboxSession`] with no real
@@ -105,7 +135,7 @@ impl WorkspaceSession {
             config: SandboxConfig::default(),
             workspace: workspace.clone(),
             cell,
-            _workspace_guard: WorkspaceGuard(workspace),
+            _workspace_guard: WorkspaceGuard::Scratch(workspace),
         })
     }
 
@@ -177,6 +207,18 @@ mod tests {
         assert!(workspace.is_dir());
         drop(session);
         assert!(!workspace.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_dropping_a_persistent_workspace_session_never_removes_the_directory() {
+        let workspace = fresh_workspace_dir("munibot_ai_session_persistent_test").unwrap();
+        let session = WorkspaceSession::over_workspace(workspace.clone(), bad_config());
+        drop(session);
+        assert!(
+            workspace.is_dir(),
+            "a project's own persistent workspace must survive the session that used it"
+        );
+        std::fs::remove_dir_all(&workspace).ok();
     }
 
     #[tokio::test]

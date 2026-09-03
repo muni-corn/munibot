@@ -37,6 +37,11 @@ pub struct AiConversation {
     pub archived_at: Option<NaiveDateTime>,
     pub created_at: NaiveDateTime,
     pub last_active_at: NaiveDateTime,
+    /// The project this conversation is bound to, if any - what a bound
+    /// `coder` conversation's turns resolve a real worktree from, via
+    /// `ProjectManager::workspace_for`, instead of a fresh scratch
+    /// workspace. `NULL` until `set_conversation_project` sets one.
+    pub project_id: Option<i64>,
 }
 
 /// Insertable shape for `ai_conversations`.

@@ -496,6 +496,59 @@ async fn test_list_conversations_excludes_channel_scoped_ones() {
 }
 
 #[tokio::test]
+async fn test_set_conversation_project_binds_and_unbinds() {
+    use munibot_core::db::models::NewAiProject;
+
+    let db = TestDb::new().await;
+    let user = a_user(&db.pool).await;
+    let conversation = ai::create_conversation(&db.pool, web_conversation(Some(user), "c1"))
+        .await
+        .unwrap();
+
+    let now = Utc::now().naive_utc();
+    let project = ai::upsert_project(&db.pool, &NewAiProject {
+        slug: "cocoa".to_string(),
+        display_name: "Cocoa".to_string(),
+        forge: "github".to_string(),
+        repo_owner: "muni-corn".to_string(),
+        repo_name: "cocoa".to_string(),
+        clone_url: "https://github.com/muni-corn/cocoa.git".to_string(),
+        default_branch: "main".to_string(),
+        local_path: "/tmp/cocoa".to_string(),
+        image_strategy: "base".to_string(),
+        image_tag: None,
+        image_source_hash: None,
+        image_built_at: None,
+        image_error: None,
+        network_policy: "none".to_string(),
+        trigger_mode: None,
+        trigger_label: None,
+        created_at: now,
+        updated_at: now,
+    })
+    .await
+    .expect("project creation failed");
+
+    ai::set_conversation_project(&db.pool, conversation.id, Some(project.id))
+        .await
+        .expect("bind failed");
+    let bound = ai::get_conversation(&db.pool, conversation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(bound.project_id, Some(project.id));
+
+    ai::set_conversation_project(&db.pool, conversation.id, None)
+        .await
+        .expect("unbind failed");
+    let unbound = ai::get_conversation(&db.pool, conversation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(unbound.project_id, None);
+}
+
+#[tokio::test]
 async fn test_rename_conversation() {
     let db = TestDb::new().await;
     let user = a_user(&db.pool).await;
