@@ -8,11 +8,13 @@
 //! `ai::pipeline` - keep it below `ai::pipeline` in the dependency graph in
 //! `docs/plans/ai/overview.md`.
 
+mod clone;
 mod config;
 mod error;
 mod store;
 mod types;
 
+pub use clone::{bare_repo_path, clone_or_fetch_project};
 pub use config::ProjectsSettings;
 pub use error::ProjectError;
 pub use store::{DieselProjectStore, InMemoryProjectStore, ProjectStore};
