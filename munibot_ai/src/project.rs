@@ -18,6 +18,7 @@ mod image_cache;
 mod manager;
 mod store;
 mod strategy;
+mod tool_backend;
 mod types;
 mod worktree;
 
@@ -31,6 +32,7 @@ pub use image_cache::{ImageBuilder, compute_source_hash, image_tag};
 pub use manager::{ProjectManager, RegisterProjectSpec, WorkspaceOwner};
 pub use store::{DieselProjectStore, InMemoryProjectStore, ProjectStore};
 pub use strategy::{SkipReason, detect_image_strategy};
+pub use tool_backend::ProjectManagerRegistrar;
 pub use types::{
     ImageStatus, ImageStrategy, NewProject, NewWorkspace, Project, ProjectId, Workspace,
     WorkspaceId,
