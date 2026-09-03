@@ -274,33 +274,38 @@ fn rate_limit_scopes_for(req: &AiTurnRequest) -> Vec<Scope> {
 }
 
 /// Provisions a sandbox for one turn, letting [`SandboxPolicy::Optional`]
-/// degrade to no sandbox at all instead of failing the turn outright.
+/// degrade to no sandbox at all instead of failing the turn outright, and
+/// forces [`SandboxPolicy::Required`] to provision right now rather than
+/// waiting for the model's first sandboxed tool call.
 ///
-/// [`SandboxPolicy::Required`] still propagates a provisioning failure -
-/// the persona asked for a sandbox and cannot do its job without one, so a
-/// missing podman or a missing image must fail loudly rather than let a
-/// persona that thinks it can write files silently run without any. An
-/// `Optional` persona has no such assumption: it degrades to the base
-/// tool registry, with a warning naming the cause, so a coding-adjacent
-/// persona still answers on a machine with no podman rather than dying
-/// before the model has said a word. See
-/// `docs/plans/ai/milestone-7-projects.md`, commit 206.
+/// [`crate::sandbox::provision::provision_if_needed`] itself never fails
+/// for a non-`Forbidden` policy any more (see commit 218's own doc
+/// comment on why laziness makes that true) - the six tools are always
+/// present in the schema immediately, and a broken sandbox only surfaces
+/// as a tool error on first use. That is exactly right for `Optional`.
+/// It is not right for `Required`: a persona that requires a sandbox
+/// cannot do its job at all without one, so this forces the underlying
+/// session to provision immediately and propagates a failure there as a
+/// turn failure - the one piece of eagerness this milestone's laziness
+/// deliberately keeps. See `docs/plans/ai/milestone-7-projects.md`,
+/// commits 206, 218, and 219.
 async fn provision_or_degrade(
     policy: SandboxPolicy,
     config: crate::sandbox::config::SandboxConfig,
     base_tools: &Arc<ToolRegistry>,
 ) -> Result<Option<crate::sandbox::provision::ProvisionedSandbox>, AiError> {
-    match crate::sandbox::provision::provision_if_needed(policy, config, base_tools).await {
-        Ok(sandbox) => Ok(sandbox),
-        Err(error) if policy == SandboxPolicy::Optional => {
-            tracing::warn!(
-                %error,
-                "an optional sandbox couldn't be provisioned - continuing without one"
-            );
-            Ok(None)
-        }
-        Err(error) => Err(error),
+    let provisioned =
+        crate::sandbox::provision::provision_if_needed(policy, config, base_tools).await?;
+
+    let Some(provisioned) = provisioned else {
+        return Ok(None);
+    };
+
+    if policy == SandboxPolicy::Required {
+        provisioned.force_provision().await?;
     }
+
+    Ok(Some(provisioned))
 }
 
 /// A failure - the model, or saving the result - is logged and otherwise
