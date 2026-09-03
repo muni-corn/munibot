@@ -4,14 +4,21 @@ What the executor (`munibot_ai::pipeline::executor`) actually verified about
 sandbox lifecycle, and what it didn't - written down so it isn't discovered
 by surprise during rollout.
 
-**Partially closed as of commit 231.** `pipeline_id` (229-230) and the real
-`SandboxLifecycle` (231, below) are done. Still open, all in
-`docs/plans/ai/milestone-7-projects.md` phase 26: the launcher that
-constructs an `Executor` at all (232), webhook dispatch (233), and resume at
-boot (236) - nothing in any binary calls any of this yet, so it remains
-exactly as untested against a real repository as it was before this note's
-own first version, just for a different reason now (no caller, rather than
-no implementation).
+**Closed as of commit 236.** Everything this note originally described as
+missing is built and wired into the real running server now: `pipeline_id`
+(229-230), the real `SandboxLifecycle` (231, below), the launcher
+(232), webhook dispatch (233), sourcing triggers from the project store
+instead of a hardcoded empty list (234), constructing the launcher in
+`munibot::ai::build` and injecting it as `WebhookConfig::dispatch` (235),
+and resuming every non-terminal pipeline at boot (236). A webhook delivery
+can start a real pipeline run today, against a real project's real
+worktree and image, in a real running server.
+
+What is _not_ proven yet is that any of it actually works end to end
+against a real GitHub App installation and a real repository - see
+`docs/plans/ai/milestone-7-projects.md` phase 27 (commits 239-246) for
+that verification, and the real-round-trip note in the
+`SandboxLifecycle` section below.
 
 ## What's verified
 
@@ -51,9 +58,12 @@ without a real working tool agent inside a real container - that full
 round trip, against a real project's real built image, is commit 243's own
 job (`docs/plans/ai/milestone-7-projects.md` phase 27).
 
-Still needed before any of this runs for real: the launcher that resolves
-which project a run belongs to and actually constructs one of these
-(commit 232) - nothing in any binary does yet.
+`PipelineLauncher` (`munibot_gui::server::pipeline_launcher`) is that
+launcher: `launch` resolves which project a matched trigger's own
+repository belongs to and constructs one of these for real, sharing one
+`Arc<dyn SandboxLifecycle>` with `PipelineRegistry::try_start` so an abort
+tears down the exact same instance the run loop provisioned through, never
+a second one that never provisioned anything.
 
 ## Pipeline monitor page's own scope (phase 22, commit 181)
 
@@ -65,7 +75,7 @@ now keyed by `pipeline_id` as well as `conversation_id` (commit 229-230
 gave a pipeline turn its own audit trail) - showing them on the monitor
 page itself is still unbuilt, a straightforward read against
 `list_tool_calls_for_conversation`'s own `pipeline_id`-filtered sibling
-(which does not exist yet either). `PipelineRegistry::is_running` is real,
-but nothing in the current binary actually starts a pipeline running in
-the first place (see above), so `running` on every summary is `false`
-until that wiring lands too.
+(which does not exist yet either). `PipelineRegistry::is_running` is real
+and, as of commit 235, reflects an actually-running pipeline correctly -
+this page's own summaries were simply never revisited to take advantage
+of it.

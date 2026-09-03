@@ -22,11 +22,14 @@ use tracing::Instrument;
 
 /// Starts a pipeline run for one matched trigger.
 ///
-/// A trait, rather than a concrete pipeline type, because the autonomous
-/// pipeline itself (`munibot_ai::pipeline`) doesn't exist yet -- this is
-/// the seam it plugs into once it does, the same way `munibot_ai::Ai` is
-/// an `Option` injected into this same server rather than something
-/// `server.rs` constructs itself.
+/// A trait, rather than naming `PipelineLauncher` directly, so this
+/// module never has to depend on `munibot_ai::pipeline` or
+/// `munibot_github` itself - `PipelineLauncher` is the real
+/// implementation (`super::pipeline_launcher`), injected as an `Option`
+/// the same way `munibot_ai::Ai` is: `server.rs` doesn't construct
+/// either itself, and a deployment with no `GITHUB_APP_ID` configured
+/// runs with this `None`, exactly as it did before the pipeline
+/// existed at all.
 #[async_trait]
 pub trait PipelineDispatch: Send + Sync {
     async fn dispatch(&self, event: ForgeEvent);
