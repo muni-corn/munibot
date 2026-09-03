@@ -159,43 +159,107 @@ configuration, as a set of working examples.
   Operator-gated for any conversation; anyone can read their own. This is the fastest way to
   understand why a persona behaved oddly, or to investigate anything a safety event flagged.
 - **`/pipelines`** -- every autonomous pipeline run, live via SSE: state, current subtask, elapsed
-  time, and an abort button. `/pipelines/:id` shows one run's full event log. **Nothing can start a
-  run yet** -- see "the autonomous pipeline is not yet wired up" below. The page itself works; it
-  just has nothing to show.
+  time, and an abort button. `/pipelines/:id` shows one run's full event log. A real webhook
+  delivery against a registered, triggered project starts one - see
+  ["how a webhook becomes a run"](#how-a-webhook-becomes-a-run) below for the whole path, and its
+  own "what's still not wired" for the two pieces that aren't.
 - **`/dashboard/:guild_id/ai`** -- per-guild: AI on/off, default persona, and a channel allowlist.
   Guild-admin gated, not operator-only -- a server owner manages their own server's settings here.
 - **`/account`** -- a signed-in user's own linked sign-in providers, with unlink buttons. Point a
   confused user here rather than doing it for them.
 
-## The autonomous pipeline is not yet wired up
+## How a webhook becomes a run
 
-Everything this document says about pipelines describes a subsystem that is **fully built, fully
-tested, and has no production caller**. Concretely, as things stand:
+As of `docs/plans/ai/milestone-7-projects.md` phase 26 (commits 232-236), this is real, end to end,
+in the running server -- not just a fully tested subsystem waiting for a caller:
 
-- Nothing in any binary constructs an `Executor`, so **no pipeline can start**. `WebhookConfig` is
-  hardcoded to `triggers: Vec::new()` and `dispatch: None` (`munibot_gui/src/server.rs:82-83`), so a
-  webhook delivery is verified, normalized, and then dropped for want of a trigger to match.
-- `PipelineRegistry::is_running` therefore always answers `false`, so `/pipelines` will list any rows
-  that exist but never show a run as live, and the abort button never renders.
-- `resume_all` exists but is **never called at boot**, so the resume behaviour described below does
-  not happen yet.
-- Nothing builds `munibot-sandbox:latest`. Until you run
-  `podman build -t munibot-sandbox:latest -f Containerfile .` by hand, every sandboxed persona fails
-  at container creation, unless it's bound to a project instead (see `docs/ai-projects.md`) -- a
-  project's own image is built and cached independently of this one.
+1. GitHub `POST`s a delivery to `/webhooks/github`. `handle_webhook` verifies its signature against
+   `GITHUB_WEBHOOK_SECRET`, returns `202` immediately, and does everything below in a spawned task
+   (`munibot_gui/src/server/webhooks.rs`) -- a slow or failing delivery must never look like a
+   failed delivery to GitHub, which retries those.
+2. `normalize_webhook` turns the raw payload into a `ForgeEvent`. One authored by munibot's own bot
+   login, or of a type/action nothing acts on, is silently uninteresting, not a failure.
+3. `trigger_for` looks up the event's own repository against every **registered project**
+   (`ProjectManager::list_projects`, a linear scan) and reads that project's own `trigger` column
+   fresh -- there is no TOML trigger configuration to go stale, and (once something actually sets
+   one - see "what's still not wired" below) changing it would take effect on the very next
+   delivery, no restart needed. No registered project, or one with no trigger configured (every
+   project today), is not an error, just nothing to do.
+4. A matched trigger reaches `WebhookConfig::dispatch` -- `Some(pipeline_launcher)` once
+   `GITHUB_APP_ID`/`GITHUB_APP_PRIVATE_KEY` are both configured (`munibot::ai::build`), `None`
+   otherwise, the same optional-capability convention `ai` itself follows.
+5. `PipelineLauncher::launch`: builds a `GitHubForge` authenticated as **the matched project's own**
+   GitHub App installation (`Project::installation_id`, set at registration -- never munibot's own
+   default identity, if it even has one), fetches the issue for its title, decides a branch via
+   `resolve_branch_name`, creates the `ai_pipelines` row, and either runs it in a spawned task (a
+   concurrency slot was free) or queues it.
+6. The spawned task runs `Executor::run_with_interaction` against a `ProjectSandboxLifecycle` --
+   the project's own worktree, from that project's own built image (refusing outright if that image
+   failed to build, never silently falling back to `[ai.sandbox].image`) -- until the run finishes,
+   pauses on `AwaitingUserInput`, or is cancelled. `PipelineRegistry::finish` runs on every exit
+   path, freeing the concurrency slot for whatever was queued behind it.
 
-Projects and workspaces (`docs/ai-projects.md`) are further along -- registering one from the
-operator projects page, and binding a chat conversation to it, both work end to end today. Two of
-its own pieces share this section's "built but not connected" shape, though:
+`PipelineRegistry::is_running` now genuinely reflects whether a run is live, so `/pipelines`'s abort
+button renders correctly, and `resume_all` runs once at boot (`munibot/src/main.rs`, before the
+server starts accepting webhooks), continuing every non-terminal pipeline from wherever its own
+event log left off -- see [aborting a pipeline](#aborting-a-pipeline) below for what a resumed,
+still-`AwaitingUserInput` run does (nothing new; it has no answer yet either way).
 
-- `ProjectManager::register_from_installation` exists and is tested, but the GitHub webhook handler
-  never calls it, so an installation event never registers a project automatically yet.
+### What a project needs before any of this applies
+
+- **Registered**, with an `installation_id` -- only a project registered automatically from a
+  GitHub App `InstallationEvent` gets one; the operator projects page's manual registration form
+  does not, and a project without one can be cloned once but never authenticate to comment on an
+  issue or open a pull request later. See `docs/ai-projects.md`'s own registration section.
+- **A trigger configured** -- `Project::trigger`, read fresh from the project row on every
+  delivery. **Nothing sets this to anything but `None` today** -- neither registration path
+  populates it, and no server function or projects-page form edits it after the fact either. Until
+  one of those exists, no delivery for any project ever matches a trigger, and step 4 onward above
+  never actually runs against a real deployment; see "what's still not wired" below.
+  `auto_register_installations` (`[ai.projects]`) is unrelated: it only controls whether an
+  `InstallationEvent` registers a project at all, never which events start a run once registered.
+- **An image that actually builds**, if its strategy isn't `Base` -- `ProjectSandboxLifecycle`
+  refuses to fall back to the generic `[ai.sandbox].image` for a project whose devenv or
+  Containerfile strategy applies but failed to build. Check the project's own detail page first.
+
+### What happens to a workspace when a run ends
+
+`ProjectSandboxLifecycle::teardown` drops the sandbox session -- the container, if one was ever
+provisioned -- but never the worktree itself. A finished run's own files are still on disk,
+inspectable, at `<project>/worktrees/pipeline-<id>/`, exactly as a failed or paused one's are. It is
+only ever removed by `collect_unused_workspaces` once `[ai.projects].workspace_ttl` has passed since
+it was last touched -- see `docs/ai-projects.md`'s own note that nothing schedules that sweep yet,
+so in practice a project's `worktrees/` directory only grows until it is run by hand.
+
+### Starting a run by hand, for testing
+
+There is no admin button for this yet. Two real ways, both requiring a project already registered
+with a real `installation_id` and a trigger configured:
+
+- **Against a real repository**: open (or label, or comment on) an issue that matches the project's
+  configured trigger. GitHub delivers the webhook for you.
+- **Locally, with no real GitHub delivery at all**: `POST` a signed payload directly to
+  `/webhooks/github` -- `webhooks.rs`'s own tests (`signed_body`) show exactly how the HMAC-SHA256
+  signature is computed; reuse the same recipe with `curl` or a script pointed at your own
+  `GITHUB_WEBHOOK_SECRET` and a hand-written issue payload.
+
+### What's still not wired
+
+- **Nothing sets a project's trigger.** `register_project`, `register_from_installation`, and
+  `ManageProjectTool` (see below) all leave `RegisterProjectSpec::trigger` as `None`, and there is
+  no server function or projects-page form to set one afterward either. This is the actual
+  blocker on the launch path above ever firing today, not any of the pieces already wired -- fix
+  this before pointing a real webhook at a real project and wondering why nothing happens.
+- `ProjectManager::register_from_installation` exists and is tested, but nothing parses a real
+  GitHub `InstallationEvent` webhook and calls it, so a repository is never registered
+  automatically just because the GitHub App was installed into it yet.
 - `ManageProjectTool` exists and is tested, but no persona's tool selection includes it, so nothing
   can register a project by asking munibot to, yet.
 
-`docs/plans/ai/milestone-7-projects.md` is the plan that closes all of this. Read `/pipelines`,
-`/projects`, and the section below as documentation of intended behaviour, not of current
-behaviour.
+Nothing builds `munibot-sandbox:latest` either. Until you run
+`podman build -t munibot-sandbox:latest -f Containerfile .` by hand, a **chat** persona's own
+`Optional`/`Required` sandbox (never a project-bound pipeline run, which always uses its own
+project's image) fails to provision against the default image.
 
 ## Aborting a pipeline
 
@@ -370,9 +434,11 @@ affect whether the safety check it's recording actually did its job.
   (commit 199), and the plan for everything else in this milestone.
 - `docs/ai-projects.md` -- what a project and a workspace are, the three image strategies, how to
   register a project, and what to check when an image build fails.
-- `docs/plans/ai/milestone-7-projects.md` -- projects, workspaces, and the wiring that makes the
-  pipeline sections above describe reality. Its opening table is the current, evidenced list of
-  everything in the AI stack that is built but not connected.
+- `docs/plans/ai/milestone-7-projects.md` -- projects, workspaces, and the wiring that made the
+  pipeline sections above describe reality. Its opening table was the evidenced list of everything
+  in the AI stack that was built but not connected _at the time this milestone started_ -- most of
+  it, phase 26's pipeline-launch path included, is closed as of this document's own latest edit;
+  see "what's still not wired" above for what remains.
 - `docs/plans/ai/overview.md` -- the full architecture, including the "Risks" section this
   document exists to make actionable.
 - `docs/tracing.md` -- how to actually watch any of this happen, via `RUST_LOG`.
