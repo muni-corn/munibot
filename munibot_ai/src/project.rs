@@ -10,8 +10,13 @@
 
 mod config;
 mod error;
+mod store;
 mod types;
 
 pub use config::ProjectsSettings;
 pub use error::ProjectError;
-pub use types::{ImageStatus, ImageStrategy, Project, ProjectId, Workspace, WorkspaceId};
+pub use store::{DieselProjectStore, InMemoryProjectStore, ProjectStore};
+pub use types::{
+    ImageStatus, ImageStrategy, NewProject, NewWorkspace, Project, ProjectId, Workspace,
+    WorkspaceId,
+};

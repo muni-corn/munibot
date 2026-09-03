@@ -159,6 +159,34 @@ pub struct Workspace {
     pub last_used_at: DateTime<Utc>,
 }
 
+/// Everything needed to register a new project, before a
+/// [`crate::project::ProjectStore`] assigns it an id and timestamps and
+/// sets its image status to [`ImageStatus::Unbuilt`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewProject {
+    pub slug: String,
+    pub display_name: String,
+    pub repo: munibot_vcs::RepoRef,
+    pub clone_url: String,
+    pub default_branch: String,
+    pub local_path: PathBuf,
+    pub image_strategy: ImageStrategy,
+    pub network_policy: SandboxNetworkConfig,
+    pub trigger: Option<munibot_vcs::TriggerMode>,
+}
+
+/// Everything needed to create a new workspace, before a
+/// [`crate::project::ProjectStore`] assigns it an id and timestamps.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewWorkspace {
+    pub project_id: ProjectId,
+    pub name: String,
+    pub branch: String,
+    pub path: PathBuf,
+    pub pipeline_id: Option<i64>,
+    pub conversation_id: Option<i64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
