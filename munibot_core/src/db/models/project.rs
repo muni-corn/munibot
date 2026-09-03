@@ -44,6 +44,7 @@ pub struct AiProject {
     pub trigger_label: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub installation_id: Option<i64>,
 }
 
 /// Insertable and upsertable shape for `ai_projects` - `upsert_project`
@@ -73,6 +74,7 @@ pub struct NewAiProject {
     pub trigger_label: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub installation_id: Option<i64>,
 }
 
 /// Changeset for updating an existing `ai_projects` row - every field the

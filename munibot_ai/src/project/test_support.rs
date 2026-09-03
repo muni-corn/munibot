@@ -121,5 +121,6 @@ pub(crate) fn minimal_spec(
         network_policy: SandboxNetworkConfig::None,
         trigger: None,
         token: None,
+        installation_id: None,
     }
 }

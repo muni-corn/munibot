@@ -46,6 +46,7 @@ impl ProjectRegistrar for ProjectManagerRegistrar {
                 network_policy: SandboxNetworkConfig::None,
                 trigger: None,
                 token: None,
+                installation_id: None,
             })
             .await
             .map_err(|error| AiError::Other(error.to_string()))?;

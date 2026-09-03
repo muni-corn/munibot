@@ -127,6 +127,14 @@ pub struct Project {
     /// an unconfigured project's webhook deliveries are ignored rather
     /// than defaulting to any particular trigger.
     pub trigger: Option<munibot_vcs::TriggerMode>,
+    /// The GitHub App installation that authenticates this project, if
+    /// any - set once, at registration, from the `InstallationEvent`
+    /// that registered it (see `ProjectManager::register_from_installation`).
+    /// `None` for a project registered manually: it can still be cloned
+    /// once with a caller-supplied token, but nothing can later
+    /// re-authenticate as it to comment on an issue or open a pull
+    /// request, so it cannot run a pipeline.
+    pub installation_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -173,6 +181,7 @@ pub struct NewProject {
     pub image_strategy: ImageStrategy,
     pub network_policy: SandboxNetworkConfig,
     pub trigger: Option<munibot_vcs::TriggerMode>,
+    pub installation_id: Option<i64>,
 }
 
 /// Everything needed to create a new workspace, before a
@@ -299,6 +308,7 @@ mod tests {
             image_status: ImageStatus::Unbuilt,
             network_policy: SandboxNetworkConfig::None,
             trigger: None,
+            installation_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

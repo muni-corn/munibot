@@ -33,6 +33,7 @@ fn sample_project(slug: &str) -> NewAiProject {
         trigger_label: None,
         created_at: now,
         updated_at: now,
+        installation_id: None,
     }
 }
 

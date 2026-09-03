@@ -574,6 +574,7 @@ mod tests {
                 image_strategy: ImageStrategy::Base,
                 network_policy: SandboxNetworkConfig::None,
                 trigger: None,
+                installation_id: None,
             })
             .await
             .unwrap();
@@ -620,6 +621,7 @@ mod tests {
                 image_strategy: ImageStrategy::Base,
                 network_policy: SandboxNetworkConfig::None,
                 trigger: None,
+                installation_id: None,
             })
             .await
             .unwrap();

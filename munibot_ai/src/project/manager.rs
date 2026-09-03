@@ -60,6 +60,12 @@ pub struct RegisterProjectSpec {
     /// placed in a URL or argv. See `crate::project::clone`'s own doc
     /// comment.
     pub token: Option<String>,
+    /// The GitHub App installation that authenticates this project -
+    /// `Some` when this call came from an `InstallationEvent`, `None`
+    /// for a manual registration (the projects page, or the
+    /// `manage_project` tool). See [`Project::installation_id`]'s own
+    /// doc comment for what a project without one cannot do later.
+    pub installation_id: Option<i64>,
 }
 
 /// Which workspace a caller wants: `workspace_for` derives a stable name
@@ -179,6 +185,7 @@ impl ProjectManager {
                 image_strategy: strategy,
                 network_policy: spec.network_policy,
                 trigger: spec.trigger,
+                installation_id: spec.installation_id,
             })
             .await?;
 

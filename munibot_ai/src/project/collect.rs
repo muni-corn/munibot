@@ -166,6 +166,7 @@ mod tests {
                 image_strategy: ImageStrategy::Base,
                 network_policy: crate::sandbox::config::SandboxNetworkConfig::None,
                 trigger: None,
+                installation_id: None,
             })
             .await
             .unwrap()

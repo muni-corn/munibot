@@ -187,6 +187,7 @@ pub async fn register_project(form: RegisterProjectForm) -> ChatResult<ProjectSu
             network_policy: munibot_ai::sandbox::config::SandboxNetworkConfig::None,
             trigger: None,
             token: None,
+            installation_id: None,
         })
         .await?;
 

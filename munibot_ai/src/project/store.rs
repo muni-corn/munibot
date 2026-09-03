@@ -127,6 +127,7 @@ impl ProjectStore for InMemoryProjectStore {
             existing.image_strategy = spec.image_strategy;
             existing.network_policy = spec.network_policy;
             existing.trigger = spec.trigger.clone();
+            existing.installation_id = spec.installation_id;
             existing.updated_at = Utc::now();
             return Ok(existing.clone());
         }
@@ -146,6 +147,7 @@ impl ProjectStore for InMemoryProjectStore {
             image_status: ImageStatus::Unbuilt,
             network_policy: spec.network_policy,
             trigger: spec.trigger.clone(),
+            installation_id: spec.installation_id,
             created_at: now,
             updated_at: now,
         };
@@ -441,6 +443,7 @@ fn row_to_project(row: AiProject) -> Result<Project, ProjectError> {
         image_status,
         network_policy,
         trigger,
+        installation_id: row.installation_id,
         created_at: DateTime::<Utc>::from_naive_utc_and_offset(row.created_at, Utc),
         updated_at: DateTime::<Utc>::from_naive_utc_and_offset(row.updated_at, Utc),
     })
@@ -485,6 +488,7 @@ impl ProjectStore for DieselProjectStore {
             trigger_label,
             created_at: now,
             updated_at: now,
+            installation_id: spec.installation_id,
         })
         .await
         .map_err(|error| ProjectError::Other(error.to_string()))?;
@@ -628,6 +632,7 @@ mod tests {
             image_strategy: ImageStrategy::Base,
             network_policy: SandboxNetworkConfig::None,
             trigger: None,
+            installation_id: None,
         }
     }
 

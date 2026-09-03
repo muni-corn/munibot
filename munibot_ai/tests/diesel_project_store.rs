@@ -35,6 +35,7 @@ fn unique_spec() -> NewProject {
         image_strategy: ImageStrategy::Base,
         network_policy: SandboxNetworkConfig::None,
         trigger: None,
+        installation_id: None,
     }
 }
 
@@ -49,6 +50,33 @@ async fn test_upsert_project_and_get_project_round_trip() {
 
     assert_eq!(found.slug, spec.slug);
     assert_eq!(found.image_status, ImageStatus::Unbuilt);
+}
+
+#[tokio::test]
+async fn test_upsert_project_round_trips_an_installation_id() {
+    let Some(pool) = pool().await else { return };
+    let store = DieselProjectStore::new(pool);
+    let spec = NewProject {
+        installation_id: Some(4242),
+        ..unique_spec()
+    };
+
+    let created = store.upsert_project(&spec).await.expect("upsert failed");
+    assert_eq!(created.installation_id, Some(4242));
+
+    let found = store.get_project(created.id).await.expect("get failed");
+    assert_eq!(found.installation_id, Some(4242));
+}
+
+#[tokio::test]
+async fn test_a_manually_registered_project_has_no_installation_id() {
+    let Some(pool) = pool().await else { return };
+    let store = DieselProjectStore::new(pool);
+    let spec = unique_spec();
+    assert_eq!(spec.installation_id, None);
+
+    let created = store.upsert_project(&spec).await.expect("upsert failed");
+    assert_eq!(created.installation_id, None);
 }
 
 #[tokio::test]

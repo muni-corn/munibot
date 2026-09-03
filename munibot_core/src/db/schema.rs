@@ -146,6 +146,7 @@ diesel::table! {
         trigger_label -> Nullable<Varchar>,
         created_at -> Datetime,
         updated_at -> Datetime,
+        installation_id -> Nullable<Bigint>,
     }
 }
 

@@ -525,6 +525,7 @@ async fn test_set_conversation_project_binds_and_unbinds() {
         trigger_label: None,
         created_at: now,
         updated_at: now,
+        installation_id: None,
     })
     .await
     .expect("project creation failed");

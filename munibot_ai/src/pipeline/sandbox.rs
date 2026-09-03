@@ -147,6 +147,7 @@ mod tests {
             image_status: ImageStatus::Unbuilt,
             network_policy: crate::sandbox::config::SandboxNetworkConfig::None,
             trigger: None,
+            installation_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }

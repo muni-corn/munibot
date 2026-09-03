@@ -236,6 +236,7 @@ async fn test_list_pipelines_for_project_only_lists_that_projects_pipelines() {
         trigger_label: None,
         created_at: now,
         updated_at: now,
+        installation_id: None,
     })
     .await
     .expect("project creation failed");
