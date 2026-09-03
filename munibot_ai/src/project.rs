@@ -14,6 +14,7 @@ mod devenv_image;
 mod error;
 mod image;
 mod image_cache;
+mod manager;
 mod store;
 mod strategy;
 mod types;
@@ -25,6 +26,7 @@ pub use devenv_image::build_devenv_image;
 pub use error::ProjectError;
 pub use image::build_containerfile_image;
 pub use image_cache::{ImageBuilder, compute_source_hash, image_tag};
+pub use manager::{ProjectManager, RegisterProjectSpec, WorkspaceOwner};
 pub use store::{DieselProjectStore, InMemoryProjectStore, ProjectStore};
 pub use strategy::{SkipReason, detect_image_strategy};
 pub use types::{
