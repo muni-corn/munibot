@@ -75,6 +75,14 @@ async fn main() -> anyhow::Result<()> {
     let (ai, project_manager, pipeline_registry, pipeline_launcher) =
         munibot::ai::build(&ai_config, ai_pool, ai_config.projects.clone()).await?;
 
+    // resumes every non-terminal pipeline from wherever its own event
+    // log left off, before the server starts accepting webhooks - a
+    // fresh trigger racing a resume for the same pipeline is never a
+    // concern this early, since nothing is listening for one yet
+    if let Some(launcher) = &pipeline_launcher {
+        launcher.resume_all().await;
+    }
+
     // start the bots alongside the gui server, unless explicitly disabled for
     // local gui development (so `dx serve` reloads don't reconnect discord)
     if std::env::var("MUNIBOT_DISABLE_BOTS").is_err() {

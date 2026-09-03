@@ -237,6 +237,75 @@ impl PipelineLauncher {
         (executor, sandbox)
     }
 
+    /// Builds a fresh `Executor` for an already-running pipeline id -
+    /// what [`Self::resume_all`]'s own call into
+    /// `munibot_ai::pipeline::resume_all` needs as its factory. Looks up
+    /// which issue and project the pipeline belongs to from its own
+    /// event log and the project store, rather than a fresh trigger
+    /// event, since resuming has none.
+    ///
+    /// The branch decision only matters the very first time a
+    /// pipeline's own workspace is created -
+    /// `ProjectManager::workspace_for` reuses the existing workspace's
+    /// own stored branch on every later call regardless of what's
+    /// passed here (see that function's own early return once a
+    /// workspace by that name already exists) - so recomputing it fresh
+    /// on every resume is harmless, never a second, different branch a
+    /// resumed run suddenly finds itself on.
+    async fn executor_for(&self, pipeline_id: PipelineId) -> Result<Executor, LauncherError> {
+        let issue = self.pipeline_store.issue_for(pipeline_id).await?;
+        let project = self.project_for(&issue.repo).await?;
+        let forge = self.forge_for(&project)?;
+
+        let fetched = forge.fetch_issue(&issue).await?;
+        let bare_repo = bare_repo_path(&project.local_path);
+        let branches = existing_branches(&bare_repo).await?;
+        let branch = resolve_branch_name(issue.number, &fetched.title, None, &branches);
+
+        let (executor, _sandbox) = self.build_executor(project, branch, pipeline_id);
+        Ok(executor)
+    }
+
+    /// Resumes every non-terminal pipeline this process's own store
+    /// knows about, at boot, before the server starts accepting
+    /// webhooks - what makes "restarting the process is a valid way to
+    /// regain control of a pipeline" (`docs/ai-operations.md`) actually
+    /// true rather than aspirational.
+    ///
+    /// Deliberately does not touch `self.registry` at all, matching
+    /// `munibot_ai::pipeline::resume_all`'s own choice to call
+    /// `Executor::run` directly rather than `run_with_interaction` - a
+    /// resumed run already `AwaitingUserInput` has nothing new to
+    /// resolve yet, and every other non-terminal state simply continues
+    /// forward until it reaches one that does or finishes outright.
+    /// Every result is logged; a resume failure for one pipeline never
+    /// stops another from resuming.
+    pub async fn resume_all(self: &Arc<Self>) {
+        let launcher = self.clone();
+        let results =
+            munibot_ai::pipeline::resume_all(self.pipeline_store.clone(), move |pipeline_id| {
+                let launcher = launcher.clone();
+                async move {
+                    launcher
+                        .executor_for(pipeline_id)
+                        .await
+                        .map_err(|error| error.to_string())
+                }
+            })
+            .await;
+
+        for (pipeline_id, result) in results {
+            match result {
+                Ok(outcome) => {
+                    tracing::info!(pipeline_id = pipeline_id.0, ?outcome, "resumed a pipeline")
+                }
+                Err(error) => {
+                    tracing::error!(%error, pipeline_id = pipeline_id.0, "couldn't resume a pipeline")
+                }
+            }
+        }
+    }
+
     /// Starts a fresh pipeline run for `issue`: resolves the registered
     /// project and its installation, decides a branch name from the
     /// issue's own title, creates the `ai_pipelines` row, and either
@@ -352,12 +421,22 @@ mod tests {
     }
 
     async fn launcher_with_projects(store: Arc<InMemoryProjectStore>) -> PipelineLauncher {
-        let project_manager = Arc::new(ProjectManager::new(store, ProjectsSettings::default()));
+        launcher_with(store, Arc::new(InMemoryPipelineStore::new())).await
+    }
+
+    async fn launcher_with(
+        project_store: Arc<InMemoryProjectStore>,
+        pipeline_store: Arc<InMemoryPipelineStore>,
+    ) -> PipelineLauncher {
+        let project_manager = Arc::new(ProjectManager::new(
+            project_store,
+            ProjectsSettings::default(),
+        ));
         PipelineLauncher::new(
             123456,
             "not a real pem, never reached by either test below".to_string(),
             "munibot[bot]".to_string(),
-            Arc::new(InMemoryPipelineStore::new()),
+            pipeline_store,
             project_manager,
             &empty_ai_config(),
             Arc::new(PipelineRegistry::new(ConcurrencyConfig::default())),
@@ -457,5 +536,44 @@ mod tests {
                 issue: munibot_vcs::IssueRef::new(cocoa_repo(), 1),
             })
             .await;
+    }
+
+    #[tokio::test]
+    async fn test_executor_for_refuses_a_pipeline_whose_project_is_no_longer_registered() {
+        let project_store = Arc::new(InMemoryProjectStore::new());
+        let pipeline_store = Arc::new(InMemoryPipelineStore::new());
+        let issue = munibot_vcs::IssueRef::new(cocoa_repo(), 1);
+        let pipeline_id = pipeline_store.create_pipeline(&issue).await.unwrap();
+        pipeline_store
+            .append_event(pipeline_id, PipelineEvent::Triggered { issue })
+            .await
+            .unwrap();
+
+        let launcher = launcher_with(project_store, pipeline_store).await;
+
+        let Err(error) = launcher.executor_for(pipeline_id).await else {
+            panic!("no project is registered for this pipeline's own repository");
+        };
+        assert!(matches!(error, LauncherError::ProjectNotRegistered(repo) if repo == cocoa_repo()));
+    }
+
+    /// `resume_all` has no `Result` to propagate a per-pipeline failure
+    /// through either - every result is logged instead (see
+    /// `PipelineLauncher::resume_all`'s own doc comment) - so, the same
+    /// as `dispatch`, the only thing left to prove here is that it never
+    /// panics.
+    #[tokio::test]
+    async fn test_resume_all_never_panics_when_a_pipelines_project_is_gone() {
+        let project_store = Arc::new(InMemoryProjectStore::new());
+        let pipeline_store = Arc::new(InMemoryPipelineStore::new());
+        let issue = munibot_vcs::IssueRef::new(cocoa_repo(), 1);
+        let pipeline_id = pipeline_store.create_pipeline(&issue).await.unwrap();
+        pipeline_store
+            .append_event(pipeline_id, PipelineEvent::Triggered { issue })
+            .await
+            .unwrap();
+
+        let launcher = Arc::new(launcher_with(project_store, pipeline_store).await);
+        launcher.resume_all().await;
     }
 }
