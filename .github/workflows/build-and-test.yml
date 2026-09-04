@@ -1,0 +1,115 @@
+name: build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # matches devenv.nix's own services.mysql `ensureUsers`/`initialDatabases`
+    # exactly (see that file) - `munibot_core/tests/common/mod.rs`'s own
+    # `root_db_url`/`test_db_base_url` defaults already assume this, so
+    # nothing here needs a `MUNIBOT_TEST_ROOT_DB_URL` override the way a
+    # devenv instance that has drifted from its own defaults locally does.
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: sillylittlepassword
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: mysql://munibot:sillylittlepassword@127.0.0.1:3306/munibot
+      REDIS_URL: redis://127.0.0.1:6379
+      # devenv.yaml wires secretspec's `pass` provider in for local dev,
+      # but a CI runner has no pass store (or gpg key) to read from -
+      # `SECRETSPEC_PROVIDER=env` overrides that and reads the plain env
+      # vars below instead. `SECRETSPEC_REASON` is required too, since
+      # secretspec otherwise prompts interactively for one, which a CI
+      # runner has no terminal to answer. (confirmed by hand: with
+      # `provider: pass` still in effect, `devenv shell` fails outright
+      # with "No provider backend configured" / audit-log prompts before
+      # it ever gets as far as running the requested command.)
+      SECRETSPEC_PROVIDER: env
+      SECRETSPEC_REASON: "CI build and test"
+      # secretspec.toml marks all of these `required = true` (or leaves
+      # `required` unset, which defaults to true) - munibot itself never
+      # reads them during `cargo build`/`clippy`/`test`, but secretspec
+      # still refuses to resolve any profile that's missing a required
+      # value, so every one needs *a* value here even though none of
+      # these particular ones are real credentials.
+      DISCORD_APPLICATION_ID: unused-in-ci
+      DISCORD_CLIENT_SECRET: unused-in-ci
+      DISCORD_PUBLIC_KEY: unused-in-ci
+      DISCORD_TOKEN: unused-in-ci
+      TWITCH_CLIENT_ID: unused-in-ci
+      TWITCH_CLIENT_SECRET: unused-in-ci
+      TWITCH_TOKEN: unused-in-ci
+      VENTR_ALLOWLIST: unused-in-ci
+      MUNIBOT_BASE_URL: http://localhost:8080
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: install devenv
+        run: nix profile install nixpkgs#devenv
+
+      # the mysql service image starts with only mysql's own system
+      # databases - create the app database, the test-fixture database,
+      # and both users exactly as devenv.nix's own services.mysql does,
+      # so every integration test's default connection strings just work
+      - name: provision mysql databases and users
+        run: |
+          mysql --protocol=tcp -h 127.0.0.1 -u root -psillylittlepassword <<'SQL'
+          CREATE DATABASE IF NOT EXISTS munibot;
+          CREATE DATABASE IF NOT EXISTS munibot_test;
+          CREATE USER IF NOT EXISTS 'munibot'@'%' IDENTIFIED BY 'sillylittlepassword';
+          GRANT ALL PRIVILEGES ON munibot.* TO 'munibot'@'%';
+          CREATE USER IF NOT EXISTS 'munibot_test'@'%' IDENTIFIED BY 'sillylittlepassword';
+          GRANT ALL PRIVILEGES ON `munibot\_test\_%`.* TO 'munibot_test'@'%';
+          FLUSH PRIVILEGES;
+          SQL
+
+      - name: build
+        run: devenv shell -- cargo build --workspace --all-features
+
+      - name: clippy
+        run: devenv shell -- cargo clippy --workspace --all-features --all-targets -- -D warnings
+
+      - name: treefmt
+        run: devenv shell -- treefmt --fail-on-change
+
+      # sandbox-integration deliberately left out here: those tests need a
+      # rootless podman socket, which this runner does not have - every one
+      # of them is #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+      # and stays skipped rather than failing for want of podman. Run them
+      # locally instead, via `devenv shell -- test-sandbox`
+      # (docs/ai-operations.md, docs/notes/sandbox-verification-gaps.md).
+      # This is a deliberate decision, not an oversight.
+      - name: test
+        run: >-
+          devenv shell -- cargo test --workspace
+          --features "munibot_gui/server munibot/server"
