@@ -3,10 +3,21 @@
 What `munibot_github::GitHubForge` (phase 20) actually verified, and what it
 didn't - written down so it isn't discovered by surprise during rollout.
 
-**Still accurate as of writing, and now scheduled.** The `wiremock`-backed
-suite this note asks for is `docs/plans/ai/milestone-7-projects.md` commit
-242, covering exactly the three paths named at the bottom: `create_branch`'s
-idempotent reuse, `push`'s rejection path, and `open_pull_request`.
+**Closed as of commit 242.** The `wiremock`-backed suite this note asked for
+is `munibot_github/tests/wiremock_forge.rs`, built on a new
+`GitHubForge::from_parts` constructor that takes an already-built
+`Octocrab` client (pointed at the mock server's `base_uri`) instead of
+minting one from a real GitHub App key, so none of it needs a real
+installation. It covers all three paths named below: `create_branch`'s
+idempotent reuse (a 422 "reference already exists" response is swallowed,
+same as a real repeat delivery would produce) and a real failure response
+(a 403, propagated rather than swallowed), and `open_pull_request` end to
+end against mocked `POST /repos/{owner}/{repo}/pulls`. `push`'s failure
+path is tested differently, and deliberately not against wiremock: it shells
+out to a real `git` binary, so its own suite instead points it at a
+nonexistent repository on real `github.com` and asserts the resulting
+`ForgeError` - proving the actual rejected-push code path rather than a
+plausible-looking stand-in for one.
 
 ## What's verified
 
@@ -21,22 +32,27 @@ idempotent reuse, `push`'s rejection path, and `open_pull_request`.
 - `GitHubForge`'s own error classification
   (`classify_github_error`/`map_error`) and clone url construction
   (`build_clone_url`), both pure functions tested directly.
+- `create_branch`, `push`, and `open_pull_request` (commit 242, above) -
+  against a real `octocrab` client talking to a `wiremock` server standing
+  in for the GitHub REST API, and against real `github.com` for `push`'s
+  failure path.
 
 ## What's still only verified by inspection
 
-`GitHubForge`'s actual trait method bodies (`fetch_issue`, `list_comments`,
-`post_comment`, `create_branch`, `push`, `open_pull_request`,
-`clone_url_with_token`) call real `octocrab` methods and, for `push`, shell
-out to a real `git` binary - none of this has run against a real GitHub App
-installation or a mocked HTTP server yet. `octocrab::GitHubError` is
+`fetch_issue`, `list_comments`, `post_comment`, and `clone_url_with_token`
+still call real `octocrab` methods with no test against a mocked or real
+server. This is not a minor gap: `fetch_issue` is what
+`PipelineLauncher::launch` calls to resolve the issue a webhook named
+(`munibot_gui/src/server/pipeline_launcher.rs:314,380`), and
+`post_comment`/`list_comments` are what
+`munibot_ai::pipeline::github_interaction` uses for the
+`AwaitingUserInput` round trip - a pipeline depends on all three as much
+as it depends on the three commit 242 covered. `octocrab::GitHubError` is
 `#[non_exhaustive]` with no public constructor, which is why the error
 classification test above takes a bare `(StatusCode, &str)` rather than a
-real `octocrab::Error` - the mapping logic is proven, but the "does
-`octocrab` actually raise `Error::GitHub` the way this code assumes"
-question is not.
-
-**Before this ships against a real repository**: stand up a GitHub App on a
-throwaway test organization (or a `wiremock`-backed fake of the GitHub REST
-API), and exercise `create_branch`'s idempotent-reuse branch, `push`'s
-failure path (a rejected push, not just a successful one), and
-`open_pull_request` end to end at least once each.
+real `octocrab::Error` - the mapping logic is proven, but whether
+`octocrab` actually raises `Error::GitHub` the way this code assumes was,
+until commit 242, unverified for any of `GitHubForge`'s methods. It's
+still unverified for these four specifically, and covering them the same
+way commit 242 covered `create_branch`/`push`/`open_pull_request` is
+unscheduled follow-up work, not something this milestone's plan asks for.

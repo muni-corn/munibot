@@ -14,11 +14,9 @@ and resuming every non-terminal pipeline at boot (236). A webhook delivery
 can start a real pipeline run today, against a real project's real
 worktree and image, in a real running server.
 
-What is _not_ proven yet is that any of it actually works end to end
-against a real GitHub App installation and a real repository - see
-`docs/plans/ai/milestone-7-projects.md` phase 27 (commits 239-246) for
-that verification, and the real-round-trip note in the
-`SandboxLifecycle` section below.
+Phase 27 (commits 239-243) verified the pieces this needed, but not all
+together in one run - see the `SandboxLifecycle` section below for exactly
+what commit 243 did and did not cover, and why.
 
 ## What's verified
 
@@ -54,9 +52,26 @@ own project-bound conversations use (commit 226).
 
 Tested against a real `ProjectManager` (an in-memory store, a local git
 upstream, no network) for the workspace-resolution mechanics, deliberately
-without a real working tool agent inside a real container - that full
-round trip, against a real project's real built image, is commit 243's own
-job (`docs/plans/ai/milestone-7-projects.md` phase 27).
+without a real working tool agent inside a real container.
+
+Commit 243's webhook-to-`Complete` test (below) does **not** close that
+remaining gap, and should not be read as having done so: its
+`MockProvider` responds with a `NotActionable`/`Skip` analysis, and
+`advance.rs`'s own state table sends `Skip` straight to `Complete` without
+ever entering a role that calls `provision` - so that test never
+constructs a real `ProjectSandboxLifecycle`, never touches podman, and
+proves the webhook/registry/dispatch wiring only. `provision`'s own
+resolution logic is exercised (without a container) by
+`ProjectSandboxLifecycle`'s own tests, above; a real, compiled tool agent
+talking through a real container is exercised, apart from any pipeline, by
+commit 240's `test_the_full_chain_a_real_tool_call_round_trips_through_a_real_container`;
+and a project's real image getting built is exercised, apart from any
+sandbox or pipeline, by commit 241's `project_image_build.rs`. No test
+anywhere yet drives a pipeline role past `Researching` into a state that
+provisions `ProjectSandboxLifecycle` for real and runs a tool call through
+the resulting container - that combination remains genuinely unverified,
+and would need a `MockProvider` response landing on `RecommendedAction`
+other than `Skip` plus a project with a real, already-built image.
 
 `PipelineLauncher` (`munibot_gui::server::pipeline_launcher`) is that
 launcher: `launch` resolves which project a matched trigger's own
