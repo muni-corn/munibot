@@ -69,6 +69,30 @@ in
     fi
   '';
 
+  # the base image [ai.sandbox].image defaults to (munibot-sandbox:latest)
+  # -- what a persona whose project has no project-specific strategy (or
+  # no project at all) provisions its sandbox from. Never built
+  # automatically; see docs/ai-operations.md's own "what's still not
+  # wired" note.
+  scripts.build-sandbox-image.exec = ''
+    set -euo pipefail
+    podman build -t munibot-sandbox:latest -f Containerfile .
+  '';
+
+  # the sandbox-integration tests (real podman, real containers) --
+  # never run by `cargo test` alone, and never run in CI (no rootless
+  # podman socket there - see .github/workflows). Run this locally, with
+  # podman actually available, before trusting a change to anything
+  # under munibot_ai::sandbox or munibot_ai::project's own image-building
+  # code. Scoped to munibot_ai itself, the only crate that declares this
+  # feature, rather than `--workspace` - the rest of the workspace's own
+  # tests have their own env requirements (a real MySQL) unrelated to
+  # what this script exists to check.
+  scripts.test-sandbox.exec = ''
+    set -euo pipefail
+    cargo test -p munibot_ai --features sandbox-integration
+  '';
+
   env = {
     RUST_LOG = "error,munibot=debug,munibot_api=debug,munibot_core=debug,munibot_discord=debug,munibot_gui=debug,munibot_twitch=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
