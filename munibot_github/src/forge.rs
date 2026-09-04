@@ -43,6 +43,24 @@ impl GitHubForge {
             tokens: InstallationTokenCache::new(minter),
         })
     }
+
+    /// Builds a forge from already-resolved parts, bypassing the real
+    /// App-JWT-then-installation-token exchange [`Self::new`] performs
+    /// entirely - mainly for tests that point `client` at a mocked HTTP
+    /// server (see `munibot_github`'s own `tests/wiremock_forge.rs`),
+    /// where re-proving the JWT exchange itself would only duplicate
+    /// what `auth.rs`'s own tests already cover.
+    pub fn from_parts(
+        installation_id: InstallationId,
+        client: Octocrab,
+        tokens: InstallationTokenCache,
+    ) -> Self {
+        Self {
+            installation_id,
+            client,
+            tokens,
+        }
+    }
 }
 
 /// Classifies an octocrab-reported GitHub API error into the forge-agnostic
