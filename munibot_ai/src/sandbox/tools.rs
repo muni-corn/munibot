@@ -828,4 +828,70 @@ mod tests {
         );
         assert_eq!(BashTool::new(session).tier(), RiskTier::Sandbox);
     }
+
+    /// The full chain, for real: a real `munibot-sandbox:latest` image, a
+    /// real compiled static `munibot_toolagent` bind-mounted in, a real
+    /// container, a real `RpcClient` connecting across the container
+    /// boundary, and one real `Tool` call round-tripping through all of
+    /// it - what `docs/notes/sandbox-verification-gaps.md` has been
+    /// asking for since milestone 4. Every other test in this module
+    /// proves its own piece against a fake agent; this is the one place
+    /// that proves they all actually compose.
+    ///
+    /// Requires `devenv shell -- build-sandbox-image` and
+    /// `devenv shell -- build-toolagent` to have already run - the same
+    /// two prerequisites `docs/ai-operations.md`'s own sandbox section
+    /// names.
+    #[tokio::test]
+    #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
+    async fn test_the_full_chain_a_real_tool_call_round_trips_through_a_real_container() {
+        use crate::sandbox::config::{NetworkPolicy, SandboxConfig};
+
+        let toolagent_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("munibot_ai should have a workspace root above it")
+            .join("target/x86_64-unknown-linux-musl/release/munibot_toolagent");
+        assert!(
+            toolagent_path.is_file(),
+            "run `devenv shell -- build-toolagent` first: {toolagent_path:?} doesn't exist"
+        );
+
+        let config = SandboxConfig {
+            image: "munibot-sandbox:latest".to_string(),
+            cpu_quota: 0.5,
+            memory_limit_bytes: 256 * 1024 * 1024,
+            pids_limit: 64,
+            disk_limit_bytes: None,
+            network: NetworkPolicy::None,
+            wall_clock_limit: std::time::Duration::from_secs(60),
+            tool_agent_path: Some(toolagent_path),
+        };
+
+        let session = WorkspaceSession::new(config).expect("should reserve a workspace");
+        let write_tool = WriteTool::new(Arc::clone(&session));
+        let read_tool = ReadTool::new(Arc::clone(&session));
+        let context = ctx(RiskTier::Sandbox);
+
+        let write_outcome = write_tool
+            .invoke(
+                json!({"path": "hello.txt", "content": "hello from a real container\n"}),
+                &context,
+            )
+            .await;
+        assert!(
+            matches!(write_outcome, ToolOutcome::Ok(_)),
+            "write should succeed against a real container: {write_outcome:?}"
+        );
+
+        let read_outcome = read_tool
+            .invoke(json!({"path": "hello.txt"}), &context)
+            .await;
+        let ToolOutcome::Ok(text) = read_outcome else {
+            panic!("read should succeed against a real container: {read_outcome:?}");
+        };
+        assert!(
+            text.contains("hello from a real container"),
+            "should read back exactly what was written: {text:?}"
+        );
+    }
 }
