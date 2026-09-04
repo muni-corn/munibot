@@ -5122,11 +5122,13 @@ dependencies = [
  "redis",
  "redis_pool",
  "serde",
+ "serde_json",
  "sha2 0.11.0",
  "thiserror 2.0.19",
  "tokio",
  "tower 0.5.3",
  "tracing",
+ "wiremock",
 ]
 
 [[package]]

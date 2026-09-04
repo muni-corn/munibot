@@ -96,9 +96,39 @@ impl LaunchOutcome {
 /// looks up which project and branch an already-running pipeline id
 /// belongs to - `resume_all`'s own `build_executor` factory has no issue
 /// event to derive that from directly, unlike [`Self::launch`].
+/// Builds the `GitHubForge` a pipeline run authenticates as, given the
+/// installation id its own project was registered under.
+///
+/// A trait, rather than naming `GitHubForge::new` directly in
+/// [`PipelineLauncher`], so a test can substitute one that points at a
+/// mocked HTTP server (`GitHubForge::from_parts`) instead of ever
+/// reaching the real GitHub API - the same seam `AgentDispatcher` and
+/// `ProviderSource` already are elsewhere in this stack.
+pub trait ForgeBuilder: Send + Sync {
+    fn build(
+        &self,
+        installation_id: InstallationId,
+    ) -> Result<GitHubForge, munibot_github::GitHubError>;
+}
+
+/// The real implementation: [`GitHubForge::new`], authenticating as a
+/// real GitHub App installation.
+struct RealForgeBuilder {
+    app_id: AppId,
+    private_key: String,
+}
+
+impl ForgeBuilder for RealForgeBuilder {
+    fn build(
+        &self,
+        installation_id: InstallationId,
+    ) -> Result<GitHubForge, munibot_github::GitHubError> {
+        GitHubForge::new(self.app_id, &self.private_key, installation_id)
+    }
+}
+
 pub struct PipelineLauncher {
-    forge_app_id: AppId,
-    forge_private_key: String,
+    forge_builder: Arc<dyn ForgeBuilder>,
     bot_login: String,
     pipeline_store: Arc<dyn PipelineStore>,
     project_manager: Arc<ProjectManager>,
@@ -130,8 +160,10 @@ impl PipelineLauncher {
         let personas = Arc::new(PersonaRegistry::load(ai_config, &provider_registry)?);
 
         Ok(Self {
-            forge_app_id: AppId(app_id),
-            forge_private_key: private_key,
+            forge_builder: Arc::new(RealForgeBuilder {
+                app_id: AppId(app_id),
+                private_key,
+            }),
             bot_login,
             pipeline_store,
             project_manager,
@@ -156,6 +188,30 @@ impl PipelineLauncher {
     /// turn, the same as a chat turn's own `Ai::with_usage_recorder`.
     pub fn with_usage_recorder(mut self, recorder: Arc<dyn UsageRecorder>) -> Self {
         self.usage_recorder = Some(recorder);
+        self
+    }
+
+    /// Overrides how a `GitHubForge` gets built - what a test substitutes
+    /// a mock-server-backed [`ForgeBuilder`] through, instead of
+    /// [`Self::new`]'s real, GitHub-authenticating one.
+    #[cfg(test)]
+    pub(crate) fn with_forge_builder(mut self, builder: Arc<dyn ForgeBuilder>) -> Self {
+        self.forge_builder = builder;
+        self
+    }
+
+    /// Overrides the persona registry and provider source a pipeline
+    /// role's own turn resolves against - what a test substitutes a
+    /// `MockProvider` through, so a launch can be proven end to end
+    /// without ever calling a real model or spending real money.
+    #[cfg(test)]
+    pub(crate) fn with_test_providers(
+        mut self,
+        personas: Arc<PersonaRegistry>,
+        providers: Arc<dyn ProviderSource>,
+    ) -> Self {
+        self.personas = personas;
+        self.providers = providers;
         self
     }
 
@@ -188,11 +244,9 @@ impl PipelineLauncher {
         let installation_id = project
             .installation_id
             .ok_or_else(|| LauncherError::NoInstallation(project.slug.clone()))?;
-        Ok(GitHubForge::new(
-            self.forge_app_id,
-            &self.forge_private_key,
-            InstallationId(installation_id.unsigned_abs()),
-        )?)
+        Ok(self
+            .forge_builder
+            .build(InstallationId(installation_id.unsigned_abs()))?)
     }
 
     /// Builds the sandbox lifecycle and the `Executor` over it for
@@ -394,14 +448,30 @@ impl PipelineDispatch for PipelineLauncher {
 #[cfg(test)]
 mod tests {
     use munibot_ai::{
-        persona::{AbuseConfig, RateLimitConfig, SpendCapConfig},
-        pipeline::{ConcurrencyConfig, InMemoryPipelineStore},
-        project::{InMemoryProjectStore, NewProject, ProjectStore, ProjectsSettings},
-        sandbox::config::SandboxSettings,
+        persona::{
+            AbuseConfig, BudgetConfig, MemoryPolicy, PersonaConfig, PersonaId, RateLimitConfig,
+            SandboxPolicy, SpendCapConfig,
+        },
+        pipeline::{
+            ConcurrencyConfig, InMemoryPipelineStore, IssueAnalysis, IssueClassification,
+            RecommendedAction, ReproductionStatus,
+        },
+        project::{
+            ImageStrategy, InMemoryProjectStore, NewProject, ProjectStore, ProjectsSettings,
+        },
+        provider::{MockProvider, Provider},
+        sandbox::config::{SandboxNetworkConfig, SandboxSettings},
+        tools::ToolSelection,
+        types::{AiError, ModelRef},
     };
     use munibot_vcs::{Forge, RepoRef};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
 
     use super::*;
+    use crate::server::webhooks::{self, WebhookConfig};
 
     fn empty_ai_config() -> AiConfig {
         AiConfig {
@@ -575,5 +645,414 @@ mod tests {
 
         let launcher = Arc::new(launcher_with(project_store, pipeline_store).await);
         launcher.resume_all().await;
+    }
+
+    // --- the full launch seam: a signed webhook -> project resolution
+    // -> an executor start a concurrency slot can be aborted from ---
+
+    /// Always returns the same fake token - real enough for
+    /// `GitHubForge::from_parts`'s own token cache, which nothing in
+    /// these tests ever actually inspects.
+    struct FixedTokenMinter;
+
+    #[async_trait]
+    impl munibot_github::TokenMinter for FixedTokenMinter {
+        async fn mint(
+            &self,
+            _installation_id: InstallationId,
+        ) -> Result<String, munibot_github::GitHubError> {
+            Ok("fake-installation-token".to_string())
+        }
+    }
+
+    /// Points `GitHubForge` at a mocked HTTP server instead of the real
+    /// GitHub API - see `ForgeBuilder`'s own doc comment.
+    struct MockForgeBuilder {
+        uri: String,
+    }
+
+    impl ForgeBuilder for MockForgeBuilder {
+        fn build(
+            &self,
+            installation_id: InstallationId,
+        ) -> Result<GitHubForge, munibot_github::GitHubError> {
+            let client = octocrab::Octocrab::builder()
+                .base_uri(&self.uri)
+                .unwrap()
+                .build()
+                .unwrap();
+            Ok(GitHubForge::from_parts(
+                installation_id,
+                client,
+                munibot_github::InstallationTokenCache::new(FixedTokenMinter),
+            ))
+        }
+    }
+
+    /// A [`ProviderSource`] that always returns the same fixed provider -
+    /// what lets a pipeline role's turn run against a real `HarnessDispatcher`
+    /// without ever calling a real model.
+    struct FixedProviderSource(Arc<dyn Provider>);
+
+    impl ProviderSource for FixedProviderSource {
+        fn resolve(&self, _model: &ModelRef) -> Result<Arc<dyn Provider>, AiError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// A real, offline-resolved `PersonaRegistry` with one persona at
+    /// `issue-analyst`'s own conventional id and embedded prompt -
+    /// enough for `HarnessDispatcher` to resolve `AgentRole::IssueAnalyst`
+    /// against it exactly as it does in production.
+    fn issue_analyst_personas() -> Arc<PersonaRegistry> {
+        let mut config = empty_ai_config();
+        config
+            .personas
+            .insert(PersonaId::new("issue-analyst"), PersonaConfig {
+                model: Some(ModelRef::new("anthropic", "claude-opus-5")),
+                prompt: "issue-analyst.md".to_string(),
+                display_name: Some("Issue Analyst".to_string()),
+                description: "triages an incoming issue".to_string(),
+                temperature: None,
+                tools: ToolSelection::none(),
+                budget: BudgetConfig::default(),
+                memory: MemoryPolicy::None,
+                sandbox: SandboxPolicy::default(),
+                delegable: false,
+                moderation_fail_closed: None,
+            });
+        let providers =
+            munibot_ai::provider::ProviderRegistry::from_available(["anthropic".to_string()]);
+        Arc::new(PersonaRegistry::load(&config, &providers).expect("should resolve"))
+    }
+
+    /// An empty bare repository - enough for `existing_branches` (a
+    /// plain `git for-each-ref`) to run without error. This scenario's
+    /// own pipeline never advances past `Triaging`, so nothing ever
+    /// actually checks out a workspace from it.
+    async fn bare_repo_fixture() -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "munibot_gui_pipeline_launch_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let bare = root.join("repo.git");
+        tokio::process::Command::new("git")
+            .args([
+                "init",
+                "--bare",
+                "--initial-branch",
+                "main",
+                &bare.display().to_string(),
+            ])
+            .status()
+            .await
+            .unwrap();
+        root
+    }
+
+    /// A minimal, real `models::issues::Issue` payload - every field
+    /// that type actually requires, per octocrab's own struct
+    /// definition, nothing more.
+    fn issue_response_body() -> serde_json::Value {
+        let author = serde_json::json!({
+            "login": "someone", "id": 1, "node_id": "abc",
+            "avatar_url": "https://example.com/a", "gravatar_id": "",
+            "url": "https://api.github.com/users/someone",
+            "html_url": "https://github.com/someone",
+            "followers_url": "https://api.github.com/users/someone/followers",
+            "following_url": "https://api.github.com/users/someone/following{/other_user}",
+            "gists_url": "https://api.github.com/users/someone/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/someone/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/someone/subscriptions",
+            "organizations_url": "https://api.github.com/users/someone/orgs",
+            "repos_url": "https://api.github.com/users/someone/repos",
+            "events_url": "https://api.github.com/users/someone/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/someone/received_events",
+            "type": "User", "site_admin": false
+        });
+        serde_json::json!({
+            "id": 1,
+            "node_id": "abc",
+            "url": "https://api.github.com/repos/muni-corn/cocoa/issues/17",
+            "repository_url": "https://api.github.com/repos/muni-corn/cocoa",
+            "labels_url": "https://api.github.com/repos/muni-corn/cocoa/issues/17/labels{/name}",
+            "comments_url": "https://api.github.com/repos/muni-corn/cocoa/issues/17/comments",
+            "events_url": "https://api.github.com/repos/muni-corn/cocoa/issues/17/events",
+            "html_url": "https://github.com/muni-corn/cocoa/issues/17",
+            "number": 17,
+            "state": "open",
+            "title": "the app crashes on startup",
+            "body": "steps to reproduce...",
+            "user": author,
+            "labels": [],
+            "assignees": [],
+            "locked": false,
+            "comments": 0,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        })
+    }
+
+    const WEBHOOK_SECRET: &str = "it's a secret to everybody";
+    const ISSUE_OPENED_PAYLOAD: &str = r#"{
+        "action": "opened",
+        "issue": { "number": 17, "title": "the app crashes on startup", "body": "steps to reproduce..." },
+        "repository": { "name": "cocoa", "owner": { "login": "muni-corn" } },
+        "sender": { "login": "someone" }
+    }"#;
+
+    fn signed_webhook_body(secret: &str, body: &str) -> (axum::body::Bytes, String) {
+        use hmac::{Hmac, KeyInit, Mac};
+        use sha2::Sha256;
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body.as_bytes());
+        let signature = format!(
+            "sha256={}",
+            mac.finalize()
+                .into_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
+        (axum::body::Bytes::from(body.to_string()), signature)
+    }
+
+    fn webhook_request(
+        event_type: &str,
+        body: axum::body::Bytes,
+        signature: &str,
+    ) -> axum::http::Request<axum::body::Body> {
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/webhooks/github")
+            .header("X-GitHub-Event", event_type)
+            .header("X-Hub-Signature-256", signature)
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(body))
+            .unwrap()
+    }
+
+    /// The seam this whole milestone exists to build, proven end to
+    /// end: a signed webhook payload, verified and normalized, resolves
+    /// to a registered project via `trigger_for`, reaches
+    /// `PipelineLauncher::dispatch` -> `launch`, authenticates as that
+    /// project's own (mocked) GitHub App installation, creates the
+    /// `ai_pipelines` row, and runs a real turn against `MockProvider` -
+    /// no real model called, no money spent - all the way to `Complete`.
+    #[tokio::test]
+    async fn test_a_signed_webhook_delivery_creates_and_runs_a_pipeline() {
+        use tower::ServiceExt;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/muni-corn/cocoa/issues/17"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(issue_response_body()))
+            .mount(&server)
+            .await;
+
+        let root = bare_repo_fixture().await;
+        let project_store = Arc::new(InMemoryProjectStore::new());
+        project_store
+            .upsert_project(&NewProject {
+                slug: "cocoa".to_string(),
+                display_name: "Cocoa".to_string(),
+                repo: RepoRef::new(Forge::GitHub, "muni-corn", "cocoa"),
+                clone_url: "https://example.invalid/cocoa.git".to_string(),
+                default_branch: "main".to_string(),
+                local_path: root.clone(),
+                image_strategy: ImageStrategy::Base,
+                network_policy: SandboxNetworkConfig::None,
+                trigger: Some(munibot_vcs::TriggerMode::AllIssues),
+                installation_id: Some(999),
+            })
+            .await
+            .unwrap();
+
+        let pipeline_store = Arc::new(InMemoryPipelineStore::new());
+        let project_manager = Arc::new(ProjectManager::new(
+            project_store,
+            ProjectsSettings::default(),
+        ));
+        let registry = Arc::new(PipelineRegistry::new(ConcurrencyConfig::default()));
+
+        let provider: Arc<dyn Provider> = Arc::new(
+            MockProvider::new().respond_tool_use(
+                "c1",
+                "handoff",
+                serde_json::to_value(IssueAnalysis {
+                    classification: IssueClassification::NotActionable,
+                    reproduction_status: ReproductionStatus::NotApplicable,
+                    summary: "not actionable".to_string(),
+                    reproduction_details: String::new(),
+                    recommended_action: RecommendedAction::Skip,
+                    relevant_files: vec![],
+                })
+                .unwrap(),
+            ),
+        );
+
+        let launcher = PipelineLauncher::new(
+            123456,
+            "unused - the forge builder is overridden below".to_string(),
+            "munibot[bot]".to_string(),
+            pipeline_store.clone(),
+            project_manager.clone(),
+            &empty_ai_config(),
+            registry,
+        )
+        .expect("should build with a real persona configured")
+        .with_forge_builder(Arc::new(MockForgeBuilder { uri: server.uri() }))
+        .with_test_providers(
+            issue_analyst_personas(),
+            Arc::new(FixedProviderSource(provider)),
+        );
+
+        let webhook_config = Arc::new(WebhookConfig {
+            webhook_secret: Some(WEBHOOK_SECRET.to_string()),
+            bot_login: "munibot[bot]".to_string(),
+            project_manager,
+            dispatch: Some(Arc::new(launcher) as Arc<dyn PipelineDispatch>),
+        });
+        let app = webhooks::router().layer(axum::Extension(webhook_config));
+
+        let (body, signature) = signed_webhook_body(WEBHOOK_SECRET, ISSUE_OPENED_PAYLOAD);
+        let response = app
+            .oneshot(webhook_request("issues", body, &signature))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::ACCEPTED);
+
+        // handle_webhook spawns process_delivery, which itself calls
+        // dispatch -> launch asynchronously - poll for the pipeline row
+        // it creates, then for the spawned run to actually finish
+        let mut pipeline_id = None;
+        for _ in 0..200 {
+            let ids = pipeline_store.all_pipeline_ids().await.unwrap();
+            if let Some(id) = ids.first() {
+                pipeline_id = Some(*id);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let pipeline_id = pipeline_id.expect(
+            "the signed webhook delivery should have resolved the project and created a pipeline \
+             row",
+        );
+
+        let mut final_state = None;
+        for _ in 0..200 {
+            let state = pipeline_store.replay(pipeline_id).await.unwrap();
+            if state.is_terminal() {
+                final_state = Some(state);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            final_state,
+            Some(munibot_ai::pipeline::PipelineState::Complete),
+            "a NotActionable/Skip analysis should resolve the whole run to Complete"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// `launch` reserves a concurrency slot synchronously, before ever
+    /// spawning the task that actually runs a turn - so, called
+    /// directly (never through the spawned `process_delivery` a real
+    /// webhook delivery goes through), the registry entry is guaranteed
+    /// to exist the instant this returns, deterministically, regardless
+    /// of how quickly the spawned run itself later completes.
+    /// `PipelineRegistry::abort_pipeline` removes that same entry
+    /// synchronously too - see that function's own first line - so this
+    /// needs no polling and races nothing.
+    #[tokio::test]
+    async fn test_launch_reserves_a_concurrency_slot_that_abort_releases() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/muni-corn/cocoa/issues/17"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(issue_response_body()))
+            .mount(&server)
+            .await;
+
+        let root = bare_repo_fixture().await;
+        let project_store = Arc::new(InMemoryProjectStore::new());
+        let project = project_store
+            .upsert_project(&NewProject {
+                slug: "cocoa".to_string(),
+                display_name: "Cocoa".to_string(),
+                repo: RepoRef::new(Forge::GitHub, "muni-corn", "cocoa"),
+                clone_url: "https://example.invalid/cocoa.git".to_string(),
+                default_branch: "main".to_string(),
+                local_path: root.clone(),
+                image_strategy: ImageStrategy::Base,
+                network_policy: SandboxNetworkConfig::None,
+                trigger: Some(munibot_vcs::TriggerMode::AllIssues),
+                installation_id: Some(999),
+            })
+            .await
+            .unwrap();
+
+        let pipeline_store = Arc::new(InMemoryPipelineStore::new());
+        let project_manager = Arc::new(ProjectManager::new(
+            project_store,
+            ProjectsSettings::default(),
+        ));
+        let registry = Arc::new(PipelineRegistry::new(ConcurrencyConfig::default()));
+
+        let provider: Arc<dyn Provider> = Arc::new(
+            MockProvider::new().respond_tool_use(
+                "c1",
+                "handoff",
+                serde_json::to_value(IssueAnalysis {
+                    classification: IssueClassification::NotActionable,
+                    reproduction_status: ReproductionStatus::NotApplicable,
+                    summary: "not actionable".to_string(),
+                    reproduction_details: String::new(),
+                    recommended_action: RecommendedAction::Skip,
+                    relevant_files: vec![],
+                })
+                .unwrap(),
+            ),
+        );
+
+        let launcher = PipelineLauncher::new(
+            123456,
+            "unused - the forge builder is overridden below".to_string(),
+            "munibot[bot]".to_string(),
+            pipeline_store,
+            project_manager,
+            &empty_ai_config(),
+            registry.clone(),
+        )
+        .expect("should build with a real persona configured")
+        .with_forge_builder(Arc::new(MockForgeBuilder { uri: server.uri() }))
+        .with_test_providers(
+            issue_analyst_personas(),
+            Arc::new(FixedProviderSource(provider)),
+        );
+
+        let issue = munibot_vcs::IssueRef::new(project.repo.clone(), 17);
+        let outcome = launcher.launch(issue).await.expect("should launch");
+        let LaunchOutcome::Started(pipeline_id) = outcome else {
+            panic!("a fresh registry always has a free concurrency slot, got {outcome:?}");
+        };
+
+        assert!(
+            registry.is_running(pipeline_id),
+            "try_start reserves the slot synchronously, before launch() ever returns"
+        );
+
+        assert!(
+            registry.abort_pipeline(pipeline_id).await,
+            "aborting a pipeline still holding its slot should report it was actually running"
+        );
+        assert!(!registry.is_running(pipeline_id));
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }
