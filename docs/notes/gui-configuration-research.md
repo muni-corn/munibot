@@ -16,9 +16,11 @@ and still useful, without the framework it was built to justify. See
 `git show gui:docs/plans/gui-configuration.md` for the full original if the
 proc-macro approach is ever worth revisiting at a much larger provider count.
 
-**Status:** several findings below have since been acted on, and each is
-marked inline rather than deleted -- the reasoning is often still the useful
-part even once the bug is gone. What is still outstanding: the two autodelete
+**Status:** several findings below have since been acted on. Most are marked
+inline rather than deleted -- the reasoning is often still the useful part
+even once the bug is gone -- except the two storage bugs in the section
+immediately below, which are gone outright now that they're fixed: a stale
+note costs more than no note. What is still outstanding: the two autodelete
 storage bugs, the missing `ON DELETE CASCADE` on `linked_accounts`, and the
 quote timestamp timezone. All four are scheduled in
 `docs/plans/ai/milestone-7-projects.md` phase 28.
@@ -46,21 +48,13 @@ fixed.
 
 ## Storage bugs found by this research
 
-Two of the four are fixed. Two are still live.
-
-### Fixed
-
-- ~~`upsert_guild_config` uses MySQL `REPLACE INTO`, which deletes the row and
-  reinserts it, nulling every column not present in the write.~~ **Fixed.** It
-  now uses `on_conflict(DuplicatedKeys).do_update()` (`operations.rs:47`),
-  which is what made milestone 6's `ai_enabled`/`ai_default_persona`/
-  `ai_channel_mode` columns safe to add alongside `logging_channel`.
-- ~~`/admin stop-logging` calls `delete_guild_config`, which deletes the whole
-  row rather than just the logging column.~~ **Fixed.** It now calls
-  `set_guild_logging_channel(db, guild_id, None)` (`admin.rs:107-114`).
-  `delete_guild_config` still exists but has no caller outside its own test.
-
-### Still live
+Two of the four this research originally found are fixed:
+`upsert_guild_config` now uses `on_conflict(DuplicatedKeys).do_update()`
+(`operations.rs:47`) instead of a nulling `REPLACE INTO`, and `/admin
+stop-logging` now calls `set_guild_logging_channel(db, guild_id, None)`
+(`admin.rs:107-114`) instead of deleting the whole row via
+`delete_guild_config` (which still exists but has no caller outside its own
+test). Two are still live:
 
 - `AutoDeleteHandler` loads every timer into a `HashMap` once at boot
   (`autodelete.rs:30-53`) and never re-reads. A GUI (or any external) write
