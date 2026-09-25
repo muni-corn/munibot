@@ -1,5 +1,15 @@
 # Changelog
 
+## **v0.3.3**
+
+### new features
+
+- **magical:** special case 22% magic value to display as 21.99%
+- **discord:** implement push_safer for safer markdown escaping for links
+- **discord:** add safer markdown escaping for message content
+
+---
+
 ## **v0.3.2**
 
 ### new features
