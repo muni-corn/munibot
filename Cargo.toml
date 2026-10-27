@@ -60,9 +60,9 @@ jsonwebtoken = "10.4"
 # minimal feature set: smtp delivery and the message builder only, for
 # sending an email sign-in magic link -- no imap/maildir/file transports
 lettre = { version = "0.11.23", default-features = false, features = [
+  "builder",
   "smtp-transport",
   "tokio1-native-tls",
-  "builder",
 ] }
 moka = { version = "0.12", features = ["future"] }
 num-format = "0.4"
