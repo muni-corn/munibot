@@ -82,6 +82,12 @@ fn LinkedAccountRow(
         });
     };
 
+    let button_title = if disabled {
+        "you can't unlink your last remaining sign-in method"
+    } else {
+        ""
+    };
+
     rsx! {
         li { class: "flex items-center justify-between gap-4 rounded-box bg-slate-900/50 p-3",
             div { class: "flex flex-col",
@@ -91,12 +97,7 @@ fn LinkedAccountRow(
             button {
                 class: "btn btn-ghost btn-sm",
                 disabled,
-                title:
-                if disabled {
-                    "you can't unlink your last remaining sign-in method"
-                } else {
-                    ""
-                },
+                title: button_title,
                 onclick: unlink,
                 "unlink"
             }
