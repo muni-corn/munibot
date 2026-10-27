@@ -134,8 +134,8 @@ fn ConversationRow(
                     autofocus: true,
                     oninput: move |event| draft_title.set(event.value()),
                     onkeydown: move |event| match event.key() {
-                        Key::Enter => save(),
-                        Key::Escape => editing.set(false),
+                        Key::Named(NamedKey::Enter) => save(),
+                        Key::Named(NamedKey::Escape) => editing.set(false),
                         _ => {}
                     },
                     onblur: move |_| save(),

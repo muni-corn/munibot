@@ -198,7 +198,7 @@ pub fn Composer(conversation_id: i64, disabled: bool, on_sent: EventHandler<i64>
                         drafts.0.write().insert(conversation_id, event.value());
                     },
                     onkeydown: move |event| {
-                        if event.key() == Key::Enter && !event.modifiers().shift() {
+                        if event.key() == Key::Named(NamedKey::Enter) && !event.modifiers().shift() {
                             event.prevent_default();
                             submit();
                         }
