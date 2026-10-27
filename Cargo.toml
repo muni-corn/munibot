@@ -6,8 +6,8 @@ members = [
   "munibot_api",
   "munibot_core",
   "munibot_discord",
-  "munibot_gui",
   "munibot_github",
+  "munibot_gui",
   "munibot_toolagent",
   "munibot_twitch",
   "munibot_vcs",
@@ -15,8 +15,8 @@ members = [
 
 [workspace.package]
 version = "0.3.2"
-edition = "2024"
 authors = ["municorn <municorn@musicaloft.com>"]
+edition = "2024"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
@@ -36,7 +36,7 @@ chrono-tz = "0.10"
 clap = { version = "4.5.4", features = ["derive"] }
 decancer = "3.2.4"
 diesel = { version = "2.3.6", features = ["chrono", "mysql", "uuid"] }
-diesel-async = { version = "0.9", features = ["mysql", "bb8"] }
+diesel-async = { version = "0.9", features = ["bb8", "mysql"] }
 diesel_migrations = "2.3.1"
 dioxus = { version = "0.8.0-alpha.0", features = ["fullstack", "router"] }
 dioxus-desktop = "0.8.0-alpha.0"
@@ -47,8 +47,8 @@ globset = "0.4"
 grep-regex = "0.1"
 grep-searcher = "0.1"
 hmac = "0.13"
-http = "1.4"
 html2text = "0.17"
+http = "1.4"
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
 ignore = "0.4"
@@ -60,15 +60,9 @@ jsonwebtoken = "10.4"
 # minimal feature set: smtp delivery and the message builder only, for
 # sending an email sign-in magic link -- no imap/maildir/file transports
 lettre = { version = "0.11.23", default-features = false, features = [
+  "builder",
   "smtp-transport",
   "tokio1-native-tls",
-  "builder",
-] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = [
-  "env-filter",
-  "fmt",
-  "tracing-log",
 ] }
 num-format = "0.4"
 octocrab = "0.54"
@@ -92,14 +86,20 @@ tokio = { version = "1.22", features = ["full"] }
 tokio-util = "0.7"
 toml = "1.1"
 tower = "0.5"
-twitch-irc = { version = "6.0", features = ["refreshing-token-native-tls"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "tracing-log",
+] }
 twitch_api = { version = "0.7", features = [
   "client",
-  "helix",
   "eventsub",
+  "helix",
   "hmac",
   "reqwest",
 ] }
+twitch-irc = { version = "6.0", features = ["refreshing-token-native-tls"] }
 twitch_oauth2 = "0.15"
 url = "2.4"
 uuid = { version = "1.24.0", features = ["v4"] }
