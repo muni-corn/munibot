@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 use dotenvy::dotenv;
 use munibot_core::{
     config::Config,
