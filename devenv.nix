@@ -106,6 +106,8 @@ in
       # globally, which breaks the wasm32-unknown-unknown build (rust-lld
       # doesn't understand -fuse-ld, since wasm has no cc-style linker driver)
       targets = [ "wasm32-unknown-unknown" ];
+
+      rustflags = "-Zunstable-options -Csymbol-mangling-version=legacy";
     };
   };
 
