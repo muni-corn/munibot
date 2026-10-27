@@ -137,6 +137,7 @@ in
       podman
       tailwindcss_4
       wasm-bindgen-cli-pinned
+      cargo-expand
     ]
     ++ buildInputs
     ++ nativeBuildInputs
