@@ -21,6 +21,7 @@ devenv.local.yaml
 .oxfmtrc.json
 .pre-commit-config.yaml
 .rustfmt.toml
+.tombi.toml
 
 # nix build result
 result
