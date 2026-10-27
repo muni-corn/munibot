@@ -179,6 +179,8 @@ in
         "wasm32-unknown-unknown"
         "x86_64-unknown-linux-musl"
       ];
+
+      rustflags = "-Zunstable-options -Csymbol-mangling-version=legacy";
     };
   };
 
