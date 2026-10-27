@@ -29,7 +29,7 @@ in
       src = final.fetchCrate {
         pname = "dioxus-cli";
         inherit version;
-        hash = "sha256-4x9xTc9FW03ohEhDOe+wJ0EJ4yR8HWFmiEA+hvlLF7Q=";
+        hash = "sha256-n1Lk9eCjr1vGqvCDbrOmbU7TTvdcGdx/chRsj4Z3a+Q=";
       };
     in
     {
@@ -37,7 +37,7 @@ in
       cargoDeps = final.rustPlatform.fetchCargoVendor {
         inherit src;
         inherit (src) pname version;
-        hash = "sha256-eGGdmI5dvNav2fJmDv/GD7Anfd0lRModfgfEg+Jg3CQ=";
+        hash = "sha256-nqGrW0Sf7DWdrSXSKcSl+FlO+1NY4uZA7G7G4AGItuw=";
       };
     }
   );
@@ -48,7 +48,7 @@ in
       src = final.fetchCrate {
         pname = "wasm-bindgen-cli";
         inherit version;
-        hash = "sha256-H6Is3fiZVxZCfOMWK5dWMSrtn50VGv0sfdnsT+cTtyk=";
+        hash = "sha256-pcecKQd7E8Opw6bkFoE569epUi7gh5qpQF1e5PJY6V8=";
       };
     in
     final.buildWasmBindgenCli {
@@ -56,7 +56,7 @@ in
       cargoDeps = prev.rustPlatform.fetchCargoVendor {
         inherit src;
         inherit (src) pname version;
-        hash = "sha256-VucqkXbCi4qtQzY/HrXiDnbSURsagPsdNVMn1Tw3UiY=";
+        hash = "sha256-vmUrWVU7kPJJxO5qIVeAkwQyWDELO1Z4Z5gitz2kco8=";
       };
     };
 }
