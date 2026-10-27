@@ -23,11 +23,6 @@
 
     musicaloft-shell.url = "github:musicaloft/musicaloft-shell";
 
-    nix2container = {
-      url = "github:nlewo/nix2container";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
