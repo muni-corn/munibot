@@ -1,13 +1,7 @@
-use dioxus::prelude::*;
+mod route;
 
-use crate::{
-    layouts::home::HomeLayout,
-    pages::{
-        dashboard::{Dashboard, DashboardIndex},
-        guild_settings::{GuildSettings, logging::LoggingSettingsPage},
-        home::Home,
-    },
-};
+use dioxus::prelude::*;
+pub use route::Route;
 
 /// Application root — mounts the router and injects global head elements.
 #[component]
@@ -27,37 +21,6 @@ fn MainLayout() -> Element {
             Outlet::<Route> {}
         }
     }
-}
-
-/// Application route enum.
-///
-/// Every page reachable via the browser URL is declared here. The enum is
-/// derived with `Routable` so Dioxus can generate typesafe `Link` targets and
-/// match incoming paths automatically.
-#[derive(Routable, Clone, PartialEq)]
-#[rustfmt::skip]
-pub enum Route {
-    #[layout(MainLayout)]
-        #[route("/")]
-        Home,
-        #[layout(HomeLayout)]
-            #[layout(Dashboard)]
-                #[route("/dashboard")]
-                DashboardIndex {},
-                #[route("/dashboard/:guild_id")]
-                GuildSettings { guild_id: String },
-                // renders LoggingSettingsPage rather than a component named
-                // GuildLoggingSettings, so this variant's name doesn't
-                // collide with munibot_api::settings::GuildLoggingSettings
-                #[route("/dashboard/:guild_id/logging", LoggingSettingsPage)]
-                GuildLoggingSettings { guild_id: String },
-            #[end_layout]
-        #[end_layout]
-    #[end_layout]
-
-    // catch-all — must be outside the layout so 404 is not wrapped
-    #[route("/:..segments")]
-    NotFound { segments: Vec<String> },
 }
 
 #[component]
