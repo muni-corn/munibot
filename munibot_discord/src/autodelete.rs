@@ -315,7 +315,8 @@ impl AutoDeleteTimer {
         debug!("executing cleanup");
 
         // guild is fetched for its channel collection but not logged directly;
-        // channel id and guild id come from the span fields set on this function
+        // channel id and guild id come from the span fields set on this
+        // function
         let (_guild, channel) = self.get_guild_channel(&cache_http).await?;
 
         if let Some(last_message_id) = channel.last_message_id
@@ -512,7 +513,8 @@ impl AutoDeleteTimer {
                         .unwrap_or(Duration::ZERO)
                 }
                 AutoDeleteMode::AfterSilence => {
-                    // use the time of the last message sent plus this timer's duration
+                    // use the time of the last message sent plus this timer's
+                    // duration
                     (last_message_id.created_at().to_utc() + duration - Utc::now())
                         .to_std()
                         .unwrap_or(Duration::ZERO)

@@ -32,9 +32,9 @@ async fn test_recording_a_successful_call() {
     let Some(pool) = pool().await else { return };
     let auditor = DieselToolAuditor::new(pool);
 
-    // record() returns () rather than a Result, so this test's only assertion is
-    // that it does not panic - a database failure inside the auditor is logged
-    // and swallowed, never propagated
+    // record() returns () rather than a Result, so this test's only assertion
+    // is that it does not panic - a database failure inside the auditor is
+    // logged and swallowed, never propagated
     auditor.record(record(ToolCallStatus::Ok)).await;
 }
 

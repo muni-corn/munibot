@@ -54,8 +54,9 @@ mod tests {
 
     #[test]
     fn test_an_entry_without_a_title_is_representable() {
-        // the interface renders this as a placeholder rather than inventing a name,
-        // which is why the field is optional rather than defaulting to a string
+        // the interface renders this as a placeholder rather than inventing a
+        // name, which is why the field is optional rather than defaulting to a
+        // string
         let entry = ConversationEntry {
             id: ConversationId(1),
             title: None,

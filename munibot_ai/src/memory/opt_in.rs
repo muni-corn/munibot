@@ -192,8 +192,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_wipe_delegates_even_when_not_opted_in() {
-        // the one deliberate exception: deleting your own leftover data must never
-        // require opting back in first
+        // the one deliberate exception: deleting your own leftover data must
+        // never require opting back in first
         let gate = GatedMemoryStore::new(FakeMemoryStore::default(), FixedOptIn(false));
         gate.wipe(1).await.expect("wipe must never be gated");
 

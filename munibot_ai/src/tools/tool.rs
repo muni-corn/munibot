@@ -171,8 +171,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_can_be_boxed_as_a_trait_object() {
-        // this is the whole point of the trait: it must be object-safe so the registry
-        // can hold Arc<dyn Tool> for tools of many concrete types
+        // this is the whole point of the trait: it must be object-safe so the
+        // registry can hold Arc<dyn Tool> for tools of many concrete types
         let tool: std::sync::Arc<dyn Tool> = std::sync::Arc::new(PingTool);
         let outcome = tool.invoke(json!({}), &ctx(RiskTier::Safe)).await;
         assert!(outcome.is_ok());

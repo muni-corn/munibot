@@ -28,8 +28,8 @@ const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(1);
 pub enum RenderError {
     #[error("the ai turn failed :< {0}")]
     Ai(#[from] AiError),
-    // boxed: serenity::Error is large enough on its own to blow up this whole enum's
-    // size, the same reason MunibotDiscordError::Serenity boxes it too
+    // boxed: serenity::Error is large enough on its own to blow up this whole
+    // enum's size, the same reason MunibotDiscordError::Serenity boxes it too
     #[error("discord rejected a message :< {0}")]
     Discord(#[from] Box<SerenityError>),
 }
@@ -184,7 +184,8 @@ async fn render_final(
     full_text: &str,
 ) -> Result<(), RenderError> {
     // no length limit here - the chunking below is what enforces Discord's own
-    // limit, at a paragraph boundary rather than filter_output's mid-word ellipsis
+    // limit, at a paragraph boundary rather than filter_output's mid-word
+    // ellipsis
     let filtered = filter_output(full_text, OutputLimits::new(usize::MAX));
     let mut chunks = split_into_chunks(&filtered, DISCORD_MESSAGE_LIMIT).into_iter();
 
@@ -336,14 +337,15 @@ mod tests {
         let chunks = split_into_chunks(&text, 40);
 
         assert!(chunks.iter().all(|chunk| chunk.chars().count() <= 40));
-        // rejoining with the same separator the input used should reconstruct it,
-        // proving no paragraph was dropped or duplicated
+        // rejoining with the same separator the input used should reconstruct
+        // it, proving no paragraph was dropped or duplicated
         assert_eq!(chunks.join("\n\n"), text);
     }
 
     #[test]
     fn test_a_zero_limit_still_terminates_rather_than_looping_forever() {
-        // a degenerate input that should never occur in practice, but must not hang
+        // a degenerate input that should never occur in practice, but must not
+        // hang
         let chunks = split_into_chunks(&"a".repeat(5), 0);
         assert_eq!(chunks.concat(), "a".repeat(5));
     }
@@ -356,8 +358,8 @@ mod tests {
 
     #[test]
     fn test_multibyte_text_is_split_on_a_character_boundary_not_a_byte_boundary() {
-        // each "é" is two bytes but one character; a byte-based split would either
-        // panic on a non-boundary slice or produce mangled output
+        // each "é" is two bytes but one character; a byte-based split would
+        // either panic on a non-boundary slice or produce mangled output
         let text = "é".repeat(15);
         let chunks = split_into_chunks(&text, 10);
 

@@ -585,7 +585,8 @@ impl Ai {
     )]
     pub async fn turn(&self, req: AiTurnRequest) -> Result<TurnOutcome, AiError> {
         let prepared = match self.prepare(&req).await? {
-            // already stored by `prepare` itself; nothing left to do but hand it back
+            // already stored by `prepare` itself; nothing left to do but hand
+            // it back
             Preparation::CrisisResponse { outcome, .. }
             | Preparation::VisionUnsupported { outcome, .. } => return Ok(outcome),
             Preparation::Turn(prepared) => *prepared,
@@ -1017,10 +1018,10 @@ impl Ai {
             .load_or_create(&req.scope, &persona.id.0)
             .await?;
         // stored regardless of the persona's memory policy: a durable per-scope
-        // record is harmless to keep even for a persona that does not read it back,
-        // and a later policy change should not start from a conversation with a gap
-        // in it. skipped when the caller has already persisted the message
-        // themselves, so it is never stored twice
+        // record is harmless to keep even for a persona that does not read it
+        // back, and a later policy change should not start from a conversation
+        // with a gap in it. skipped when the caller has already persisted the
+        // message themselves, so it is never stored twice
         if !req.already_persisted {
             self.sessions
                 .append(conversation.id, Message::user(req.message.clone()))
@@ -1077,9 +1078,10 @@ impl Ai {
                     {
                         Ok(Some(new_summary)) => conversation.summary = Some(new_summary),
                         Ok(None) => {}
-                        // best-effort: a failed compaction should not break the turn - the
-                        // conversation simply stays uncompacted and gets another chance once it
-                        // grows past the threshold again next time
+                        // best-effort: a failed compaction should not break the
+                        // turn - the conversation simply stays uncompacted and
+                        // gets another chance once it grows past the threshold
+                        // again next time
                         Err(error) => {
                             tracing::warn!(
                                 %error,
@@ -1370,10 +1372,10 @@ impl crate::tools::Delegator for Ai {
         }
 
         let (result, usage) = harness.run_turn_recording_usage(turn_request).await;
-        // recorded on failure too, the same reasoning as elsewhere in this file:
-        // a delegated turn that errored on iteration nine still spent the first
-        // eight - and this is what lets a sibling delegation later in the same
-        // batch see a genuinely smaller remaining_budget, not a fresh one
+        // recorded on failure too, the same reasoning as elsewhere in this
+        // file: a delegated turn that errored on iteration nine still spent the
+        // first eight - and this is what lets a sibling delegation later in the
+        // same batch see a genuinely smaller remaining_budget, not a fresh one
         ctx.delegation_spend
             .fetch_add(usage.cost.0, std::sync::atomic::Ordering::SeqCst);
 
@@ -2178,8 +2180,8 @@ mod tests {
             .collect()
             .await;
 
-        // a follow-up turn should see the streamed reply in its history, proving
-        // turn_streamed persisted it even though it never calls turn()
+        // a follow-up turn should see the streamed reply in its history,
+        // proving turn_streamed persisted it even though it never calls turn()
         let _events2: Vec<HarnessEvent> = ai
             .turn_streamed(request("companion", "and then?"))
             .await
@@ -2298,8 +2300,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_a_conversation_is_left_alone_without_a_summariser() {
-        // regression guard: every other test in this module builds an Ai with no
-        // summariser wired, so this is really asserting the default is inert
+        // regression guard: every other test in this module builds an Ai with
+        // no summariser wired, so this is really asserting the default is inert
         let provider = Arc::new(
             MockProvider::new()
                 .respond_text("first")
@@ -2338,8 +2340,9 @@ mod tests {
             },
         );
 
-        // first turn: only one message exists once the user's text is appended, which
-        // is never more than keep_recent_messages - nothing to compact yet
+        // first turn: only one message exists once the user's text is appended,
+        // which is never more than keep_recent_messages - nothing to compact
+        // yet
         ai.turn(request("companion", "message one"))
             .await
             .expect("should succeed");
@@ -2349,8 +2352,8 @@ mod tests {
             "a single message must never be summarised away"
         );
 
-        // second turn: history now has three messages (the first exchange, plus this
-        // turn's new user message), comfortably over both thresholds
+        // second turn: history now has three messages (the first exchange, plus
+        // this turn's new user message), comfortably over both thresholds
         ai.turn(request("companion", "message two"))
             .await
             .expect("should succeed");
@@ -2473,8 +2476,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_without_a_usage_recorder_wired_nothing_breaks() {
-        // regression guard: every other test in this module wires no recorder at
-        // all, so this only makes that default explicit
+        // regression guard: every other test in this module wires no recorder
+        // at all, so this only makes that default explicit
         let provider = Arc::new(MockProvider::new().respond_text("hi"));
         let ai = ai_with(MemoryPolicy::None, provider);
 

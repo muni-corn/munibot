@@ -68,9 +68,9 @@ mod tests {
 
     #[test]
     fn test_embedded_table_parses() {
-        // exercised implicitly by every other test through TABLE, but a dedicated test
-        // names the failure clearly if the embedded file is ever hand-edited
-        // into invalid TOML
+        // exercised implicitly by every other test through TABLE, but a
+        // dedicated test names the failure clearly if the embedded file is ever
+        // hand-edited into invalid TOML
         assert!(
             !TABLE.is_empty(),
             "the embedded pricing table should parse into at least one entry"
@@ -84,8 +84,8 @@ mod tests {
 
         let cost = estimate_cost(&model, &usage);
 
-        // one million input tokens at $15/mtok plus one million output tokens at
-        // $75/mtok
+        // one million input tokens at $15/mtok plus one million output tokens
+        // at $75/mtok
         assert_eq!(cost, Cost::from_dollars(90.0));
     }
 

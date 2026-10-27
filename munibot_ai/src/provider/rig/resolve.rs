@@ -51,9 +51,9 @@ impl ProviderResolver {
 
         let provider = build_provider(model.provider(), model.model())?;
 
-        // another thread may have built the same provider concurrently; keep whichever
-        // won the race rather than paying for a second lock upgrade to detect
-        // and discard the loser
+        // another thread may have built the same provider concurrently; keep
+        // whichever won the race rather than paying for a second lock upgrade
+        // to detect and discard the loser
         let mut cache = self.cache.write().unwrap();
         Ok(Arc::clone(cache.entry(key).or_insert(provider)))
     }
@@ -85,8 +85,8 @@ fn build_provider(provider: &str, model: &str) -> Result<Arc<dyn Provider>, AiEr
                 client.completion_model(model),
             )))
         }
-        // ollama needs no key; from_env() defaults to a local unauthenticated server and never
-        // fails on a missing OLLAMA_API_KEY
+        // ollama needs no key; from_env() defaults to a local unauthenticated
+        // server and never fails on a missing OLLAMA_API_KEY
         "ollama" => {
             let client =
                 ollama::Client::from_env().map_err(|error| config_error(provider, error))?;
@@ -146,8 +146,9 @@ mod tests {
 
     #[test]
     fn test_ollama_resolves_without_any_key() {
-        // ollama needs no credentials, which makes it the one provider we can construct
-        // deterministically in a test regardless of the ambient environment's api keys
+        // ollama needs no credentials, which makes it the one provider we can
+        // construct deterministically in a test regardless of the ambient
+        // environment's api keys
         let resolver = ProviderResolver::new();
         let provider = resolver
             .resolve(&ModelRef::new("ollama", "llama3"))
@@ -173,9 +174,9 @@ mod tests {
 
     #[test]
     fn test_resolving_a_different_model_on_the_same_provider_does_not_share_the_cached_instance() {
-        // the correctness property this whole cache design exists for: two distinct
-        // models on the same provider must never collapse onto one cached
-        // provider instance
+        // the correctness property this whole cache design exists for: two
+        // distinct models on the same provider must never collapse onto one
+        // cached provider instance
         let resolver = ProviderResolver::new();
 
         let small = resolver

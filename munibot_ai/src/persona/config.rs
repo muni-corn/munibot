@@ -550,8 +550,8 @@ mod tests {
 
     #[test]
     fn test_sections_other_than_ai_are_ignored() {
-        // proves the independent-pass design: fields only munibot_core::Config knows
-        // about must not cause a parse failure here
+        // proves the independent-pass design: fields only munibot_core::Config
+        // knows about must not cause a parse failure here
         let dir = tempdir();
         let path = dir.path().join("config.toml");
         std::fs::write(
@@ -736,7 +736,8 @@ mod tests {
 
     #[test]
     fn test_persona_config_model_is_optional() {
-        // falls back to AiConfig::default_model - see PersonaRegistry::resolve_one
+        // falls back to AiConfig::default_model - see
+        // PersonaRegistry::resolve_one
         let config: PersonaConfig = toml::from_str("prompt = \"x.md\"").unwrap();
         assert_eq!(config.model, None);
     }

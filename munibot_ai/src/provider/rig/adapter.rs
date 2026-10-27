@@ -67,10 +67,12 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
         .collect();
 
     Ok(RigCompletionRequest {
-        // this adapter is already bound to one model at construction time; no per-request override
+        // this adapter is already bound to one model at construction time; no
+        // per-request override
         model: None,
-        // the system prompt goes into chat_history as a leading Message::System instead of the
-        // legacy preamble field, which rig itself documents as the preferred representation
+        // the system prompt goes into chat_history as a leading Message::System
+        // instead of the legacy preamble field, which rig itself documents as
+        // the preferred representation
         preamble: None,
         chat_history,
         documents: vec![],
@@ -250,9 +252,9 @@ mod tests {
 
     #[test]
     fn test_params_are_widened_not_truncated() {
-        // 0.5 is exactly representable in both f32 and f64, so this proves the widen is
-        // present without also asserting on f32-to-f64 rounding behaviour,
-        // which is not what this test is for
+        // 0.5 is exactly representable in both f32 and f64, so this proves the
+        // widen is present without also asserting on f32-to-f64 rounding
+        // behaviour, which is not what this test is for
         let request = request().with_params(
             ModelParams::new()
                 .with_temperature(0.5)

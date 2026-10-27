@@ -91,7 +91,8 @@ pub fn ChatConversation(conversation_id: i64) -> Element {
                             Ok(ChatEvent::Failed { message, kind }) => {
                                 turn_failure.set(Some(TurnFailure::from_event(kind, message)));
                             }
-                            // not shown yet: TurnStarted/IterationComplete/Thinking/Handoff
+                            // not shown yet:
+                            // TurnStarted/IterationComplete/Thinking/Handoff
                             // are persona-driven signals nothing here renders
                             Ok(_) => {}
                             Err(error) => {

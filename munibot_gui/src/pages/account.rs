@@ -91,7 +91,12 @@ fn LinkedAccountRow(
             button {
                 class: "btn btn-ghost btn-sm",
                 disabled,
-                title: if disabled { "you can't unlink your last remaining sign-in method" } else { "" },
+                title:
+                if disabled {
+                    "you can't unlink your last remaining sign-in method"
+                } else {
+                    ""
+                },
                 onclick: unlink,
                 "unlink"
             }

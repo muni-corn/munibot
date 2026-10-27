@@ -59,7 +59,6 @@ pub fn DashboardIndex() -> Element {
 pub fn DiscordSidebar(guilds: Vec<GuildSummary>) -> Element {
     rsx! {
         div { class: "flex h-full w-20 flex-col items-center gap-4 p-4 sm:rounded-ss-3xl",
-
             ul { class: "flex flex-col gap-4",
                 for guild in guilds.iter() {
                     GuildRow { key: "{guild.id}", guild: guild.clone() }

@@ -1,14 +1,12 @@
 [package]
 name = "munibot_discord"
-description = "discord integration for munibot"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
+description = "discord integration for munibot"
 license.workspace = true
 
 [dependencies]
-munibot_ai = { path = "../munibot_ai" }
-munibot_core = { path = "../munibot_core" }
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
@@ -19,7 +17,8 @@ dotenvy.workspace = true
 futures.workspace = true
 humantime.workspace = true
 humantime-serde.workspace = true
-tracing.workspace = true
+munibot_ai = { path = "../munibot_ai" }
+munibot_core = { path = "../munibot_core" }
 num-format.workspace = true
 once_cell.workspace = true
 poise.workspace = true
@@ -32,6 +31,7 @@ strum.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 rand_chacha = "0.10.0"

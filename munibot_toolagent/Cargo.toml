@@ -1,9 +1,9 @@
 [package]
 name = "munibot_toolagent"
-description = "in-container rpc server executing filesystem and shell tools for the ai sandbox"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
+description = "in-container rpc server executing filesystem and shell tools for the ai sandbox"
 license.workspace = true
 
 # deliberately no munibot_core, munibot_ai, or any other munibot crate here.

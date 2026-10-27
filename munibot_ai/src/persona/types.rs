@@ -173,9 +173,9 @@ mod tests {
 
     #[test]
     fn test_a_chat_persona_has_no_handoff() {
-        // documenting the distinction the overview draws between chat personas and
-        // pipeline roles: this is the only field that tells them apart at the
-        // type level
+        // documenting the distinction the overview draws between chat personas
+        // and pipeline roles: this is the only field that tells them apart at
+        // the type level
         let chat_persona = persona();
         assert!(chat_persona.handoff.is_none());
     }

@@ -245,11 +245,11 @@ pub async fn build(
     match default_persona_model(config) {
         Some(model) => match providers.resolve(&model) {
             Ok(provider) => {
-                // compaction, crisis classification, and title generation all reuse
-                // this same resolved provider and model - see
+                // compaction, crisis classification, and title generation all
+                // reuse this same resolved provider and model - see
                 // default_persona_model's own doc comment. a genuinely cheaper,
-                // dedicated model for these is worth adding once there is a real
-                // cost signal to justify a new config knob for it
+                // dedicated model for these is worth adding once there is a
+                // real cost signal to justify a new config knob for it
                 let summariser =
                     Summariser::new(provider.clone(), CompactionPersona::embedded(model.clone()));
                 ai = ai.with_summariser(summariser, CompactionSettings::default());

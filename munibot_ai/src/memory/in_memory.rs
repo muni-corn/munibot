@@ -217,7 +217,8 @@ impl SessionStore for InMemorySessionStore {
             return Ok(());
         };
         if messages.len() <= keep_recent {
-            // nothing to summarise; a short conversation is left completely alone
+            // nothing to summarise; a short conversation is left completely
+            // alone
             return Ok(());
         }
 
@@ -276,8 +277,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_existing_conversation_keeps_its_original_persona() {
-        // explicit persona switching is the router's job in a later milestone, not
-        // something a load call should silently perform
+        // explicit persona switching is the router's job in a later milestone,
+        // not something a load call should silently perform
         let store = InMemorySessionStore::new();
         store
             .load_or_create(&scope("channel-1"), "companion")
@@ -480,11 +481,11 @@ mod tests {
 
         use crate::types::ContentBlock;
 
-        // cap of 1: appending the tool call brings the count to 2, evicting the user
-        // message that came before it; appending the tool result then brings it
-        // to 2 again, evicting the tool call itself and leaving the tool result
-        // as what would be an orphaned leading message - exactly the case the
-        // cascade-drop exists for
+        // cap of 1: appending the tool call brings the count to 2, evicting the
+        // user message that came before it; appending the tool result then
+        // brings it to 2 again, evicting the tool call itself and leaving the
+        // tool result as what would be an orphaned leading message - exactly
+        // the case the cascade-drop exists for
         let store = InMemorySessionStore::with_message_cap(1);
         let conversation = store
             .load_or_create(&scope("channel-1"), "companion")

@@ -80,8 +80,8 @@ impl Tool for WebSearchTool {
             }),
         };
 
-        // an Exa outage should not end the conversation - the model can carry on
-        // without search, so this is a recoverable error, not a Fatal one
+        // an Exa outage should not end the conversation - the model can carry
+        // on without search, so this is a recoverable error, not a Fatal one
         let response = match self
             .backend
             .search(args.query.clone(), args.num_results, Some(contents))
@@ -231,8 +231,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_backend_failure_is_recoverable_not_fatal() {
-        // an Exa outage should let the model carry on without search, not abort the
-        // turn
+        // an Exa outage should let the model carry on without search, not abort
+        // the turn
         let tool = tool_with(FakeExaBackend::respond_search(Err(ExaError::Api {
             status: StatusCode::UNAUTHORIZED,
             message: "Invalid API key (INVALID_API_KEY)".to_string(),

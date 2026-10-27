@@ -278,8 +278,9 @@ mod tests {
             .unwrap();
 
         let provider = Arc::new(MockProvider::new());
-        // threshold_tokens is 0, so the token check alone would trigger compaction,
-        // but keep_recent_messages (5) exceeds the actual message count (1)
+        // threshold_tokens is 0, so the token check alone would trigger
+        // compaction, but keep_recent_messages (5) exceeds the actual message
+        // count (1)
         let result = compact_if_needed(
             &summariser(provider.clone()),
             &store,
@@ -346,8 +347,8 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // load_or_create returns the conversation as it was before set_summary in
-        // this test's earlier call, so fetch it fresh to see the summary
+        // load_or_create returns the conversation as it was before set_summary
+        // in this test's earlier call, so fetch it fresh to see the summary
         let conversation = store.load_or_create(&scope(), "companion").await.unwrap();
 
         let provider = Arc::new(MockProvider::new().respond_text("updated summary"));
@@ -399,8 +400,8 @@ mod tests {
 
         assert!(result.is_err());
 
-        // and the store must be untouched - a failed compaction should never lose
-        // messages it never actually got to summarise
+        // and the store must be untouched - a failed compaction should never
+        // lose messages it never actually got to summarise
         let history = store.history(conversation.id, None).await.unwrap();
         assert_eq!(history.len(), 3);
     }

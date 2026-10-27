@@ -155,7 +155,8 @@ mod tests {
 
     #[test]
     fn test_deserializes_a_mixed_list_as_a_union() {
-        // exactly the companion persona's configuration from docs/plans/ai/overview.md
+        // exactly the companion persona's configuration from
+        // docs/plans/ai/overview.md
         let selection: ToolSelection =
             serde_json::from_value(serde_json::json!(["tier0", "web_search"]))
                 .expect("should parse");
@@ -176,9 +177,9 @@ mod tests {
 
     #[test]
     fn test_two_tiers_are_both_covered_when_both_are_listed() {
-        // the researcher persona's configuration: tier0 and tier1 both listed, proving
-        // each expands to exactly its own tier rather than tier1 alone being
-        // assumed cumulative
+        // the researcher persona's configuration: tier0 and tier1 both listed,
+        // proving each expands to exactly its own tier rather than tier1 alone
+        // being assumed cumulative
         let selection: ToolSelection =
             serde_json::from_value(serde_json::json!(["tier0", "tier1"])).expect("should parse");
 

@@ -486,9 +486,9 @@ mod tests {
 
     #[test]
     fn test_from_env_fails_clearly_when_key_is_unset() {
-        // reads the process environment, so this cannot run concurrently with a test
-        // that depends on EXA_API_KEY being set - none currently do, since no
-        // test in this suite touches the network (see the crate's testing
+        // reads the process environment, so this cannot run concurrently with a
+        // test that depends on EXA_API_KEY being set - none currently do, since
+        // no test in this suite touches the network (see the crate's testing
         // policy) SAFETY: single-threaded with respect to this variable within
         // this test process; no other test reads or writes EXA_API_KEY
         unsafe {

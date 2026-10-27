@@ -390,9 +390,10 @@ pub async fn compact_conversation(
 ) -> QueryResult<()> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
 
-    // the seq of the oldest message still worth keeping - everything at or below
-    // it is what gets summarised away. absent entirely when the conversation has
-    // keep_recent messages or fewer, which is exactly when nothing should happen
+    // the seq of the oldest message still worth keeping - everything at or
+    // below it is what gets summarised away. absent entirely when the
+    // conversation has keep_recent messages or fewer, which is exactly when
+    // nothing should happen
     let threshold: Option<i32> = ai_messages::table
         .filter(ai_messages::conversation_id.eq(conversation_id))
         .order(ai_messages::seq.desc())

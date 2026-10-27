@@ -28,8 +28,9 @@ pub fn classify_completion_error(error: CompletionError) -> AiError {
         Some(status) if status.as_u16() == 429 => AiError::RateLimited { retry_after: None },
         Some(status) if status.is_server_error() => AiError::Provider(message),
         Some(status) if status.is_client_error() => AiError::Rejected(message),
-        // no status at all (a connection error, a timeout, a malformed JSON body): treat as
-        // transient, since these are exactly the class of failure a retry is likely to outlive
+        // no status at all (a connection error, a timeout, a malformed JSON
+        // body): treat as transient, since these are exactly the class of
+        // failure a retry is likely to outlive
         _ => AiError::Provider(message),
     }
 }
@@ -90,9 +91,9 @@ mod tests {
 
     #[test]
     fn test_no_status_defaults_to_transient() {
-        // a JSON parse failure carries no status at all - connection-level trouble, not
-        // a rejection of the request itself, so it defaults to the transient
-        // side
+        // a JSON parse failure carries no status at all - connection-level
+        // trouble, not a rejection of the request itself, so it defaults to the
+        // transient side
         let error =
             classify_completion_error(CompletionError::ResponseError("invalid json".to_string()));
         assert!(
@@ -111,8 +112,9 @@ mod tests {
             http::StatusCode::OK,
             "{\"error\": \"actually failed\"}",
         );
-        // a 2xx is neither a 4xx nor a 5xx, so this falls through to the transient
-        // default - there is no HTTP-level signal here to say otherwise
+        // a 2xx is neither a 4xx nor a 5xx, so this falls through to the
+        // transient default - there is no HTTP-level signal here to say
+        // otherwise
         assert!(matches!(
             classify_completion_error(error),
             AiError::Provider(_)

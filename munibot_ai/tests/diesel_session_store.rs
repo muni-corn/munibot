@@ -30,8 +30,8 @@ use munibot_core::db::{DbPool, establish_pool};
 /// Connects to the test database, or returns `None` when none is configured.
 async fn pool() -> Option<DbPool> {
     let url = std::env::var("MUNIBOT_AI_TEST_DATABASE_URL").ok()?;
-    // establish_pool reads DATABASE_URL specifically, so mirror it across rather
-    // than duplicating its pool construction
+    // establish_pool reads DATABASE_URL specifically, so mirror it across
+    // rather than duplicating its pool construction
     unsafe { std::env::set_var("DATABASE_URL", url) };
     Some(establish_pool().await.expect("couldn't build a pool"))
 }

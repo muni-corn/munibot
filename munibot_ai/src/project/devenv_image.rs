@@ -67,7 +67,10 @@ fn devenv_command(worktree: &Path, args: &[&str]) -> Command {
         // devenv builds shell out to nix, which - through secretspec's
         // own agent-access policy - refuses to run without a stated
         // reason; a project image build is exactly that reason
-        .env("SECRETSPEC_REASON", "building a project's devenv container image")
+        .env(
+            "SECRETSPEC_REASON",
+            "building a project's devenv container image",
+        )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     command

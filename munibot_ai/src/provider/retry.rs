@@ -118,10 +118,10 @@ impl<P: Provider> Provider for RetryingProvider<P> {
         &self,
         request: CompletionRequest,
     ) -> Result<BoxStream<'static, Result<StreamEvent, AiError>>, AiError> {
-        // a stream is retried as a whole on a failure to *start* it; once events are
-        // flowing, a mid-stream error is surfaced to the caller rather than
-        // silently restarting a partial response, which could otherwise
-        // duplicate content already delivered
+        // a stream is retried as a whole on a failure to *start* it; once
+        // events are flowing, a mid-stream error is surfaced to the caller
+        // rather than silently restarting a partial response, which could
+        // otherwise duplicate content already delivered
         let mut backoff = self.policy.backoff();
         let mut attempts_made = 0usize;
 
@@ -207,9 +207,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_does_not_retry_a_permanent_rejection() {
-        // only one response is scripted; MockProvider panics if asked for a second,
-        // which is exactly the assertion that a permanent rejection was not
-        // retried
+        // only one response is scripted; MockProvider panics if asked for a
+        // second, which is exactly the assertion that a permanent rejection was
+        // not retried
         let mock = MockProvider::new().respond_error(AiError::Rejected("bad api key".to_string()));
         let provider = RetryingProvider::new(mock, fast_policy(4));
 
@@ -241,8 +241,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limited_with_retry_after_is_honoured_over_the_computed_backoff() {
-        // the delay itself cannot be asserted on without a paused clock, but this
-        // proves the rate-limited path is retried like any other transient
+        // the delay itself cannot be asserted on without a paused clock, but
+        // this proves the rate-limited path is retried like any other transient
         // error rather than treated as permanent, and completes promptly since
         // retry_after here is negligible
         let mock = MockProvider::new()

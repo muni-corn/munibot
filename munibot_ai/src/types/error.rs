@@ -136,8 +136,8 @@ mod tests {
 
     #[test]
     fn test_schema_violation_is_not_transient() {
-        // schema failures are handled by the harness's own retry-with-feedback loop,
-        // not by the provider-level retry policy
+        // schema failures are handled by the harness's own retry-with-feedback
+        // loop, not by the provider-level retry policy
         assert!(
             !AiError::SchemaViolation("missing required field `key`".to_string()).is_transient(),
             "schema violations need a corrected request, not a repeated one"

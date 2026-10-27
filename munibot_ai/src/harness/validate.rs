@@ -52,9 +52,9 @@ mod tests {
 
     #[test]
     fn test_extra_unlisted_fields_are_allowed() {
-        // JSON Schema permits additional properties by default; being permissive here
-        // matches that default rather than silently becoming stricter than the
-        // schema itself says
+        // JSON Schema permits additional properties by default; being
+        // permissive here matches that default rather than silently becoming
+        // stricter than the schema itself says
         let result = validate_tool_arguments(&schema(), &json!({"query": "cats", "extra": true}));
         assert!(
             result.is_ok(),

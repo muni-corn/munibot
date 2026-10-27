@@ -256,9 +256,9 @@ fn reject_reason(ip: IpAddr) -> Option<&'static str> {
             } else if v6.is_unspecified() {
                 Some("an unspecified address")
             } else if let Some(mapped) = v6.to_ipv4_mapped() {
-                // an IPv4-mapped IPv6 address (::ffff:a.b.c.d) must be checked against the same
-                // v4 ranges, or this whole check could be bypassed by mapping a private v4
-                // address into v6 form
+                // an IPv4-mapped IPv6 address (::ffff:a.b.c.d) must be checked
+                // against the same v4 ranges, or this whole check could be
+                // bypassed by mapping a private v4 address into v6 form
                 reject_reason(IpAddr::V4(mapped))
             } else {
                 None
@@ -316,8 +316,8 @@ mod tests {
         }
     }
 
-    // --- reject_reason: the core SSRF gate, exercised directly with no network at
-    // all ---
+    // --- reject_reason: the core SSRF gate, exercised directly with no network
+    // at all ---
 
     #[test]
     fn test_rejects_ipv4_loopback() {
@@ -333,8 +333,8 @@ mod tests {
 
     #[test]
     fn test_rejects_ipv4_link_local_and_cloud_metadata() {
-        // 169.254.169.254 is the AWS/GCP/Azure metadata endpoint - the canonical SSRF
-        // target
+        // 169.254.169.254 is the AWS/GCP/Azure metadata endpoint - the
+        // canonical SSRF target
         assert!(reject_reason(IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254))).is_some());
     }
 
@@ -366,9 +366,9 @@ mod tests {
 
     #[test]
     fn test_rejects_ipv4_mapped_private_address_in_ipv6_form() {
-        // ::ffff:10.0.0.1 must be caught by the same rule as 10.0.0.1 itself, or
-        // wrapping a private address in IPv4-mapped IPv6 form would bypass the
-        // whole check
+        // ::ffff:10.0.0.1 must be caught by the same rule as 10.0.0.1 itself,
+        // or wrapping a private address in IPv4-mapped IPv6 form would bypass
+        // the whole check
         let mapped = Ipv4Addr::new(10, 0, 0, 1).to_ipv6_mapped();
         assert!(reject_reason(IpAddr::V6(mapped)).is_some());
     }
@@ -416,9 +416,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_ssrf_target_is_rejected_before_any_backend_call() {
-        // an unused scripted response is harmless here; the assertion below is what
-        // actually proves the target was rejected before validate_fetch_url
-        // ever returned
+        // an unused scripted response is harmless here; the assertion below is
+        // what actually proves the target was rejected before
+        // validate_fetch_url ever returned
         let tool = tool_with(FakeExaBackend::respond_contents(Ok(ContentsResponse {
             request_id: "r1".to_string(),
             results: vec![],
@@ -478,8 +478,8 @@ mod tests {
         );
     }
 
-    // --- extract_text: the actual html-to-text "readability extraction" logic, no
-    // network ---
+    // --- extract_text: the actual html-to-text "readability extraction" logic,
+    // no network ---
 
     #[test]
     fn test_extract_text_strips_html_tags() {

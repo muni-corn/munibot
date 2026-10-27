@@ -80,10 +80,10 @@ mod prompt_tests {
 
     #[test]
     fn test_companion_prompt_states_it_can_search_and_fetch_the_web() {
-        // milestone 2 phase 13's own requirement: the companion carries research
-        // tools himself, so the prompt must say so for both of them, not just
-        // searching - a link handed to him or turned up by a search should
-        // actually get read, not guessed at from its url alone
+        // milestone 2 phase 13's own requirement: the companion carries
+        // research tools himself, so the prompt must say so for both of them,
+        // not just searching - a link handed to him or turned up by a search
+        // should actually get read, not guessed at from its url alone
         let source = include_str!("../prompts/companion.md");
         assert!(
             source.contains("search the web"),
@@ -98,9 +98,10 @@ mod prompt_tests {
 
     #[test]
     fn test_companion_prompt_distinguishes_same_conversation_recall_from_opt_in_memory() {
-        // milestone 2 phase 13's own requirement: states plainly what it does and
-        // does not remember. remembering what was just said needs no permission;
-        // only carrying something into a *different*, later conversation does
+        // milestone 2 phase 13's own requirement: states plainly what it does
+        // and does not remember. remembering what was just said needs no
+        // permission; only carrying something into a *different*, later
+        // conversation does
         let source = include_str!("../prompts/companion.md");
         assert!(
             source.contains("earlier in _this_ conversation")
@@ -118,7 +119,8 @@ mod prompt_tests {
     #[test]
     fn test_companion_prompt_distinguishes_platform_formatting() {
         // milestone 2 phase 13's own requirement: a much longer horizon than a
-        // discord reply, and the web renders real markdown while discord doesn't
+        // discord reply, and the web renders real markdown while discord
+        // doesn't
         let source = include_str!("../prompts/companion.md");
         assert!(
             source.contains("renders full markdown"),

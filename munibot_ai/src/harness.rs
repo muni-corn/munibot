@@ -125,9 +125,10 @@ impl Harness {
             .tools
             .schemas_for(&request.tools, request.ctx.granted_tier);
         if let Some(handoff) = &request.handoff {
-            // the handoff tool is synthetic: it exists only in the schema list offered to
-            // the provider, never in the registry, since it terminates the turn
-            // rather than doing anything a Tool impl could invoke
+            // the handoff tool is synthetic: it exists only in the schema list
+            // offered to the provider, never in the registry, since it
+            // terminates the turn rather than doing anything a Tool impl could
+            // invoke
             tool_schemas.push(crate::types::ToolSchema::new(
                 handoff.tool_name.clone(),
                 handoff.description.clone(),
@@ -140,8 +141,8 @@ impl Harness {
         let mut last_text = String::new();
 
         loop {
-            // don't start another round trip once a prior iteration already spent the
-            // budget
+            // don't start another round trip once a prior iteration already
+            // spent the budget
             if let Err(reason) = tracker.check() {
                 return Ok(Self::truncated_outcome(last_text, tracker, &reason));
             }
@@ -189,9 +190,10 @@ impl Harness {
 
             if !response.stop_reason.wants_another_iteration() {
                 if let Some(handoff) = &request.handoff {
-                    // the model answered directly instead of calling the handoff tool - not a
-                    // valid way to finish when one is required, so nudge it and try again rather
-                    // than silently accepting plain text as the answer
+                    // the model answered directly instead of calling the
+                    // handoff tool - not a valid way to finish when one is
+                    // required, so nudge it and try again rather than silently
+                    // accepting plain text as the answer
                     tool_retries += 1;
                     if let Some(max) = request.budget.max_tool_retries
                         && tool_retries > max
@@ -679,9 +681,10 @@ impl Harness {
         // cannot observe each other's spend regardless of how this is
         // computed, so there is nothing more precise to give them
         let parallel_ctx = ctx_for_dispatch(tracker, ctx);
-        // each parallel call announces itself as soon as `join_all` polls it - not
-        // once every call in the batch has finished - so `events` must be captured
-        // by every future in the batch, not sent once up front by this function
+        // each parallel call announces itself as soon as `join_all` polls it -
+        // not once every call in the batch has finished - so `events` must be
+        // captured by every future in the batch, not sent once up front by this
+        // function
         let parallel_futures = parallel_indices
             .iter()
             .map(|&index| self.invoke_and_audit(calls, index, &parallel_ctx, events));
@@ -989,8 +992,8 @@ mod tests {
     #[tokio::test]
     async fn test_run_turn_recording_usage_reflects_spend_up_to_a_fatal_failure() {
         // three tool-use responses in a row exhaust the default budget's
-        // max_tool_retries (3) via repeated invalid arguments, aborting the turn -
-        // but every one of those round trips still cost real usage first
+        // max_tool_retries (3) via repeated invalid arguments, aborting the
+        // turn - but every one of those round trips still cost real usage first
         let mut registry = ToolRegistry::new();
         registry.register(Arc::new(SchemaedTool));
 
@@ -1816,8 +1819,9 @@ mod tests {
         let provider: Arc<MockProvider> = Arc::new(
             MockProvider::new()
                 .respond(Ok(crate::types::CompletionResponse::new(
-                    // slow is called first but finishes last; fast is called second but
-                    // finishes first - the result order must still follow the call order
+                    // slow is called first but finishes last; fast is called
+                    // second but finishes first - the result order must still
+                    // follow the call order
                     vec![
                         ContentBlock::tool_use("c1", "slow", serde_json::json!({})),
                         ContentBlock::tool_use("c2", "fast", serde_json::json!({})),
@@ -1938,7 +1942,8 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(Arc::new(SchemaedTool));
 
-        // one more invalid call than the default budget's max_tool_retries (3) allows
+        // one more invalid call than the default budget's max_tool_retries (3)
+        // allows
         let mut provider_builder = MockProvider::new();
         for _ in 0..4 {
             provider_builder =
@@ -1967,8 +1972,8 @@ mod tests {
             reply: "again",
         }));
 
-        // every response asks for another tool call, forever - only the budget stops
-        // this
+        // every response asks for another tool call, forever - only the budget
+        // stops this
         let mut builder = MockProvider::new();
         for _ in 0..5 {
             builder = builder.respond_tool_use("c1", "loop_tool", serde_json::json!({}));
@@ -2379,7 +2384,11 @@ mod tests {
             MockProvider::new()
                 // missing the required "action" field
                 .respond_tool_use("c1", "handoff", serde_json::json!({}))
-                .respond_tool_use("c2", "handoff", serde_json::json!({"action": "ApprovePlan"})),
+                .respond_tool_use(
+                    "c2",
+                    "handoff",
+                    serde_json::json!({"action": "ApprovePlan"}),
+                ),
         );
 
         let mut turn_request = request();
@@ -2420,7 +2429,11 @@ mod tests {
         let provider: Arc<MockProvider> = Arc::new(
             MockProvider::new()
                 .respond_text("here's my answer") // wrong: must call handoff instead
-                .respond_tool_use("c1", "handoff", serde_json::json!({"action": "ApprovePlan"})),
+                .respond_tool_use(
+                    "c1",
+                    "handoff",
+                    serde_json::json!({"action": "ApprovePlan"}),
+                ),
         );
 
         let mut turn_request = request();
@@ -2609,9 +2622,9 @@ mod tests {
             reply: "12:00",
         }));
 
-        // one leading text delta and one trailing text delta, either side of the
-        // tool call, so ordering can be checked against both rather than just
-        // "somewhere in the stream"
+        // one leading text delta and one trailing text delta, either side of
+        // the tool call, so ordering can be checked against both rather than
+        // just "somewhere in the stream"
         let provider: Arc<MockProvider> = Arc::new(
             MockProvider::new()
                 .respond(Ok(crate::types::CompletionResponse::new(
@@ -2673,10 +2686,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_streamed_turn_signals_parallel_tool_starts_promptly_not_batched() {
-        // both tools take the same, deliberately long time to finish - if starts
-        // were only ever forwarded once the whole batch was done (the bug this
-        // is guarding against), both ToolStarted events would only appear
-        // alongside the ToolFinished ones, roughly `delay` after the turn began
+        // both tools take the same, deliberately long time to finish - if
+        // starts were only ever forwarded once the whole batch was done (the
+        // bug this is guarding against), both ToolStarted events would only
+        // appear alongside the ToolFinished ones, roughly `delay` after the
+        // turn began
         let delay = std::time::Duration::from_millis(200);
         let mut registry = ToolRegistry::new();
         registry.register(Arc::new(SlowTool { delay }));
@@ -2953,12 +2967,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_an_unknown_tool_call_is_not_audited_since_it_never_dispatches() {
-        // an unknown tool name (and, identically, invalid arguments or an invalid
-        // handoff payload) is rejected before dispatch_calls ever runs - there is
-        // no real invocation to time or record, just a validation failure the
-        // model already sees in its own tool result. Auditing only what actually
-        // reached a Tool::invoke keeps ai_tool_calls a record of real calls, not
-        // a duplicate of what the transcript already shows.
+        // an unknown tool name (and, identically, invalid arguments or an
+        // invalid handoff payload) is rejected before dispatch_calls ever runs
+        // - there is no real invocation to time or record, just a validation
+        // failure the model already sees in its own tool result. Auditing only
+        // what actually reached a Tool::invoke keeps ai_tool_calls a record of
+        // real calls, not a duplicate of what the transcript already shows.
         let provider: Arc<MockProvider> = Arc::new(
             MockProvider::new()
                 .respond_tool_use("c1", "does_not_exist", serde_json::json!({}))

@@ -43,9 +43,9 @@ pub async fn assemble_context(
 
     selected.reverse();
 
-    // the token walk can land on the boundary between a tool result and the tool
-    // call it answers, exactly as the in-memory store's own message cap can -
-    // the same cascade fixes it
+    // the token walk can land on the boundary between a tool result and the
+    // tool call it answers, exactly as the in-memory store's own message cap
+    // can - the same cascade fixes it
     while selected
         .first()
         .is_some_and(|message| message.role == Role::Tool)
@@ -208,9 +208,9 @@ mod tests {
         )]);
         let tool_result = Message::tool_results(vec![ContentBlock::tool_result("c1", "12:00")]);
 
-        // budget fits only the tool result on its own, not the tool call that precedes
-        // it - proving the cascade removes the orphan rather than sending a
-        // dangling result
+        // budget fits only the tool result on its own, not the tool call that
+        // precedes it - proving the cascade removes the orphan rather than
+        // sending a dangling result
         let conversation = conversation_with(&store, &[tool_call, tool_result]).await;
 
         let context = assemble_context(&store, &conversation, 1, rough_token_estimate)

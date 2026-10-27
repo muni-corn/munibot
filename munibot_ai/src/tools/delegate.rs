@@ -167,8 +167,9 @@ impl Tool for DelegateTool {
             .await
         {
             Ok(text) => ToolOutcome::ok(text),
-            // a cancelled turn cannot be fixed by the model adjusting its call, the same
-            // reasoning ToolOutcome::Fatal's own doc comment gives for cancellation generally
+            // a cancelled turn cannot be fixed by the model adjusting its call,
+            // the same reasoning ToolOutcome::Fatal's own doc comment gives for
+            // cancellation generally
             Err(AiError::Cancelled) => ToolOutcome::fatal(AiError::Cancelled),
             Err(error) => ToolOutcome::err(format!("the specialist ran into a problem :< {error}")),
         }
@@ -332,7 +333,8 @@ mod tests {
         // must happen before it's ever consulted, so an unset result
         // wouldn't panic even if it did
         let (tool, _delegator) = tool_with(Arc::new(FakeDelegator::ok("unused")), 2);
-        // already at depth 2, the configured maximum - one more would be depth 3
+        // already at depth 2, the configured maximum - one more would be depth
+        // 3
         let outcome = tool
             .invoke(json!({"persona": "researcher", "task": "a task"}), &ctx(2))
             .await;

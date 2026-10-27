@@ -169,11 +169,11 @@ impl AiChatHandler {
         let request = AiTurnRequest {
             persona_id,
             scope: ConversationScope::new(Platform::Discord, msg.channel_id.to_string()),
-            // the raw platform snowflake, not a resolved internal `users.id` - no
-            // per-user memory exists yet to need the real one (see milestone 2
-            // phase 10), and resolving it now would mean fabricating placeholder
-            // oauth fields into `linked_accounts` for a lookup this milestone has
-            // no other use for
+            // the raw platform snowflake, not a resolved internal `users.id` -
+            // no per-user memory exists yet to need the real one (see milestone
+            // 2 phase 10), and resolving it now would mean fabricating
+            // placeholder oauth fields into `linked_accounts` for a lookup this
+            // milestone has no other use for
             user_id: msg.author.id.get(),
             user_name,
             granted_tier: DISCORD_GRANTED_TIER,
@@ -183,9 +183,10 @@ impl AiChatHandler {
             already_persisted: false,
         };
 
-        // a failed turn gets a friendly in-channel reply rather than propagating: the
-        // dispatch loop that calls this handler only logs a propagated error, and a
-        // user watching the channel deserves to know something happened at all
+        // a failed turn gets a friendly in-channel reply rather than
+        // propagating: the dispatch loop that calls this handler only logs a
+        // propagated error, and a user watching the channel deserves to know
+        // something happened at all
         if let Err(error) =
             render_streamed_reply(&context.http, msg.channel_id, &self.ai, request).await
         {

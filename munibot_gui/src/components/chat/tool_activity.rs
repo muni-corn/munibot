@@ -57,7 +57,7 @@ pub fn ToolActivityStrip(entries: Vec<ToolActivityEntry>) -> Element {
     }
 
     rsx! {
-        div { class: "mx-4 mb-2 flex flex-col divide-y divide-slate-800 rounded-box bg-slate-900/60",
+        div { class: "mx-4 mb-2 flex flex-col rounded-box bg-slate-900/60 divide-y divide-slate-800",
             for (index, entry) in entries.into_iter().enumerate() {
                 ToolActivityRow { key: "{index}", entry }
             }

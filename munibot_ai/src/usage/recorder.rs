@@ -68,7 +68,8 @@ mod tests {
 
     #[test]
     fn test_a_usage_record_is_constructible_with_no_guild() {
-        // the common case: a direct message or a web conversation has no guild at all
+        // the common case: a direct message or a web conversation has no guild
+        // at all
         let record = record();
         assert_eq!(record.guild_id, None);
         assert!(record.succeeded);

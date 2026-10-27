@@ -302,8 +302,8 @@ mod tests {
 
     #[test]
     fn test_wall_clock_limit_trips_immediately_when_zero() {
-        // any elapsed time at all exceeds a zero limit, so this is deterministic
-        // without needing to actually wait on the real clock
+        // any elapsed time at all exceeds a zero limit, so this is
+        // deterministic without needing to actually wait on the real clock
         let budget = Budget {
             max_wall_clock: Some(Duration::ZERO),
             ..unlimited()

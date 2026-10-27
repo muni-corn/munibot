@@ -1,9 +1,9 @@
 [package]
 name = "munibot_core"
-description = "platform-agnostic core library for munibot"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
+description = "platform-agnostic core library for munibot"
 license.workspace = true
 
 [dependencies]
@@ -14,17 +14,17 @@ diesel-async.workspace = true
 diesel_migrations.workspace = true
 dotenvy.workspace = true
 humantime.workspace = true
-tracing.workspace = true
 once_cell.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+strum = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
-strum = { workspace = true, features = ["derive"] }
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile = "3.27.0"

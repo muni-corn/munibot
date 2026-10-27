@@ -323,7 +323,8 @@ impl DiscordEventHandler for LoggingHandler {
                 deleted_message_id,
                 guild_id,
             } => {
-                // check if we have a guild_id first, as logs can't happen anyway without it
+                // check if we have a guild_id first, as logs can't happen
+                // anyway without it
                 if let Some(guild_id) = guild_id {
                     let ignored = self.ignored_messages.contains(deleted_message_id);
                     let paused = self
@@ -333,19 +334,21 @@ impl DiscordEventHandler for LoggingHandler {
                         .unwrap_or(false);
 
                     if ignored || paused {
-                        // since this message will likely never be seen again, remove it from
-                        // ignored messages (if it exists)
+                        // since this message will likely never be seen again,
+                        // remove it from ignored messages (if it exists)
                         self.ignored_messages.remove(deleted_message_id);
 
                         return Ok(());
                     }
 
-                    // the pluralkit api can only look up messages by original id within ~30
-                    // minutes of when they were sent, so we skip the api call for older messages
+                    // the pluralkit api can only look up messages by original
+                    // id within ~30 minutes of when they were sent, so we skip
+                    // the api call for older messages
                     let message_age = Utc::now() - deleted_message_id.created_at().to_utc();
                     let within_pk_window = message_age < chrono::Duration::minutes(30);
 
-                    // look up the deleted message in pluralkit to detect proxy deletions
+                    // look up the deleted message in pluralkit to detect proxy
+                    // deletions
                     let pk_result = if within_pk_window {
                         Some(
                             self.pluralkit
@@ -359,13 +362,15 @@ impl DiscordEventHandler for LoggingHandler {
                     if let Some(PkLookup::Proxied(ref pk_msg)) = pk_result
                         && pk_msg.original == deleted_message_id.to_string()
                     {
-                        // this is the original trigger message that pluralkit deleted
-                        // immediately after creating its proxy; suppress the log entirely
+                        // this is the original trigger message that pluralkit
+                        // deleted immediately after creating its proxy;
+                        // suppress the log entirely
                         return Ok(());
                     }
 
-                    // if this was the proxy webhook message being explicitly deleted, carry
-                    // the pk data forward to enrich the log embed with member info
+                    // if this was the proxy webhook message being explicitly
+                    // deleted, carry the pk data forward to enrich the log
+                    // embed with member info
                     let pk_proxy_deletion = if let Some(PkLookup::Proxied(ref pk_msg)) = pk_result
                         && pk_msg.id == deleted_message_id.to_string()
                     {
@@ -404,8 +409,9 @@ impl DiscordEventHandler for LoggingHandler {
                             );
                     }
 
-                    // if this deletion was of a pluralkit proxy message, enrich the embed
-                    // with the proxying member and system so moderators can identify the author
+                    // if this deletion was of a pluralkit proxy message, enrich
+                    // the embed with the proxying member and system so
+                    // moderators can identify the author
                     if let Some(pk_msg) = pk_proxy_deletion {
                         fields.push(("proxied by".into(), pk_proxy_info(pk_msg), false));
                     }
@@ -834,15 +840,17 @@ where
     {
         let mut msg_builder = MessageBuilder::new();
 
-        // if this is a webhook message, look up whether it's a pluralkit proxy so
-        // we can attribute the edit to the real member instead of the webhook
+        // if this is a webhook message, look up whether it's a pluralkit proxy
+        // so we can attribute the edit to the real member instead of the
+        // webhook
         let pk_result = if new.webhook_id.is_some() {
             Some(pluralkit.lookup_message(&new.id.to_string(), false).await)
         } else {
             None
         };
 
-        // add author mention, if available; prefer pk member info for proxy edits
+        // add author mention, if available; prefer pk member info for proxy
+        // edits
         if let Some(PkLookup::Proxied(ref pk_msg)) = pk_result {
             if let Some(member) = &pk_msg.member {
                 msg_builder.push(format!("from {} ", member.display()));

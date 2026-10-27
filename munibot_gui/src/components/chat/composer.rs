@@ -134,7 +134,12 @@ pub fn Composer(conversation_id: i64, disabled: bool, on_sent: EventHandler<i64>
     rsx! {
         div {
             id: DROP_ZONE_ID,
-            class: if *drag_hovered.read() { "border-t border-primary bg-primary/5" } else { "border-t border-slate-800" },
+            class:
+            if *drag_hovered.read() {
+                "border-t border-primary bg-primary/5"
+            } else {
+                "border-t border-slate-800"
+            },
             ondragover: move |event| {
                 event.prevent_default();
                 drag_hovered.set(true);

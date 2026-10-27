@@ -54,8 +54,8 @@ impl MemoryStore for DieselMemoryStore {
     async fn record(&self, user_id: u64, key: &str, value: &str) -> Result<(), AiError> {
         let user_id = user_id as i64;
 
-        // an update to an existing key never grows the count, so only a genuinely
-        // new key needs to be checked against the cap
+        // an update to an existing key never grows the count, so only a
+        // genuinely new key needs to be checked against the cap
         let existing = ai::get_memory(&self.pool, user_id, key)
             .await
             .map_err(db_error)?;

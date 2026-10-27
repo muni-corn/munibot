@@ -302,16 +302,17 @@ impl PersonaRegistry {
                 Ok(persona) => {
                     personas.insert(id.clone(), persona);
                 }
-                // an operator explicitly configured this one, so a failure here is a
-                // real problem with their config, not something to quietly paper over
+                // an operator explicitly configured this one, so a failure here
+                // is a real problem with their config, not something to quietly
+                // paper over
                 Err(error) if config.personas.contains_key(id) => {
                     problems.push(format!("persona {id}: {error}"));
                 }
                 // this id was never mentioned in config at all - it only exists
-                // because embedded_personas() supplies it, and an operator who set
-                // no default_model (or no credentials for the provider it needs)
-                // never asked for it to work at all. skip it rather than failing
-                // startup over a convenience nobody opted into.
+                // because embedded_personas() supplies it, and an operator who
+                // set no default_model (or no credentials for the provider it
+                // needs) never asked for it to work at all. skip it rather than
+                // failing startup over a convenience nobody opted into.
                 Err(error) => {
                     tracing::warn!(
                         persona = %id,
@@ -379,8 +380,9 @@ impl PersonaRegistry {
             system_prompt: PromptTemplate::new(prompt_source),
             tools: config.tools.clone(),
             budget: config.budget.resolve(),
-            // chat personas never carry a handoff requirement; only the eventual pipeline roles
-            // (milestone 4) set this, and nothing constructs those through this config path
+            // chat personas never carry a handoff requirement; only the
+            // eventual pipeline roles (milestone 4) set this, and nothing
+            // constructs those through this config path
             handoff: None,
             memory: config.memory,
             sandbox: config.sandbox,

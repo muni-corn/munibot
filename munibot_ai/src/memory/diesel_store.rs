@@ -191,10 +191,10 @@ impl SessionStore for DieselSessionStore {
 
         let mut messages = Vec::with_capacity(rows.len());
         for row in rows {
-            // a row that cannot be decoded is skipped rather than failing the whole
-            // turn: one malformed message should not make a conversation permanently
-            // unusable, and the alternative is a user who can never talk to munibot
-            // again in that conversation
+            // a row that cannot be decoded is skipped rather than failing the
+            // whole turn: one malformed message should not make a conversation
+            // permanently unusable, and the alternative is a user who can never
+            // talk to munibot again in that conversation
             let Some(role) = Role::from_key(&row.role) else {
                 tracing::warn!(role = %row.role, seq = row.seq, "skipping a message with an unrecognised role");
                 continue;
@@ -283,9 +283,10 @@ impl ConversationDirectory for DieselSessionStore {
         user_id: u64,
         persona_id: &str,
     ) -> Result<Conversation, AiError> {
-        // a web conversation's scope key is opaque and generated here rather than
-        // supplied: unlike a channel, nothing outside this row identifies it, and
-        // letting a caller choose would let one person guess another's key
+        // a web conversation's scope key is opaque and generated here rather
+        // than supplied: unlike a channel, nothing outside this row identifies
+        // it, and letting a caller choose would let one person guess another's
+        // key
         let scope_key = new_scope_key();
         let now = Utc::now().naive_utc();
 

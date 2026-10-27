@@ -242,8 +242,9 @@ mod tests {
 
     #[test]
     fn test_truncation_counts_characters_not_bytes() {
-        // each "é" is two bytes but one character, so byte-based truncation would
-        // either panic on a non-boundary split or keep too little visible text
+        // each "é" is two bytes but one character, so byte-based truncation
+        // would either panic on a non-boundary split or keep too little visible
+        // text
         let filtered = filter_output("ééééé", limits(3));
         assert_eq!(filtered.chars().count(), 3);
     }
@@ -267,9 +268,9 @@ mod tests {
 
     #[test]
     fn test_length_limit_holds_even_when_decancer_expands_a_character() {
-        // decancer maps a literal "…" to three ASCII periods, expanding the text by
-        // two characters. If truncation ran before decancer instead of after, this
-        // input would slip past the limit.
+        // decancer maps a literal "…" to three ASCII periods, expanding the
+        // text by two characters. If truncation ran before decancer instead of
+        // after, this input would slip past the limit.
         let filtered = filter_output("ok…", limits(3));
         assert!(
             filtered.chars().count() <= 3,

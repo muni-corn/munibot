@@ -67,16 +67,17 @@ impl PromptTemplate {
             match after_open.find("}}") {
                 Some(end) => {
                     let name = after_open[..end].trim();
-                    // every name this loop can produce was already checked against context
-                    // above, via the identical scan in required_variables()
+                    // every name this loop can produce was already checked
+                    // against context above, via the identical scan in
+                    // required_variables()
                     if let Some(value) = context.get(name) {
                         rendered.push_str(value);
                     }
                     remaining = &after_open[end + 2..];
                 }
                 None => {
-                    // an unterminated `{{` - keep it as literal text rather than silently
-                    // dropping the rest of the template
+                    // an unterminated `{{` - keep it as literal text rather
+                    // than silently dropping the rest of the template
                     rendered.push_str("{{");
                     remaining = after_open;
                 }

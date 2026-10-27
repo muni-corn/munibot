@@ -44,9 +44,9 @@ async fn a_user(pool: &DbPool) -> i64 {
 async fn delete_user(pool: &DbPool, user_id: i64) {
     let mut conn = pool.get().await.expect("couldn't get db connection");
     // linked_accounts.user_id has no ON DELETE CASCADE of its own, so it has to
-    // go first. Worth knowing before milestone 2 phase 10 promises that deleting
-    // a user erases their memories automatically -- that promise needs this
-    // foreign key fixed, or an explicit ordered delete like this one.
+    // go first. Worth knowing before milestone 2 phase 10 promises that
+    // deleting a user erases their memories automatically -- that promise needs
+    // this foreign key fixed, or an explicit ordered delete like this one.
     diesel::sql_query(format!(
         "DELETE FROM linked_accounts WHERE user_id = {user_id}"
     ))
@@ -756,9 +756,9 @@ async fn test_record_usage_writes_a_row() {
 #[tokio::test]
 async fn test_record_usage_on_a_failed_turn() {
     let db = TestDb::new().await;
-    // conversation_id and user_id are independently optional at the type level, so
-    // a usage row should be writable with neither - a turn that failed before ever
-    // reaching a conversation still cost money
+    // conversation_id and user_id are independently optional at the type level,
+    // so a usage row should be writable with neither - a turn that failed
+    // before ever reaching a conversation still cost money
     ai::record_usage(&db.pool, usage_row(None, None, false))
         .await
         .expect("record failed");
@@ -788,8 +788,8 @@ async fn test_deleting_a_user_does_not_delete_their_usage_history() {
         .unwrap();
 
     // usage rows are a billing/audit record, not conversation state - unlike
-    // ai_conversations, this should survive the user being deleted (the migration
-    // sets ON DELETE SET NULL on ai_usage.user_id, not CASCADE)
+    // ai_conversations, this should survive the user being deleted (the
+    // migration sets ON DELETE SET NULL on ai_usage.user_id, not CASCADE)
     delete_user(&db.pool, user).await;
 }
 
@@ -1096,8 +1096,8 @@ async fn test_record_tool_call_round_trips_a_real_pipeline_id() {
 #[tokio::test]
 async fn test_record_tool_call_without_a_conversation() {
     let db = TestDb::new().await;
-    // conversation_id is nullable: a call this crate might one day audit outside
-    // any stored conversation must still be writable
+    // conversation_id is nullable: a call this crate might one day audit
+    // outside any stored conversation must still be writable
     ai::record_tool_call(&db.pool, tool_call_row(None, "fatal"))
         .await
         .expect("record failed");

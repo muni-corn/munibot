@@ -140,8 +140,8 @@ impl History {
                 ContentBlock::ToolUse {
                     name, arguments, ..
                 } => counter(name) + counter(&arguments.to_string()),
-                // images are billed per-image by area, not per-token, so a text counter cannot
-                // say anything useful about them
+                // images are billed per-image by area, not per-token, so a text
+                // counter cannot say anything useful about them
                 ContentBlock::Image { .. } => 0,
             })
             .sum()
@@ -290,7 +290,8 @@ mod tests {
             image: crate::types::content::Image {
                 media_type: "image/png".to_string(),
                 source: crate::types::content::ImageSource::Base64 {
-                    // a long base64 payload must not be mistaken for text tokens
+                    // a long base64 payload must not be mistaken for text
+                    // tokens
                     data: "A".repeat(10_000),
                 },
             },

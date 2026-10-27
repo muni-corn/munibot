@@ -103,7 +103,8 @@ mod tests {
 
     #[test]
     fn test_hash_content_is_a_deterministic_sha256_hex_digest() {
-        // known sha256("hello") - a fixed vector, not just "same input same output"
+        // known sha256("hello") - a fixed vector, not just "same input same
+        // output"
         assert_eq!(
             hash_content("hello"),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"

@@ -1,19 +1,19 @@
 [package]
 name = "munibot_github"
-description = "github app integration for munibot's autonomous pipeline"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
+description = "github app integration for munibot's autonomous pipeline"
 license.workspace = true
 
 [dependencies]
-munibot_vcs = { path = "../munibot_vcs" }
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
 hmac.workspace = true
 http.workspace = true
 jsonwebtoken.workspace = true
+munibot_vcs = { path = "../munibot_vcs" }
 octocrab.workspace = true
 secrecy.workspace = true
 serde.workspace = true

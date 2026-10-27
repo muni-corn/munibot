@@ -220,7 +220,8 @@ mod tests {
 
     #[test]
     fn test_usage_deserializes_with_missing_cache_fields() {
-        // providers without prompt caching or extended thinking omit these entirely
+        // providers without prompt caching or extended thinking omit these
+        // entirely
         let usage: Usage =
             serde_json::from_value(serde_json::json!({"input_tokens": 10, "output_tokens": 5}))
                 .expect("should deserialize without cache or reasoning fields");
@@ -257,7 +258,8 @@ mod tests {
 
     #[test]
     fn test_cost_sums_exactly() {
-        // the point of integer micros: a thousand additions must reconcile precisely
+        // the point of integer micros: a thousand additions must reconcile
+        // precisely
         let one_third_cent = Cost::from_micros(3_333);
         let total: Cost = std::iter::repeat_n(one_third_cent, 1_000).sum();
         assert_eq!(

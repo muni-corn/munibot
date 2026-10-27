@@ -414,9 +414,9 @@ mod tests {
 
         let existing = existing_branches(&repo.bare_repo).await.unwrap();
 
-        // crate::pipeline::resolve_branch_name(17, "fix the crash", None, &existing)
-        // is the actual caller (a later commit, once a pipeline creates
-        // its own workspace); reproducing its collision-suffix logic
+        // crate::pipeline::resolve_branch_name(17, "fix the crash", None,
+        // &existing) is the actual caller (a later commit, once a pipeline
+        // creates its own workspace); reproducing its collision-suffix logic
         // inline here keeps this module from depending on ai::pipeline,
         // which sits above it in the dependency graph (see this module's
         // own doc comment)

@@ -125,8 +125,9 @@ fn to_rig_assistant_content(
                 name,
                 arguments,
             } => {
-                // populate both id and call_id with our value, so whichever field a provider
-                // reads for correlation still matches what we send back in the tool result
+                // populate both id and call_id with our value, so whichever
+                // field a provider reads for correlation still matches what we
+                // send back in the tool result
                 Ok(rig_message::AssistantContent::tool_call_with_call_id(
                     call_id.clone(),
                     call_id.clone(),
@@ -207,9 +208,10 @@ fn from_rig_image(image: rig_message::Image) -> ContentBlock {
     let source = match image.data {
         rig_message::DocumentSourceKind::Base64(data) => ImageSource::Base64 { data },
         rig_message::DocumentSourceKind::Url(url) => ImageSource::Url { url },
-        // rig models source kinds (a provider-side file id, raw bytes, a bare string) that we
-        // have no representation for. Rather than fail the whole turn over an image we cannot
-        // carry forward, fall back to a text block describing what was dropped.
+        // rig models source kinds (a provider-side file id, raw bytes, a bare
+        // string) that we have no representation for. Rather than fail the
+        // whole turn over an image we cannot carry forward, fall back to a text
+        // block describing what was dropped.
         other => return ContentBlock::text(format!("[unsupported image source: {other:?}]")),
     };
 
@@ -256,9 +258,9 @@ pub fn from_streamed_content<R>(content: StreamedAssistantContent<R>) -> Vec<Str
     match content {
         StreamedAssistantContent::Text(text) => vec![StreamEvent::TextDelta { text: text.text }],
         StreamedAssistantContent::ToolCall { tool_call, .. } => {
-            // a complete tool call arrived in one chunk; we have everything, so emit the
-            // full start/delta/end trio rather than leaving the caller to
-            // synthesize the end itself
+            // a complete tool call arrived in one chunk; we have everything, so
+            // emit the full start/delta/end trio rather than leaving the caller
+            // to synthesize the end itself
             let call_id = tool_call_correlation_id(&tool_call);
             vec![
                 StreamEvent::ToolUseStart {
@@ -339,8 +341,8 @@ mod tests {
 
     #[test]
     fn test_tool_role_message_becomes_a_rig_user_message() {
-        // rig has no distinct tool role - this is the one non-obvious mapping in the
-        // whole file
+        // rig has no distinct tool role - this is the one non-obvious mapping
+        // in the whole file
         let message = Message::tool_results(vec![ContentBlock::tool_result("c1", "12:00")]);
         let rig_message = to_rig_message(&message).expect("should convert");
 
@@ -663,8 +665,9 @@ mod tests {
 
     #[test]
     fn test_streamed_final_produces_no_event_here() {
-        // Final's usage/stop-reason handling is a stream-level concern for the adapter,
-        // not this per-chunk conversion - see the function's doc comment.
+        // Final's usage/stop-reason handling is a stream-level concern for the
+        // adapter, not this per-chunk conversion - see the function's doc
+        // comment.
         let events = from_streamed_content(StreamedAssistantContent::Final(()));
         assert_eq!(events, Vec::new());
     }
