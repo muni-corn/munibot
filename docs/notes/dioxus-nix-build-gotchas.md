@@ -17,6 +17,10 @@ If a project needs both a native mold-linked binary and a wasm target, don't rea
 `languages.rust.mold.enable` or a blanket `rustflags` string -- there isn't a clean per-target way to
 scope `RUSTFLAGS`/`build.rustflags` from within devenv's rust module. We just dropped both.
 
+The exception is flags that mean the same thing on every target, like
+`-Csymbol-mangling-version=legacy`: those are safe in a blanket `rustflags` string, and that's what
+`devenv.nix` uses. Only linker-related flags (`-Clink-arg=...`, `-fuse-ld`, rpaths) break wasm.
+
 **If you're debugging a "why is my wasm build failing" issue in a long-running shell session**,
 also check whether `RUSTFLAGS`/`RUSTDOCFLAGS` got exported into your _current shell_ from an earlier
 `devenv shell` invocation, before the fix. Fixing `devenv.nix` doesn't retroactively unset an
@@ -75,3 +79,34 @@ preFixup = ''
   addAutoPatchelfSearchPath ${pkgs.libmysqlclient}/lib/mariadb
 '';
 ```
+
+## `dx` fat builds fail with "missing linker args" under cargo's build-dir layout v2
+
+Symptom: `dx serve` (or `dx build --fat-binary`) works after a code change, but restarting it with
+no changes fails with:
+
+```
+Missing linker args for fat link of 'munibot'. The tip crate likely did not run through linker interception for this build.
+```
+
+Cause: `dx` relies on intercepting the tip crate's final link to capture linker args, so before each
+fat build it deletes the tip crate's cargo fingerprint to force a relink. It looks for fingerprints
+in `target/<triple>/<profile>/.fingerprint/<pkg>-<hash>`, but cargo's build-dir layout v2 (stabilized
+in rust-lang/cargo#16807, so nightly has it on by default) keeps them in
+`target/<triple>/<profile>/build/<pkg>/<hash>/fingerprint`. The deletion silently does nothing, cargo
+sees an unchanged tip crate, never runs the linker, and `dx` is left with an empty `link_args.json`.
+
+How to confirm: `dx` writes `link_args.json` to a per-session temp dir (`DX_LINK_ARGS_FILE` in the
+captured args under `target/dx/.captured-args/*/munibot.bin.json`). Failing sessions have a 0-byte
+`/tmp/.tmp*/{server,web}/link_args.json`; sessions that actually relinked have 90+ KB.
+
+Fix: `nix/patches/dioxus-cli-build-dir-v2.patch` (applied in `nix/dioxus-overlay.nix`) makes
+`bust_fingerprint` clear the new location as well. Quick check: run
+`dx build --package munibot --fat-binary` twice in a row; the second run should succeed.
+
+When bumping `dioxus-cli`, the patch failing to apply means upstream touched this code. Check
+whether `bust_fingerprint` handles layout v2 yet, and drop the patch if it does.
+
+Fallback if the patch ever needs to go away while upstream is still broken: set
+`__CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT=1` in devenv's `env` to make cargo use the old layout.
+Cargo says it will remove this variable along with the legacy layout code, so it's only a stopgap.
