@@ -144,8 +144,8 @@ impl TwitchMessageHandler for TwitchBot {
             && privmsg.channel_login == "muni_corn"
         {
             for message_handler in self.message_handlers.iter_mut() {
-                // try to handle the message. if the handler determines the message was handled,
-                // we'll stop
+                // try to handle the message. if the handler determines the
+                // message was handled, we'll stop
                 match message_handler
                     .handle_twitch_message(message, client, agent, config)
                     .await

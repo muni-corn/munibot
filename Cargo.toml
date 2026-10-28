@@ -11,8 +11,8 @@ members = [
 
 [workspace.package]
 version = "0.3.3"
-edition = "2024"
 authors = ["municorn <municorn@musicaloft.com>"]
+edition = "2024"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
@@ -26,7 +26,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.4", features = ["derive"] }
 decancer = "3.2.4"
 diesel = { version = "2.3.6", features = ["chrono", "mysql", "uuid"] }
-diesel-async = { version = "0.9", features = ["mysql", "bb8"] }
+diesel-async = { version = "0.9", features = ["bb8", "mysql"] }
 diesel_migrations = "2.3.1"
 dioxus = { version = "0.8.0-alpha.1", features = ["fullstack", "router"] }
 dioxus-desktop = "0.8.0-alpha.1"
@@ -55,13 +55,13 @@ tracing-subscriber = { version = "0.3", features = [
   "fmt",
   "tracing-log",
 ] }
-twitch-irc = { version = "6.0", features = ["refreshing-token-native-tls"] }
 twitch_api = { version = "0.7", features = [
   "client",
-  "helix",
   "eventsub",
+  "helix",
   "hmac",
   "reqwest",
 ] }
+twitch-irc = { version = "6.0", features = ["refreshing-token-native-tls"] }
 twitch_oauth2 = "0.15"
 url = "2.4"
