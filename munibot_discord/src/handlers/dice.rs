@@ -189,7 +189,8 @@ mod tests {
         match result {
             RollResult::Full(_, n, suffix) => {
                 assert_eq!(n, 1);
-                // suffix should be from the critical failure list (not a plain dot)
+                // suffix should be from the critical failure list (not a plain
+                // dot)
                 assert!(
                     suffix.contains("ouch")
                         || suffix.contains("luck")
@@ -224,8 +225,9 @@ mod tests {
 
     #[test]
     fn test_69_on_d69_gets_nice_suffix() {
-        // the 69 arm fires when n == sides == 69, overriding what would otherwise
-        // be a critical success; on any other die size 69 is caught by the generic arm
+        // the 69 arm fires when n == sides == 69, overriding what would
+        // otherwise be a critical success; on any other die size 69 is caught
+        // by the generic arm
         let result = number_to_message(69, 69);
         match result {
             RollResult::Full(_, n, suffix) => {

@@ -8,8 +8,8 @@ use chrono::Local;
 /// Computes a deterministic magicalness percentage (0–100) for a user on the
 /// current calendar day. The result is stable for a given user ID and date.
 pub fn get_magic_amount(user_id: &str) -> u8 {
-    // we determine a user's magicalness based on the current date and their user
-    // id.
+    // we determine a user's magicalness based on the current date and their
+    // user id.
     let today = Local::now().date_naive();
 
     // hash the value
@@ -20,8 +20,8 @@ pub fn get_magic_amount(user_id: &str) -> u8 {
     // a number between 0 and 100
     let x = hashed % 101;
 
-    // give a cubic-interpolated value between 1 and 100, favoring higher numbers,
-    // without floating point arithmetic :>
+    // give a cubic-interpolated value between 1 and 100, favoring higher
+    // numbers, without floating point arithmetic :>
     ((100u64.pow(3) - x * x * x) / (100 * 100)) as u8
 }
 
@@ -70,11 +70,13 @@ mod tests {
 
     #[test]
     fn test_different_users_likely_differ() {
-        // two very different IDs should almost certainly produce different values
+        // two very different IDs should almost certainly produce different
+        // values
         let a = get_magic_amount("user_000000000001");
         let b = get_magic_amount("user_999999999999");
-        // technically they could collide but in practice it's astronomically unlikely;
-        // this test mainly exercises that both code paths run without panicking
+        // technically they could collide but in practice it's astronomically
+        // unlikely; this test mainly exercises that both code paths run without
+        // panicking
         let _ = a;
         let _ = b;
     }
