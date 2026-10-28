@@ -1,0 +1,38 @@
+--- a/src/build/request.rs
++++ b/src/build/request.rs
+@@ -1291,6 +1291,20 @@
+             }
+         }
+ 
++        // cargo's build-dir layout v2 scopes each unit's files under
++        // `build/<package>/<hash>/`, with the fingerprint in a `fingerprint`
++        // subdirectory. only the fingerprint is removed so that the unit's
++        // `out` directory (and its artifacts) stays in place.
++        for name in &bust {
++            let unit_dirs = std::fs::read_dir(self.cargo_build_unit_dir().join(name))
++                .into_iter()
++                .flatten()
++                .flatten();
++            for unit in unit_dirs {
++                _ = std::fs::remove_dir_all(unit.path().join("fingerprint"));
++            }
++        }
++
+         Ok(())
+     }
+ 
+@@ -3161,6 +3175,14 @@
+             .join(".fingerprint")
+     }
+ 
++    /// The directory holding per-package build units under cargo's build-dir layout v2.
++    fn cargo_build_unit_dir(&self) -> PathBuf {
++        self.target_dir
++            .join(self.triple.to_string())
++            .join(&self.profile)
++            .join("build")
++    }
++
+     fn is_apple_target(&self) -> bool {
+         matches!(
+             self.triple.operating_system,
