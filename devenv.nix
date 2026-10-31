@@ -169,6 +169,7 @@ in
         "devenv:processes:redis"
       ];
       ready.http.get.port = 8080;
+      env.DATABASE_URL = "mysql://munibot:sillylittlepassword@localhost:${toString config.processes.mysql.ports.main.value}/munibot";
     };
   };
 
