@@ -41,6 +41,7 @@ in
   overlays = [ (import ./nix/dioxus-overlay.nix) ];
 
   enterTest = ''
+    wait_for_port ${toString config.processes.mysql.ports.main.value}
     cargo nextest run
   '';
 
