@@ -41,7 +41,7 @@ in
   overlays = [ (import ./nix/dioxus-overlay.nix) ];
 
   enterTest = ''
-    cargo test
+    cargo nextest run
   '';
 
   env = {
