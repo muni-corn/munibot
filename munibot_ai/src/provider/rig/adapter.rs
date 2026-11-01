@@ -1,0 +1,366 @@
+use async_stream::stream;
+use async_trait::async_trait;
+use futures::{StreamExt, stream::BoxStream};
+use rig_core::{
+    completion::{
+        CompletionModel, CompletionRequest as RigCompletionRequest, GetTokenUsage,
+        message::Message as RigMessage,
+    },
+    one_or_many::OneOrMany,
+};
+
+use crate::{
+    provider::{
+        Provider,
+        rig::{convert, errors},
+    },
+    types::{
+        AiError, CompletionRequest, CompletionResponse, ContentBlock, StopReason, StreamEvent,
+    },
+};
+
+/// Wraps any rig [`CompletionModel`] as an object-safe [`Provider`].
+///
+/// Generic over the concrete model type because rig's `CompletionModel` cannot
+/// be boxed (it carries associated types, a `Clone` supertrait, and `impl
+/// Future` return positions) - erasure happens at our own trait instead, once
+/// this adapter sits behind an `Arc<dyn Provider>`.
+pub struct RigProvider<M> {
+    name: String,
+    model: M,
+}
+
+impl<M> RigProvider<M> {
+    /// Wraps a rig model, reporting `name` from [`Provider::name`].
+    pub fn new(name: impl Into<String>, model: M) -> Self {
+        Self {
+            name: name.into(),
+            model,
+        }
+    }
+}
+
+/// Assembles a rig completion request from ours.
+///
+/// A free function rather than a method: it never touches a concrete model,
+/// only translates one request type into another, so it can be unit-tested
+/// directly without a fake [`CompletionModel`].
+fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionRequest, AiError> {
+    let mut messages = Vec::with_capacity(request.history.len() + 1);
+    if let Some(system) = &request.system {
+        messages.push(RigMessage::system(system.clone()));
+    }
+    for message in request.history.iter() {
+        messages.push(convert::to_rig_message(message).map_err(AiError::Provider)?);
+    }
+    let chat_history = OneOrMany::many(messages).map_err(|_| {
+        AiError::Provider(
+            "a completion request needs a system prompt or at least one message".to_string(),
+        )
+    })?;
+
+    Ok(RigCompletionRequest {
+        // this adapter is already bound to one model at construction time; no
+        // per-request override
+        model: None,
+        // the system prompt goes into chat_history as a leading Message::System
+        // instead of the legacy preamble field, which rig itself documents as
+        // the preferred representation
+        preamble: None,
+        chat_history,
+        documents: vec![],
+        tools: vec![],
+        temperature: request.params.temperature.map(f64::from),
+        max_tokens: request.params.max_tokens.map(u64::from),
+        additional_params: None,
+        tool_choice: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    })
+}
+
+/// The stop reason every reply is reported with.
+///
+/// rig's generic `CompletionResponse<T>` and `StreamingCompletionResponse<T>`
+/// expose no normalized finish/stop reason - only the provider-specific raw
+/// response does, which would defeat the point of a provider-agnostic type.
+/// `MaxTokens`, `StopSequence`, and `Refusal` are therefore not derivable
+/// through this adapter, which is an honest limitation rather than a bug: see
+/// `docs/notes/rig-provider-findings.md`.
+const STOP_REASON: StopReason = StopReason::EndTurn;
+
+#[async_trait]
+impl<M> Provider for RigProvider<M>
+where
+    M: CompletionModel + Send + Sync + 'static,
+    M::Response: Send,
+    M::StreamingResponse: Send,
+{
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, AiError> {
+        let rig_request = build_completion_request(request)?;
+        let response = self
+            .model
+            .completion(rig_request)
+            .await
+            .map_err(errors::classify_completion_error)?;
+
+        let content: Vec<ContentBlock> = response
+            .choice
+            .into_iter()
+            .filter_map(convert::from_assistant_content)
+            .collect();
+        let usage = convert::from_rig_usage(response.usage);
+
+        Ok(CompletionResponse::new(content, STOP_REASON, usage))
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<BoxStream<'static, Result<StreamEvent, AiError>>, AiError> {
+        let rig_request = build_completion_request(request)?;
+        let mut inner = self
+            .model
+            .stream(rig_request)
+            .await
+            .map_err(errors::classify_completion_error)?;
+
+        let events = stream! {
+            while let Some(chunk) = inner.next().await {
+                match chunk {
+                    Ok(content) => {
+                        for event in convert::from_streamed_content(content) {
+                            yield Ok(event);
+                        }
+                    }
+                    Err(error) => {
+                        yield Err(errors::classify_completion_error(error));
+                        return;
+                    }
+                }
+            }
+
+            // the underlying stream has drained; rig has now populated `response` with the raw
+            // provider response
+            let usage = inner
+                .response
+                .as_ref()
+                .map(|response| convert::from_rig_usage(response.token_usage()))
+                .unwrap_or_default();
+
+            yield Ok(StreamEvent::Usage { usage });
+            yield Ok(StreamEvent::Done { stop_reason: STOP_REASON });
+        };
+
+        Ok(Box::pin(events))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{History, Message, ModelParams, ModelRef};
+
+    // --- build_completion_request ---
+
+    fn request() -> CompletionRequest {
+        CompletionRequest::new(
+            ModelRef::new("anthropic", "claude-opus-5"),
+            History::from(vec![Message::user("hi")]),
+        )
+    }
+
+    #[test]
+    fn test_system_prompt_becomes_a_leading_message() {
+        let request = request().with_system("be nice");
+        let rig_request = build_completion_request(request).expect("should build");
+
+        assert_eq!(
+            rig_request.chat_history.len(),
+            2,
+            "the system prompt and the one history message should both be present"
+        );
+        assert!(
+            matches!(rig_request.chat_history.first(), RigMessage::System { .. }),
+            "the system prompt must lead the chat history"
+        );
+    }
+
+    #[test]
+    fn test_no_model_override_is_sent() {
+        let rig_request = build_completion_request(request()).expect("should build");
+        assert_eq!(
+            rig_request.model, None,
+            "the adapter is bound to one model already; a per-request override would be redundant"
+        );
+    }
+
+    #[test]
+    fn test_params_are_widened_not_truncated() {
+        // 0.5 is exactly representable in both f32 and f64, so this proves the
+        // widen is present without also asserting on f32-to-f64 rounding
+        // behaviour, which is not what this test is for
+        let request = request().with_params(
+            ModelParams::new()
+                .with_temperature(0.5)
+                .with_max_tokens(2048),
+        );
+        let rig_request = build_completion_request(request).expect("should build");
+
+        assert_eq!(rig_request.temperature, Some(0.5_f64));
+        assert_eq!(rig_request.max_tokens, Some(2048_u64));
+    }
+
+    #[test]
+    fn test_no_tools_are_offered() {
+        let rig_request = build_completion_request(request()).expect("should build");
+        assert!(rig_request.tools.is_empty(), "a conversation has no tools");
+        assert_eq!(rig_request.tool_choice, None);
+    }
+
+    #[test]
+    fn test_empty_request_is_rejected() {
+        let empty =
+            CompletionRequest::new(ModelRef::new("anthropic", "claude-opus-5"), History::new());
+        assert!(
+            build_completion_request(empty).is_err(),
+            "a request with no system prompt and no history has nothing to send"
+        );
+    }
+
+    // --- RigProvider against a fake CompletionModel ---
+
+    use futures::stream;
+    use rig_core::{
+        completion::CompletionError,
+        streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingResult},
+    };
+
+    /// A minimal [`CompletionModel`] double. Constructed directly (bypassing
+    /// `make`, which is only ever invoked through a real client), so tests
+    /// can script exactly one canned outcome without touching the network.
+    #[derive(Clone)]
+    enum FakeModel {
+        Text(String),
+        Error,
+    }
+
+    impl CompletionModel for FakeModel {
+        type Client = ();
+        type Response = ();
+        type StreamingResponse = ();
+
+        fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
+            FakeModel::Text(String::new())
+        }
+
+        async fn completion(
+            &self,
+            _request: RigCompletionRequest,
+        ) -> Result<rig_core::completion::CompletionResponse<Self::Response>, CompletionError>
+        {
+            match self {
+                FakeModel::Text(text) => Ok(rig_core::completion::CompletionResponse {
+                    choice: OneOrMany::one(rig_core::completion::message::AssistantContent::text(
+                        text.clone(),
+                    )),
+                    usage: rig_core::completion::Usage::new(),
+                    raw_response: (),
+                    message_id: None,
+                }),
+                FakeModel::Error => Err(CompletionError::ResponseError("boom".to_string())),
+            }
+        }
+
+        async fn stream(
+            &self,
+            _request: RigCompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            let chunks: Vec<Result<RawStreamingChoice<()>, CompletionError>> = match self {
+                FakeModel::Text(text) => vec![
+                    Ok(RawStreamingChoice::Message(text.clone())),
+                    Ok(RawStreamingChoice::FinalResponse(())),
+                ],
+                FakeModel::Error => {
+                    vec![Err(CompletionError::ResponseError("boom".to_string()))]
+                }
+            };
+            let boxed: StreamingResult<()> = Box::pin(stream::iter(chunks));
+            Ok(StreamingCompletionResponse::stream(boxed))
+        }
+    }
+
+    fn provider(model: FakeModel) -> RigProvider<FakeModel> {
+        RigProvider::new("fake", model)
+    }
+
+    #[tokio::test]
+    async fn test_complete_converts_text_response() {
+        let response = provider(FakeModel::Text("hello".to_string()))
+            .complete(request())
+            .await
+            .expect("should succeed");
+
+        assert_eq!(response.text(), "hello");
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
+    }
+
+    #[tokio::test]
+    async fn test_complete_propagates_model_errors() {
+        let result = provider(FakeModel::Error).complete(request()).await;
+        assert!(
+            result.is_err(),
+            "a model failure should surface as an AiError"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stream_yields_text_then_usage_then_done() {
+        let events: Vec<_> = provider(FakeModel::Text("hi".to_string()))
+            .stream(request())
+            .await
+            .expect("should succeed")
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .map(|event| event.expect("no event should error"))
+            .collect();
+
+        assert!(
+            matches!(
+                events.last(),
+                Some(StreamEvent::Done {
+                    stop_reason: StopReason::EndTurn
+                })
+            ),
+            "the stream should end with Done, got {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, StreamEvent::TextDelta { .. })),
+            "the text chunk should have produced a delta"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stream_propagates_model_errors_and_stops() {
+        let events: Vec<_> = provider(FakeModel::Error)
+            .stream(request())
+            .await
+            .expect("should succeed in constructing the stream")
+            .collect::<Vec<_>>()
+            .await;
+
+        assert_eq!(
+            events.len(),
+            1,
+            "the stream should stop at the first error, not continue"
+        );
+        assert!(events[0].is_err());
+    }
+}

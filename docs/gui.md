@@ -1,6 +1,6 @@
 # munibot's gui
 
-munibot's binary is a [Dioxus](https://dioxuslabs.com) 0.7 fullstack web app that runs the discord
+munibot's binary is a [Dioxus](https://dioxuslabs.com) 0.8 fullstack web app that runs the discord
 and twitch bots alongside it, replacing an earlier, abandoned Leptos-based attempt (still visible in
 the `.wt/gui-old` worktree, kept only as historical reference).
 
@@ -10,15 +10,23 @@ The gui is split across three crates, each compiling to two very different targe
 feature:
 
 - **`munibot_api`** -- the rpc boundary between the gui and its data: wire dtos (`UserData`,
-  `GuildSummary`), dioxus server functions, and (server-only) the discord oauth2 client, the plain
-  axum oauth routes, and the session/auth glue (`User`, `AuthSession`). Depends on `munibot_core`
-  under its `server` feature to translate `munibot_core`'s db models into these wire types.
-- **`munibot_gui`** -- `App`/`Route`/`components`/`pages`, plus the two entry points: `launch_web()`
-  (wasm client) and (server-only) `server::run()`, which builds and serves the whole axum app (the
-  dioxus fullstack app, the oauth routes from `munibot_api`, and the redis-backed session layers).
+  `GuildSummary`, and the `chat`/`settings` dto modules), dioxus server functions, and
+  (server-only) the oauth2 clients, the plain axum oauth routes, the session/auth glue (`User`,
+  `AuthSession`), and the guild authorization gate (`require_guild_admin`). Depends on
+  `munibot_core` under its `server` feature to translate `munibot_core`'s db models into these
+  wire types.
+- **`munibot_gui`** -- `App`/`Route`/`components`/`layouts`/`pages`, plus the two entry points:
+  `launch_web()` (wasm client) and (server-only) `server::run()`, which builds and serves the whole
+  axum app (the dioxus fullstack app, the oauth routes from `munibot_api`, the redis-backed session
+  layers, and the `Extension`s carrying the db pool, the discord config, and `Option<Arc<Chat>>`).
 - **`munibot`** -- the thin binary. `main.rs` just picks an entry point: `munibot_gui::launch_web()`
-  for the wasm client, or (server-only) tracing setup, config, migrations, `bot::start` (discord/
-  twitch), then `munibot_gui::server::run()`.
+  for the wasm client, or (server-only) tracing setup, config, migrations, `ai::build`,
+  `bot::start` (discord/twitch), then `munibot_gui::server::run()`.
+
+`Arc<Chat>` is built in `main.rs` **outside the `MUNIBOT_DISABLE_BOTS` guard** and handed to the gui
+server. That ordering is deliberate: disabling the bots is the documented local gui workflow
+(below), so gating the chat service on the same guard would leave the chat page with nothing behind
+it. See `docs/chat.md` for what the chat page does and how it is configured.
 
 Each of the three defines the same two features:
 
@@ -40,38 +48,51 @@ dtos rather than shared directly, since core can't compile to wasm.
 munibot/src/                (binary)
   main.rs           dual entry point: picks munibot_gui::launch_web() or ::server::run()
   lib.rs            module declarations
-  bot.rs            (server only) discord/twitch startup, moved here from the old single-purpose main.rs
+  bot.rs            (server only) discord/twitch startup, and the `discord` root tracing span
+  ai.rs             (server only) ai::build -- builds the chat service from the [ai] config
 
 munibot_gui/src/
   lib.rs            module declarations, launch_web()
-  app.rs            Route enum, App root, MainLayout
-  components.rs     route-aware glue (AccountStatus)
-  pages/            route target components (home, dashboard)
+  app.rs            Route enum, App root
+  layouts.rs        + layouts/home.rs -- shared route layouts
+  components.rs     route-aware glue (AccountStatus, nav)
+  components/chat/  composer, message list, markdown, turn failure
+  components/settings.rs
+  pages/            route targets: home, dashboard, account, chat, guild_settings (+ logging)
   server.rs         (server only) builds/serves the axum app: dioxus fullstack + oauth routes +
-                     redis sessions
+                     redis sessions + extensions
 
 munibot_api/src/
   lib.rs            module declarations
   auth.rs           shared types: UserData, AuthError/AuthResult
-  auth/server.rs    (server only) Authentication/HasPermission impls, session User type
+  auth/server.rs    (server only) Authentication impl, session User type
+  auth/guild.rs     (server only) require_guild_admin, the gate every guild settings page uses
+  auth/linked_account.rs (server only) linking/unlinking, refusing to remove the last provider
   guilds.rs         shared type: GuildSummary
+  chat.rs           + chat/ -- shared chat dtos: message, event, error, conversation validation
+  settings.rs       + settings/ -- shared settings dtos: logging, channel, error
+  mailer.rs         (server only) smtp, behind email sign-in
   oauth.rs          (server only) module declaration
   oauth/discord.rs  (server only) discord oauth2 client (token exchange, identity, guilds)
-  oauth/routes.rs   (server only) plain axum routes for the oauth dance + logout
-  server_fns.rs
-  server_fns/auth.rs    get_authenticated_user
-  server_fns/guilds.rs  get_guilds
+  oauth/discord/bot.rs (server only) bot-token REST calls -- channel listing, which the user's
+                     own `identify guilds` scope cannot do
+  oauth/github.rs   (server only) github oauth2 client (sign-in only)
+  oauth/email.rs    (server only) email sign-in tokens
+  oauth/routes.rs   (server only) plain axum routes for every oauth dance + logout
+  server_fns.rs     + server_fns/ -- auth, guilds, chat/stream, settings/*
 ```
 
 `munibot_core` gained a `users` + `linked_accounts` migration and matching models/operations (see
 `munibot_core/src/db/{schema,models,operations}.rs`) -- a `users` row is a munibot account; each
-`linked_accounts` row links one external provider account (discord for now) to a user. A user can
-have multiple linked accounts; a provider account belongs to exactly one user. This shape is meant to
-support twitch/github linking later without a schema change.
+`linked_accounts` row links one external provider account to a user. A user can have multiple linked
+accounts; a provider account belongs to exactly one user. That shape is what let discord, github, and
+email sign-in all land without a schema change -- see `docs/notes/gui-configuration-research.md`'s
+"per-user settings" section for why per-user state should key on the internal `users.id` rather
+than a platform's own identifier.
 
 ### A pattern worth knowing: server-only extractor types in shared code
 
-Dioxus 0.7's `#[server(name: Type)]`/`#[post("/path", name: Type)]` macros hoist extractor arguments
+Dioxus's `#[server(name: Type)]`/`#[post("/path", name: Type)]` macros hoist extractor arguments
 (session state, `axum::extract::Extension<T>`, etc.) out of the function signature entirely for the
 generated client stub -- the client never sees or calls that part of the function. This means the
 _type path_ in the attribute doesn't need to resolve for the client build, even when it references a
@@ -99,13 +120,28 @@ This same rule is why the asset pipeline is crate-scoped, too: `munibot_gui/src/
 invoked in, so the tailwind input, its `@source` scan, and the generated output all live in
 `munibot_gui/`, not the `munibot` binary crate that actually gets served.
 
-## Discord OAuth sign-in flow
+## Sign-in
+
+Three providers reach the same internal `users.id`: **discord** and **github** through oauth, and
+**email** through a signed token link (`munibot_api/src/oauth/email.rs`, disabled entirely when
+`SMTP_HOST` is unset). All three funnel through `get_or_create_user_from_linked_account` on the
+`(provider, provider_user_id)` unique index, so which door someone comes through never changes who
+they are. `/account` lists a signed-in user's linked providers and can unlink one, refusing to remove
+the last remaining sign-in method (`munibot_api/src/auth/linked_account.rs`).
+
+The discord flow below is the worked example; github follows the same shape against
+`oauth/github.rs`.
+
+### Discord OAuth flow
 
 1. The home page and account status component link to `/auth/discord/authorize` (a plain `<a>` tag,
    not a dioxus `Link` -- this needs a real browser navigation, not a client-side route change).
-2. `GET /auth/discord/authorize` (`munibot_api/src/oauth/routes.rs`) redirects to discord's consent
-   screen, with `identify guilds` scopes and a `redirect_uri` built from `MUNIBOT_BASE_URL`.
-3. Discord redirects back to `GET /auth/discord/callback?code=...`. That handler:
+2. `GET /auth/discord/authorize` (`munibot_api/src/oauth/routes.rs`) generates a CSRF `state` token,
+   stashes it in the (already-cookied, pre-login) session, and redirects to discord's consent screen
+   with it, `identify guilds` scopes, and a `redirect_uri` built from `MUNIBOT_BASE_URL`.
+3. Discord redirects back to `GET /auth/discord/callback?code=...&state=...`. That handler:
+   - verifies `state` against the session's stashed value first, refusing (and clearing it either
+     way) before touching discord's api at all if it's missing or doesn't match
    - exchanges the code for an access/refresh token (`munibot_api/src/oauth/discord.rs::exchange_code`)
    - fetches the discord identity (`get_current_user`)
    - calls `munibot_core::db::operations::get_or_create_user_from_linked_account`, which finds the
@@ -119,26 +155,23 @@ Sessions are backed by redis (`axum_session` + `axum_session_auth`, keyed by an 
 access (loading the current user, fetching a linked account's stored token).
 
 The dashboard (`munibot_gui/src/pages/dashboard.rs`) calls the `get_guilds` server function, which loads the caller's
-stored discord access token (refreshing it first if it's expired, see below), calls
-`GET /users/@me/guilds` (through a short-lived per-user cache, see
-`docs/notes/discord-rate-limits.md`), and filters to guilds the user owns or has `MANAGE_GUILD` on
-(`DiscordGuild::is_administered_by_user`).
+stored discord access token, calls `GET /users/@me/guilds`, and filters to guilds the user owns or
+has `MANAGE_GUILD` on (`DiscordGuild::is_administered_by_user`).
 
-Discord access tokens are refreshed automatically, close to but before their real expiry
-(`munibot_api/src/oauth/discord/token.rs::access_token_for`), using the stored `refresh_token` and
-`token_expires_at`. Both `get_guilds` and `require_guild_admin` go through this before reading a
-linked account's access token.
+### Known gaps
 
-### Known gaps (by design, for a minimum product)
-
-- **No CSRF `state` parameter** on the oauth authorize/callback round trip.
-- **No permission system.** `HasPermission` in `munibot_api/src/auth/server.rs` always returns
-  `false`; the old gui had a `BotAdmin` concept that's worth revisiting once the gui needs any
-  admin-gated views.
-- **Twitch/github sign-in aren't implemented yet**, though the `linked_accounts` schema and the
-  `oauth` module structure are meant to make adding them mostly additive: a new `oauth/<provider>.rs`
-  client, new routes in a `oauth/routes.rs`-shaped module (or added to the existing one), and reusing
-  `get_or_create_user_from_linked_account` with `provider = "twitch"`/`"github"`.
+- **No token refresh.** Discord access tokens are used as-is until they expire (~7 days); there's no
+  refresh-token rotation yet. When a token expires, `get_guilds` will error and the dashboard falls
+  back to a sign-in prompt -- signing in again fixes it.
+  Tracking: bump `linked_accounts.access_token`/`refresh_token` using `token_expires_at` and the
+  stored `refresh_token` when it's close to expiring.
+- **Twitch sign-in isn't implemented yet** (discord, github, and email all are), though the
+  `linked_accounts` schema and the `oauth` module structure are meant to make adding it mostly
+  additive: a new `oauth/twitch.rs` client, new routes added to `oauth/routes.rs`, and reusing
+  `get_or_create_user_from_linked_account` with `provider = "twitch"`.
+- **`linked_accounts.user_id` has no `ON DELETE CASCADE`.** Deleting a `users` row would orphan its
+  links. Unlinking the last provider is already refused, so this is not reachable today, but the
+  constraint is still missing -- see `docs/notes/gui-configuration-research.md`.
 
 ## Local dev workflow
 

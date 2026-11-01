@@ -12,6 +12,8 @@ use super::{MainLayout, NotFound};
 use crate::{
     layouts::home::HomeLayout,
     pages::{
+        account::Account,
+        chat::Chat,
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
         home::Home,
@@ -47,5 +49,10 @@ pub enum Route {
                 // GuildLoggingSettings, so this variant's name doesn't
                 // collide with munibot_api::settings::GuildLoggingSettings
                 #[route("/dashboard/:guild_id/logging", LoggingSettingsPage)]
-                GuildLoggingSettings { guild_id: String }
+                GuildLoggingSettings { guild_id: String },
+            #[end_layout]
+            #[route("/chat")]
+            Chat {},
+            #[route("/account")]
+            Account {},
 }

@@ -6,13 +6,13 @@ use rand::seq::IndexedRandom;
 use crate::db::{
     DbPool,
     models::{
-        AutoDeleteTimerRow, CommunityLink, GuildConfig, GuildPayout, GuildWallet, LinkedAccount,
-        NewCommunityLink, NewGuildPayout, NewGuildWallet, NewLinkedAccount, NewQuote, NewUser,
-        Quote, UpdateAutoDeleteTimer, User,
+        AutoDeleteTimerRow, CommunityLink, EmailSigninToken, GuildConfig, GuildPayout, GuildWallet,
+        LinkedAccount, NewCommunityLink, NewEmailSigninToken, NewGuildPayout, NewGuildWallet,
+        NewLinkedAccount, NewQuote, NewUser, Quote, UpdateAutoDeleteTimer, User,
     },
     schema::{
-        autodelete_timers, community_links, guild_configs, guild_payouts, guild_wallets,
-        linked_accounts, quotes, users,
+        autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
+        guild_wallets, linked_accounts, quotes, users,
     },
 };
 
@@ -24,19 +24,12 @@ diesel::define_sql_function!(fn last_insert_id() -> diesel::sql_types::Unsigned<
 
 /// Inserts or updates a guild config row, returning the saved record.
 ///
-/// Uses MySQL's `INSERT ... ON DUPLICATE KEY UPDATE` rather than
-/// `REPLACE INTO`. `REPLACE INTO` deletes the existing row and reinserts it,
-/// which would null out every column not present in `config` -- as soon as
-/// `guild_configs` gains a second setting, a write to one column would
-/// silently erase the other. `ON DUPLICATE KEY UPDATE` only touches the
-/// columns named in the changeset.
+/// Uses MySQL's `REPLACE INTO` which deletes the old row and inserts the new
+/// one when a duplicate primary key is found.
 pub async fn upsert_guild_config(pool: &DbPool, config: GuildConfig) -> QueryResult<GuildConfig> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
-    diesel::insert_into(guild_configs::table)
+    diesel::replace_into(guild_configs::table)
         .values(&config)
-        .on_conflict(diesel::dsl::DuplicatedKeys)
-        .do_update()
-        .set(&config)
         .execute(&mut conn)
         .await?;
     guild_configs::table
@@ -568,27 +561,201 @@ pub async fn get_or_create_user_from_linked_account(
         .await
 }
 
-/// Overwrites a linked account's token fields, e.g. after refreshing an
-/// expired oauth access token.
-pub async fn update_linked_account_tokens(
+/// Every provider account linked to a user, for an account settings page
+/// and for `unlink_linked_account`'s own "not the last one" check.
+pub async fn list_linked_accounts(pool: &DbPool, user_id: i64) -> QueryResult<Vec<LinkedAccount>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    linked_accounts::table
+        .filter(linked_accounts::user_id.eq(user_id))
+        .select(LinkedAccount::as_select())
+        .load(&mut conn)
+        .await
+}
+
+/// What [`link_account_to_user`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkAccountOutcome {
+    /// Linked (or, for a repeat link of the same provider account to the
+    /// same user - re-authorizing a scope, say - refreshed in place).
+    Linked,
+    /// This provider account is already linked to a *different* munibot
+    /// user. Refused rather than silently moved, merged, or overwritten -
+    /// see [`link_account_to_user`]'s own doc comment.
+    AlreadyLinkedElsewhere,
+}
+
+/// Links a provider account to `user_id` - the "I'm already signed in,
+/// attach another provider to this same account" counterpart to
+/// [`get_or_create_user_from_linked_account`], which instead signs in as
+/// (or creates) whichever user a provider account already maps to.
+///
+/// Refuses (returning [`LinkAccountOutcome::AlreadyLinkedElsewhere`])
+/// rather than reassigning the link when `(provider, provider_user_id)`
+/// already belongs to a different user - silently merging two accounts
+/// because their owner happened to click "link" while signed in as the
+/// wrong one would be exactly the kind of surprising, hard-to-undo
+/// behaviour an account settings page must never produce.
+#[allow(clippy::too_many_arguments)]
+pub async fn link_account_to_user(
     pool: &DbPool,
-    linked_account_id: i64,
+    user_id: i64,
+    provider: &str,
+    provider_user_id: &str,
+    username: &str,
     access_token: &str,
     refresh_token: Option<&str>,
     token_expires_at: Option<NaiveDateTime>,
-) -> QueryResult<()> {
+) -> QueryResult<LinkAccountOutcome> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
     let now = chrono::Utc::now().naive_utc();
 
-    diesel::update(linked_accounts::table.find(linked_account_id))
+    let existing = linked_accounts::table
+        .filter(linked_accounts::provider.eq(provider))
+        .filter(linked_accounts::provider_user_id.eq(provider_user_id))
+        .select(LinkedAccount::as_select())
+        .first(&mut conn)
+        .await
+        .optional()?;
+
+    match existing {
+        Some(link) if link.user_id == user_id => {
+            diesel::update(linked_accounts::table.find(link.id))
+                .set((
+                    linked_accounts::username.eq(username),
+                    linked_accounts::access_token.eq(access_token),
+                    linked_accounts::refresh_token.eq(refresh_token),
+                    linked_accounts::token_expires_at.eq(token_expires_at),
+                    linked_accounts::updated_at.eq(now),
+                ))
+                .execute(&mut conn)
+                .await?;
+            Ok(LinkAccountOutcome::Linked)
+        }
+        Some(_) => Ok(LinkAccountOutcome::AlreadyLinkedElsewhere),
+        None => {
+            diesel::insert_into(linked_accounts::table)
+                .values(NewLinkedAccount {
+                    user_id,
+                    provider: provider.to_owned(),
+                    provider_user_id: provider_user_id.to_owned(),
+                    username: username.to_owned(),
+                    access_token: access_token.to_owned(),
+                    refresh_token: refresh_token.map(str::to_owned),
+                    token_expires_at,
+                    created_at: now,
+                    updated_at: now,
+                })
+                .execute(&mut conn)
+                .await?;
+            Ok(LinkAccountOutcome::Linked)
+        }
+    }
+}
+
+/// What [`unlink_linked_account`] refused to do, or actually did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnlinkAccountOutcome {
+    Unlinked,
+    /// `user_id` has no other linked account - unlinking this one would
+    /// leave them with no way to ever sign in again. Refused rather than
+    /// allowed and hoped nobody hits it.
+    LastRemainingAccount,
+    /// No linked account for `user_id` on that provider - not an error,
+    /// since there is nothing to undo.
+    NotFound,
+}
+
+/// Removes `provider`'s linked account from `user_id`, refusing if it is
+/// the only one they have - see [`UnlinkAccountOutcome::LastRemainingAccount`].
+pub async fn unlink_linked_account(
+    pool: &DbPool,
+    user_id: i64,
+    provider: &str,
+) -> QueryResult<UnlinkAccountOutcome> {
+    let accounts = list_linked_accounts(pool, user_id).await?;
+    if !accounts.iter().any(|account| account.provider == provider) {
+        return Ok(UnlinkAccountOutcome::NotFound);
+    }
+    if accounts.len() <= 1 {
+        return Ok(UnlinkAccountOutcome::LastRemainingAccount);
+    }
+
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    diesel::delete(
+        linked_accounts::table
+            .filter(linked_accounts::user_id.eq(user_id))
+            .filter(linked_accounts::provider.eq(provider)),
+    )
+    .execute(&mut conn)
+    .await?;
+
+    Ok(UnlinkAccountOutcome::Unlinked)
+}
+
+// email_signin_tokens
+
+/// Records a fresh magic-link request for `email`, replacing any
+/// outstanding one for that same address - one row per email, the same
+/// reasoning `upsert_guild_config` documents for its own whole-row upsert:
+/// requesting a new link makes the previous one moot, so there is no
+/// reason to keep both around.
+pub async fn upsert_email_signin_token(
+    pool: &DbPool,
+    email: &str,
+    token_hash: &str,
+    expires_at: NaiveDateTime,
+) -> QueryResult<()> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+    let now = chrono::Utc::now().naive_utc();
+    diesel::insert_into(email_signin_tokens::table)
+        .values(NewEmailSigninToken {
+            email: email.to_owned(),
+            token_hash: token_hash.to_owned(),
+            expires_at,
+            created_at: now,
+        })
+        .on_conflict(diesel::dsl::DuplicatedKeys)
+        .do_update()
         .set((
-            linked_accounts::access_token.eq(access_token),
-            linked_accounts::refresh_token.eq(refresh_token),
-            linked_accounts::token_expires_at.eq(token_expires_at),
-            linked_accounts::updated_at.eq(now),
+            email_signin_tokens::token_hash.eq(token_hash),
+            email_signin_tokens::expires_at.eq(expires_at),
+            email_signin_tokens::created_at.eq(now),
         ))
         .execute(&mut conn)
         .await?;
-
     Ok(())
+}
+
+/// Consumes a magic-link token: looks it up by its hash, deletes it
+/// unconditionally if found (single-use, regardless of whether it had
+/// already expired), and returns the email it was issued for only if it
+/// had not.
+///
+/// Deleting even an expired match is deliberate: leaving a stale row
+/// behind would only ever let a *second*, differently-timed request reuse
+/// its slot via the upsert above, never anything a caller benefits from
+/// keeping.
+pub async fn consume_email_signin_token(
+    pool: &DbPool,
+    token_hash: &str,
+) -> QueryResult<Option<String>> {
+    let mut conn = pool.get().await.expect("couldn't get db connection");
+
+    let existing = email_signin_tokens::table
+        .filter(email_signin_tokens::token_hash.eq(token_hash))
+        .select(EmailSigninToken::as_select())
+        .first(&mut conn)
+        .await
+        .optional()?;
+
+    let Some(token) = existing else {
+        return Ok(None);
+    };
+
+    diesel::delete(email_signin_tokens::table.find(token.id))
+        .execute(&mut conn)
+        .await?;
+
+    let now = chrono::Utc::now().naive_utc();
+    Ok((token.expires_at > now).then_some(token.email))
 }

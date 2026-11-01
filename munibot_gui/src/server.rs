@@ -5,11 +5,14 @@
 // on axum, redis, and munibot_core's diesel pool, none of which can target
 // wasm32.
 
+use std::sync::Arc;
+
 use axum::Extension;
 use axum_session::{SessionConfig, SessionLayer, SessionStore};
 use axum_session_auth::{AuthConfig, AuthSessionLayer};
 use axum_session_redispool::SessionRedisPool;
 use dioxus::prelude::*;
+use munibot_ai::Chat;
 use munibot_api::auth::server::User;
 use munibot_core::{config::DiscordConfig, db::establish_pool};
 use redis_pool::RedisPool;
@@ -28,7 +31,11 @@ use crate::app::App;
 /// can read `invite_link` for a "munibot isn't in this server yet" call to
 /// action, without the gui needing to load or own the whole bot config file
 /// itself.
-pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
+///
+/// `chat` is `None` when `ai.enabled` is false in config -- the chat server
+/// function checks for that itself rather than the gui refusing to start, so
+/// the rest of the site stays usable with chat turned off.
+pub async fn run(discord_config: DiscordConfig, chat: Option<Arc<Chat>>) -> anyhow::Result<()> {
     let pool = establish_pool()
         .await
         .expect("couldn't establish database connection pool for the gui");
@@ -46,7 +53,7 @@ pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), App)
-        // merged before the layers below so sign-in/logout see the same
+        // merged before the layers below so sign-in/logout sees the same
         // session + db state as everything else
         .merge(munibot_api::oauth::routes::router())
         .layer(
@@ -55,7 +62,8 @@ pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
         )
         .layer(SessionLayer::new(session_store))
         .layer(Extension(pool))
-        .layer(Extension(discord_config));
+        .layer(Extension(discord_config))
+        .layer(Extension(chat));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "listening");

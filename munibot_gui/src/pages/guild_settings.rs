@@ -5,10 +5,6 @@ use crate::app::Route;
 pub mod logging;
 
 /// Lists the settings sections available for a guild.
-///
-/// Only one section exists today (logging); this is the natural place to
-/// link to the next one (autodelete, twitch, github, ...) rather than
-/// changing the route structure when it arrives.
 #[component]
 pub fn GuildSettings(guild_id: String) -> Element {
     rsx! {

@@ -5,7 +5,6 @@ use poise::serenity_prelude::{
 use crate::{
     DiscordFrameworkContext,
     handler::{DiscordEventHandler, DiscordHandlerError},
-    push_safer::PushSafer,
     utils::display_name_from_ids,
 };
 
@@ -56,7 +55,7 @@ async fn greet_user(
 
     let msg = MessageBuilder::new()
         .push("hi, ")
-        .push_safer(name)
+        .push_safe(name)
         .push("!")
         .build();
 
@@ -86,7 +85,7 @@ async fn farewell_user(
 
     let msg = MessageBuilder::new()
         .push("bye, ")
-        .push_safer(name)
+        .push_safe(name)
         .push("!")
         .build();
 
