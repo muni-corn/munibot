@@ -5,22 +5,28 @@
 
 mod common;
 
-use chrono::{Timelike, Utc};
+use chrono::Utc;
 use common::TestDb;
 use munibot_core::db::{
     models::{AutoDeleteTimerRow, GuildConfig},
     operations,
 };
 
+/// A `GuildConfig` with `guild_id` and `logging_channel` set, kept as one
+/// helper so adding a config field in the future means updating this one
+/// place, not every test that builds a `GuildConfig` from scratch.
+fn guild_config(guild_id: i64, logging_channel: Option<i64>) -> GuildConfig {
+    GuildConfig {
+        guild_id,
+        logging_channel,
+    }
+}
+
 #[tokio::test]
 async fn test_upsert_and_get_guild_config() {
     let db = TestDb::new().await;
 
-    let config = GuildConfig {
-        guild_id: 1001,
-        logging_channel: Some(9999),
-    };
-    let saved = operations::upsert_guild_config(&db.pool, config)
+    let saved = operations::upsert_guild_config(&db.pool, guild_config(1001, Some(9999)))
         .await
         .expect("upsert failed");
 
@@ -40,19 +46,13 @@ async fn test_upsert_and_get_guild_config() {
 async fn test_upsert_guild_config_overwrites_existing() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1002,
-        logging_channel: Some(111),
-    })
-    .await
-    .expect("first upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1002, Some(111)))
+        .await
+        .expect("first upsert failed");
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1002,
-        logging_channel: Some(222),
-    })
-    .await
-    .expect("second upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1002, Some(222)))
+        .await
+        .expect("second upsert failed");
 
     let fetched = operations::get_guild_config(&db.pool, 1002)
         .await
@@ -79,12 +79,9 @@ async fn test_get_guild_config_missing_returns_none() {
 async fn test_delete_guild_config() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1003,
-        logging_channel: None,
-    })
-    .await
-    .expect("upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1003, None))
+        .await
+        .expect("upsert failed");
 
     let deleted = operations::delete_guild_config(&db.pool, 1003)
         .await
@@ -645,58 +642,6 @@ async fn test_get_or_create_user_from_linked_account_returns_existing() {
 }
 
 #[tokio::test]
-async fn test_update_linked_account_tokens_overwrites_existing() {
-    let db = TestDb::new().await;
-
-    let user = operations::get_or_create_user_from_linked_account(
-        &db.pool,
-        "discord",
-        "777888999",
-        "refresh_me",
-        "Refresh Me",
-        None,
-        "access-token-old",
-        Some("refresh-token-old"),
-        None,
-    )
-    .await
-    .expect("sign-in failed");
-
-    let link = operations::get_linked_account(&db.pool, user.id, "discord")
-        .await
-        .expect("get_linked_account failed")
-        .expect("linked account should exist");
-
-    // mysql's DATETIME column has no fractional-second precision, so a
-    // sub-second component here would never round-trip
-    let new_expiry = (Utc::now().naive_utc() + chrono::Duration::hours(1))
-        .with_nanosecond(0)
-        .expect("0 nanoseconds is always valid");
-
-    operations::update_linked_account_tokens(
-        &db.pool,
-        link.id,
-        "access-token-new",
-        Some("refresh-token-new"),
-        Some(new_expiry),
-    )
-    .await
-    .expect("update_linked_account_tokens failed");
-
-    let refreshed = operations::get_linked_account(&db.pool, user.id, "discord")
-        .await
-        .expect("get_linked_account failed")
-        .expect("linked account should still exist");
-
-    assert_eq!(refreshed.access_token, "access-token-new");
-    assert_eq!(
-        refreshed.refresh_token.as_deref(),
-        Some("refresh-token-new")
-    );
-    assert_eq!(refreshed.token_expires_at, Some(new_expiry));
-}
-
-#[tokio::test]
 async fn test_get_linked_account_missing_returns_none() {
     let db = TestDb::new().await;
 
@@ -728,4 +673,348 @@ async fn test_get_user_missing_returns_none() {
         .await
         .expect("query failed");
     assert!(missing.is_none());
+}
+
+// email_signin_tokens
+
+#[tokio::test]
+async fn test_consuming_an_unknown_token_returns_none() {
+    let db = TestDb::new().await;
+
+    let email = operations::consume_email_signin_token(&db.pool, "a".repeat(64).as_str())
+        .await
+        .expect("query failed");
+
+    assert!(email.is_none());
+}
+
+#[tokio::test]
+async fn test_upsert_then_consume_round_trips_the_email_and_is_single_use() {
+    let db = TestDb::new().await;
+    let expires_at = Utc::now().naive_utc() + chrono::Duration::minutes(15);
+
+    operations::upsert_email_signin_token(
+        &db.pool,
+        "person@example.com",
+        "token-hash-1",
+        expires_at,
+    )
+    .await
+    .expect("upsert failed");
+
+    let email = operations::consume_email_signin_token(&db.pool, "token-hash-1")
+        .await
+        .expect("consume failed")
+        .expect("should be Some the first time");
+    assert_eq!(email, "person@example.com");
+
+    let second_attempt = operations::consume_email_signin_token(&db.pool, "token-hash-1")
+        .await
+        .expect("query failed");
+    assert!(
+        second_attempt.is_none(),
+        "a token must not be consumable twice"
+    );
+}
+
+#[tokio::test]
+async fn test_consuming_an_expired_token_returns_none_but_still_removes_it() {
+    let db = TestDb::new().await;
+    let already_expired = Utc::now().naive_utc() - chrono::Duration::minutes(1);
+
+    operations::upsert_email_signin_token(
+        &db.pool,
+        "person@example.com",
+        "token-hash-expired",
+        already_expired,
+    )
+    .await
+    .expect("upsert failed");
+
+    let email = operations::consume_email_signin_token(&db.pool, "token-hash-expired")
+        .await
+        .expect("query failed");
+    assert!(email.is_none(), "an expired token should never be honoured");
+}
+
+#[tokio::test]
+async fn test_a_second_request_for_the_same_email_replaces_the_first_tokens_hash() {
+    let db = TestDb::new().await;
+    let expires_at = Utc::now().naive_utc() + chrono::Duration::minutes(15);
+
+    operations::upsert_email_signin_token(&db.pool, "person@example.com", "first-hash", expires_at)
+        .await
+        .expect("first upsert failed");
+    operations::upsert_email_signin_token(
+        &db.pool,
+        "person@example.com",
+        "second-hash",
+        expires_at,
+    )
+    .await
+    .expect("second upsert failed");
+
+    let first_attempt = operations::consume_email_signin_token(&db.pool, "first-hash")
+        .await
+        .expect("query failed");
+    assert!(
+        first_attempt.is_none(),
+        "the first token should have been replaced, not left valid alongside the second"
+    );
+
+    let second_attempt = operations::consume_email_signin_token(&db.pool, "second-hash")
+        .await
+        .expect("query failed")
+        .expect("the second token should be valid");
+    assert_eq!(second_attempt, "person@example.com");
+}
+
+// linked_accounts: linking, listing, unlinking
+
+#[tokio::test]
+async fn test_link_account_to_user_creates_a_new_link() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-1",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let outcome = operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "link-test-github-1",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("link failed");
+    assert_eq!(outcome, operations::LinkAccountOutcome::Linked);
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(accounts.len(), 2);
+    assert!(accounts.iter().any(|a| a.provider == "github"));
+}
+
+#[tokio::test]
+async fn test_link_account_to_user_refreshes_a_repeat_link_to_the_same_user() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-2",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "link-test-github-2",
+        "old-username",
+        "old-token",
+        None,
+        None,
+    )
+    .await
+    .expect("first link failed");
+
+    let outcome = operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "link-test-github-2",
+        "new-username",
+        "new-token",
+        None,
+        None,
+    )
+    .await
+    .expect("second link failed");
+    assert_eq!(outcome, operations::LinkAccountOutcome::Linked);
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    let github = accounts
+        .iter()
+        .find(|a| a.provider == "github")
+        .expect("should still have exactly one github link");
+    assert_eq!(github.username, "new-username");
+}
+
+#[tokio::test]
+async fn test_link_account_to_user_refuses_an_account_linked_elsewhere() {
+    let db = TestDb::new().await;
+    let first_user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-3a",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+    let second_user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "link-test-discord-3b",
+        "someone-else",
+        "someone-else",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    operations::link_account_to_user(
+        &db.pool,
+        first_user.id,
+        "github",
+        "link-test-github-3",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("first link failed");
+
+    let outcome = operations::link_account_to_user(
+        &db.pool,
+        second_user.id,
+        "github",
+        "link-test-github-3",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("query should not error, even though it refuses");
+    assert_eq!(
+        outcome,
+        operations::LinkAccountOutcome::AlreadyLinkedElsewhere
+    );
+}
+
+#[tokio::test]
+async fn test_unlink_linked_account_removes_it_when_another_remains() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "unlink-test-discord-1",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+    operations::link_account_to_user(
+        &db.pool,
+        user.id,
+        "github",
+        "unlink-test-github-1",
+        "muni-gh",
+        "gh-access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("link failed");
+
+    let outcome = operations::unlink_linked_account(&db.pool, user.id, "github")
+        .await
+        .expect("unlink failed");
+    assert_eq!(outcome, operations::UnlinkAccountOutcome::Unlinked);
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].provider, "discord");
+}
+
+#[tokio::test]
+async fn test_unlink_linked_account_refuses_to_remove_the_last_one() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "unlink-test-discord-2",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let outcome = operations::unlink_linked_account(&db.pool, user.id, "discord")
+        .await
+        .expect("query should not error, even though it refuses");
+    assert_eq!(
+        outcome,
+        operations::UnlinkAccountOutcome::LastRemainingAccount
+    );
+
+    let accounts = operations::list_linked_accounts(&db.pool, user.id)
+        .await
+        .expect("list failed");
+    assert_eq!(accounts.len(), 1, "the only account must still be there");
+}
+
+#[tokio::test]
+async fn test_unlink_linked_account_for_an_unlinked_provider_is_not_found() {
+    let db = TestDb::new().await;
+    let user = operations::get_or_create_user_from_linked_account(
+        &db.pool,
+        "discord",
+        "unlink-test-discord-3",
+        "muni",
+        "muni",
+        None,
+        "access-token",
+        None,
+        None,
+    )
+    .await
+    .expect("get_or_create failed");
+
+    let outcome = operations::unlink_linked_account(&db.pool, user.id, "github")
+        .await
+        .expect("query should not error");
+    assert_eq!(outcome, operations::UnlinkAccountOutcome::NotFound);
 }

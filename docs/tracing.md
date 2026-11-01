@@ -50,7 +50,7 @@ The following span boundaries are instrumented:
 
 | Location                                   | Span name / fields                                 | Purpose                                |
 | ------------------------------------------ | -------------------------------------------------- | -------------------------------------- |
-| `munibot::main`                            | `discord{}`                                        | Root span for the spawned Discord task |
+| `munibot::bot`                             | `discord{}`                                        | Root span for the spawned Discord task |
 | `munibot_core::config`                     | `read_or_write_default_from{path}`                 | Config file loading                    |
 | `munibot_core::db`                         | `establish_pool{}`                                 | DB pool creation                       |
 | `munibot_core::db`                         | `run_pending_migrations{}`                         | Diesel migrations                      |
@@ -69,6 +69,11 @@ The following span boundaries are instrumented:
 | `munibot_discord::autodelete`              | `get_next_fire{}`                                  | Next-fire calculation                  |
 | `munibot_discord::autodelete`              | `clean_now{channel, guild, mode}`                  | Per-channel cleanup                    |
 | `munibot_discord::autodelete`              | `check_messages{channel, guild}`                   | Next-clean estimation                  |
+
+## Known limitations
+
+- **`Passing::pass()` discards context** — see the section below. It records that _something_ failed,
+  not what was being attempted.
 
 ## Adding new spans
 

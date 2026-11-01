@@ -7,8 +7,11 @@
 // wasm32.
 
 pub mod auth;
+pub mod chat;
 pub mod guilds;
 
+#[cfg(feature = "server")]
+pub mod mailer;
 #[cfg(feature = "server")]
 pub mod oauth;
 pub mod server_fns;

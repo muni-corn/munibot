@@ -23,6 +23,7 @@ clap = { workspace = true, optional = true }
 dotenvy = { workspace = true, optional = true }
 # server-only deps, enabled by the `server` feature. these pull in the bots,
 # config/migrations, and everything that can't compile for wasm32
+munibot_ai = { path = "../munibot_ai", optional = true }
 munibot_core = { path = "../munibot_core", optional = true }
 munibot_discord = { path = "../munibot_discord", optional = true }
 munibot_twitch = { path = "../munibot_twitch", optional = true }
@@ -44,6 +45,7 @@ server = [
   "dep:anyhow",
   "dep:clap",
   "dep:dotenvy",
+  "dep:munibot_ai",
   "dep:munibot_core",
   "dep:munibot_discord",
   "dep:munibot_twitch",

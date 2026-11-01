@@ -4,8 +4,11 @@ use thiserror::Error;
 
 #[cfg(feature = "server")]
 pub mod guild;
+pub mod linked_account;
 #[cfg(feature = "server")]
 pub mod server;
+
+pub use linked_account::LinkedAccountSummary;
 
 /// User data safe to send to and render on the client.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -20,10 +23,14 @@ pub enum AuthError {
     #[error("no auth session available")]
     NoAuthSession,
 
-    /// Discord is rate limiting munibot's requests. `retry_after_secs` is a
-    /// hint for how long the caller should wait before trying again.
-    #[error("discord is rate limiting us; try again in a bit :<")]
-    RateLimited { retry_after_secs: u64 },
+    /// Attempted to link a provider account already linked to a
+    /// *different* munibot user.
+    #[error("that account is already linked to a different munibot user")]
+    AlreadyLinkedElsewhere,
+
+    /// Attempted to unlink a user's only remaining sign-in method.
+    #[error("you can't unlink your last remaining sign-in method")]
+    LastRemainingAccount,
 
     /// Wraps a generic server function error so `AuthResult` propagates
     /// cleanly.
@@ -35,7 +42,7 @@ impl AsStatusCode for AuthError {
     fn as_status_code(&self) -> StatusCode {
         match self {
             Self::NoAuthSession => StatusCode::UNAUTHORIZED,
-            Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+            Self::AlreadyLinkedElsewhere | Self::LastRemainingAccount => StatusCode::CONFLICT,
             Self::ServerFnError(e) => e.as_status_code(),
         }
     }
@@ -68,38 +75,10 @@ impl From<anyhow::Error> for AuthError {
 #[cfg(feature = "server")]
 impl From<crate::oauth::discord::DiscordOAuthError> for AuthError {
     fn from(e: crate::oauth::discord::DiscordOAuthError) -> Self {
-        match e {
-            crate::oauth::discord::DiscordOAuthError::RateLimited { retry_after, .. } => {
-                Self::RateLimited {
-                    retry_after_secs: retry_after.as_secs(),
-                }
-            }
-            other => Self::ServerFnError(ServerFnError::ServerError {
-                message: other.to_string(),
-                code: StatusCode::INTERNAL_SERVER_ERROR.into(),
-                details: None,
-            }),
-        }
-    }
-}
-
-/// `try_get_with`'s coalesced error type -- multiple concurrent callers that
-/// all miss the guild cache share one underlying request, and so also share
-/// one `Arc`-wrapped error.
-#[cfg(feature = "server")]
-impl From<std::sync::Arc<crate::oauth::discord::DiscordOAuthError>> for AuthError {
-    fn from(e: std::sync::Arc<crate::oauth::discord::DiscordOAuthError>) -> Self {
-        match &*e {
-            crate::oauth::discord::DiscordOAuthError::RateLimited { retry_after, .. } => {
-                Self::RateLimited {
-                    retry_after_secs: retry_after.as_secs(),
-                }
-            }
-            other => Self::ServerFnError(ServerFnError::ServerError {
-                message: other.to_string(),
-                code: StatusCode::INTERNAL_SERVER_ERROR.into(),
-                details: None,
-            }),
-        }
+        Self::ServerFnError(ServerFnError::ServerError {
+            message: e.to_string(),
+            code: StatusCode::INTERNAL_SERVER_ERROR.into(),
+            details: None,
+        })
     }
 }

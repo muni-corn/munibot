@@ -36,14 +36,7 @@ pub fn get_magic_message(user_id: &str, user_display_name: &str) -> String {
         100 => "!! wow :3",
         _ => "!",
     };
-
-    // this is all your fault, Mew.
-    let magic_amount_display = match magic_amount {
-        22 => "21.99".to_string(),
-        x => x.to_string(),
-    };
-
-    format!("{user_display_name} is {magic_amount_display}% magical today{suffix}")
+    format!("{user_display_name} is {magic_amount}% magical today{suffix}")
 }
 
 #[cfg(test)]

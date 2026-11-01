@@ -1,0 +1,22 @@
+[package]
+name = "munibot_ai"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "munibot's conversation interface: a provider-agnostic, stateless chat with a model"
+license.workspace = true
+
+[dependencies]
+async-stream.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+rig-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+http.workspace = true
+serde_json.workspace = true
+tempfile = "3.27.0"
+tokio.workspace = true

@@ -41,12 +41,13 @@ in
   overlays = [ (import ./nix/dioxus-overlay.nix) ];
 
   enterTest = ''
-    cargo test
+    wait_for_port ${toString config.processes.mysql.ports.main.value}
+    cargo nextest run
   '';
 
   env = {
     __CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT = 1;
-    RUST_LOG = "info,munibot=debug,munibot_api=debug,munibot_core=debug,munibot_discord=debug,munibot_gui=debug,munibot_twitch=debug";
+    RUST_LOG = "error,munibot=debug,munibot_api=debug,munibot_core=debug,munibot_discord=debug,munibot_gui=debug,munibot_twitch=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
     # matches the redirect URI registered with discord for local development
     PORT = 8080;
@@ -119,6 +120,7 @@ in
       flyctl
       tailwindcss_4
       wasm-bindgen-cli-pinned
+      cargo-expand
     ]
     ++ buildInputs
     ++ nativeBuildInputs
@@ -170,7 +172,6 @@ in
         "devenv:processes:redis"
       ];
       ready.http.get.port = 8080;
-      env.DATABASE_URL = "mysql://munibot:sillylittlepassword@localhost:${toString config.processes.mysql.ports.main.value}/munibot";
     };
   };
 

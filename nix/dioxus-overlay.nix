@@ -8,10 +8,6 @@
 # library crates, not for these cli tools or their vendored dependencies --
 # so they still need a manual bump whenever the version changes. nix will
 # fail the build and print the correct hash to paste in when that happens.
-#
-# dioxus-cli also carries a patch (nix/patches) that teaches its fingerprint
-# busting about cargo's build-dir layout v2. if a version bump makes the patch
-# fail to apply, check whether upstream has fixed this and drop it if so.
 final: prev:
 let
   inherit (final) lib;
@@ -27,7 +23,7 @@ let
 in
 {
   dioxus-cli = prev.dioxus-cli.overrideAttrs (
-    old:
+    _:
     let
       version = crateVersion "dioxus";
       src = final.fetchCrate {
@@ -38,7 +34,6 @@ in
     in
     {
       inherit src version;
-      patches = (old.patches or [ ]) ++ [ ./patches/dioxus-cli-build-dir-v2.patch ];
       cargoDeps = final.rustPlatform.fetchCargoVendor {
         inherit src;
         inherit (src) pname version;

@@ -5,18 +5,12 @@
 //! module), which does not permit listing a guild's channels -- that needs
 //! the bot's own token instead.
 
-use std::time::Duration;
-
-use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
 
 /// Errors from a request made with the bot's own token.
 #[derive(Debug, Error)]
 pub enum DiscordBotError {
-    #[error("discord bot is misconfigured >_< {message}")]
-    Misconfiguration { message: String },
-
     #[error("request to discord failed :< {0}")]
     Request(#[from] reqwest::Error),
 
@@ -28,27 +22,7 @@ pub enum DiscordBotError {
     NotInGuild,
 
     #[error("discord returned an unexpected response: {status}")]
-    UnexpectedStatus { status: StatusCode },
-
-    /// Discord rejected the request with a `429`, even after retrying with
-    /// backoff.
-    #[error("discord is rate limiting us; try again in {retry_after:?} :<")]
-    RateLimited { retry_after: Duration, global: bool },
-}
-
-impl From<super::rate_limit::SendError> for DiscordBotError {
-    fn from(e: super::rate_limit::SendError) -> Self {
-        match e {
-            super::rate_limit::SendError::Request(e) => Self::Request(e),
-            super::rate_limit::SendError::RateLimited {
-                retry_after,
-                global,
-            } => Self::RateLimited {
-                retry_after,
-                global,
-            },
-        }
-    }
+    UnexpectedStatus { status: reqwest::StatusCode },
 }
 
 /// The subset of a discord channel's REST representation munibot cares
@@ -74,24 +48,21 @@ pub const CHANNEL_TYPE_CATEGORY: u8 = 4;
 pub const CHANNEL_TYPE_ANNOUNCEMENT: u8 = 5;
 
 /// Fetches every channel in a guild, using the bot's own token.
-#[cfg(feature = "server")]
-pub async fn get_guild_channels(guild_id: &str) -> Result<Vec<DiscordChannel>, DiscordBotError> {
-    let bot_token =
-        std::env::var("DISCORD_TOKEN").map_err(|_| DiscordBotError::Misconfiguration {
-            message: "DISCORD_TOKEN isn't set".to_string(),
-        })?;
-
-    let url = format!("{}/guilds/{guild_id}/channels", super::API_BASE);
-    let response = super::rate_limit::send_with_retries(
-        super::client::client()
-            .get(url)
-            .header("Authorization", format!("Bot {bot_token}")),
-    )
-    .await?;
+pub async fn get_guild_channels(
+    bot_token: &str,
+    guild_id: &str,
+) -> Result<Vec<DiscordChannel>, DiscordBotError> {
+    let response = reqwest::Client::new()
+        .get(format!("{}/guilds/{guild_id}/channels", super::API_BASE))
+        .header("Authorization", format!("Bot {bot_token}"))
+        .send()
+        .await?;
 
     match response.status() {
         status if status.is_success() => Ok(response.json::<Vec<DiscordChannel>>().await?),
-        StatusCode::FORBIDDEN | StatusCode::NOT_FOUND => Err(DiscordBotError::NotInGuild),
+        reqwest::StatusCode::FORBIDDEN | reqwest::StatusCode::NOT_FOUND => {
+            Err(DiscordBotError::NotInGuild)
+        }
         status => Err(DiscordBotError::UnexpectedStatus { status }),
     }
 }

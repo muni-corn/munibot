@@ -2,11 +2,36 @@ use dioxus::prelude::*;
 
 use crate::settings::{GuildLoggingSettings, SettingsResult};
 
+/// Returns a guild's logging settings.
+#[server(
+    auth: crate::auth::server::AuthSession,
+    pool: axum::extract::Extension<munibot_core::db::DbPool>,
+)]
+pub async fn get_guild_logging_settings(guild_id: String) -> SettingsResult<GuildLoggingSettings> {
+    use munibot_core::db::operations;
+
+    use crate::auth::guild::require_guild_admin;
+
+    require_guild_admin(&auth, &pool, &guild_id).await?;
+
+    let guild_id_i64: i64 = guild_id
+        .parse()
+        .map_err(|e| anyhow::anyhow!("invalid guild id '{guild_id}': {e}"))?;
+
+    let config = operations::get_guild_config(&pool, guild_id_i64).await?;
+
+    Ok(GuildLoggingSettings {
+        channel_id: config
+            .and_then(|config| config.logging_channel)
+            .map(|id| id.to_string()),
+    })
+}
+
 /// Saves a guild's logging settings, returning what was actually saved.
 ///
 /// Re-validates `channel_id` server-side against the guild's real channel
 /// list even though the gui only ever offers channels from
-/// `get_guild_logging_page` in its picker -- the client can't be trusted to
+/// `get_guild_channels` in its picker -- the client can't be trusted to
 /// only ever send back a value it was shown.
 #[server(
     auth: crate::auth::server::AuthSession,
@@ -23,7 +48,9 @@ pub async fn set_guild_logging_settings(
     require_guild_admin(&auth, &pool, &guild_id).await?;
 
     if let Some(channel_id) = &settings.channel_id {
-        let channels = bot::get_guild_channels(&guild_id).await?;
+        let bot_token = std::env::var("DISCORD_TOKEN")
+            .map_err(|_| anyhow::anyhow!("DISCORD_TOKEN isn't set"))?;
+        let channels = bot::get_guild_channels(&bot_token, &guild_id).await?;
         let is_text_channel_in_this_guild = channels.iter().any(|channel| {
             &channel.id == channel_id
                 && matches!(
