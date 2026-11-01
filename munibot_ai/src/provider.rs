@@ -1,4 +1,4 @@
-//! Provider-agnostic model access for munibot's ai harness.
+//! Provider-agnostic model access for munibot's conversation interface.
 //!
 //! `rig-core` is a dependency of this module and no other. Every other module
 //! in this crate speaks [`crate::types`] and the `Provider` trait defined here,
@@ -8,7 +8,7 @@
 //! associated types, a `Clone` supertrait, and `impl Future` return positions),
 //! and 0.41 has no runtime provider-selection helper to lean on. This module's
 //! job is to hide both of those facts behind an object-safe trait, so the rest
-//! of the harness never has to care. See `docs/notes/ai-preflight-findings.md`
+//! of the crate never has to care. See `docs/notes/rig-provider-findings.md`
 //! for how that was verified.
 
 use async_trait::async_trait;
@@ -17,21 +17,15 @@ use futures::stream::{self, BoxStream};
 use crate::types::{AiError, CompletionRequest, CompletionResponse, ContentBlock, StreamEvent};
 
 pub mod mock;
-pub mod pricing;
-pub mod registry;
-pub mod retry;
 pub mod rig;
 
 pub use mock::MockProvider;
-pub use pricing::{Pricing, estimate_cost};
-pub use registry::ProviderRegistry;
-pub use retry::{RetryPolicy, RetryingProvider};
 pub use rig::{ProviderResolver, RigProvider};
 
 /// A source of model completions.
 ///
 /// Every concrete provider (rig-backed or otherwise) and the test double both
-/// implement this. It is the only thing the rest of the harness ever sees — no
+/// implement this. It is the only thing the rest of the crate ever sees — no
 /// rig type, and no HTTP client, crosses this boundary.
 #[async_trait]
 pub trait Provider: Send + Sync {
@@ -46,10 +40,7 @@ pub trait Provider: Send + Sync {
     ///
     /// The default wraps [`Self::complete`] and replays its result as a stream,
     /// so a provider that only implements `complete` is still usable
-    /// everywhere a streaming one would be. This is more than the minimal
-    /// "one text delta plus done": it converts every content block, including
-    /// tool calls, because a non-streaming provider that later gets a
-    /// tool-using persona would otherwise silently drop them.
+    /// everywhere a streaming one would be.
     async fn stream(
         &self,
         request: CompletionRequest,
@@ -68,31 +59,12 @@ pub trait Provider: Send + Sync {
 
 /// Converts a completion's content blocks into the stream events that would
 /// have produced them.
-///
-/// Tool results and images never occur in a fresh assistant completion, so they
-/// are dropped rather than mapped to anything.
 fn content_to_stream_events(content: Vec<ContentBlock>) -> Vec<StreamEvent> {
     content
         .into_iter()
-        .flat_map(|block| -> Vec<StreamEvent> {
-            match block {
-                ContentBlock::Text { text } => vec![StreamEvent::TextDelta { text }],
-                ContentBlock::Thinking { thinking } => {
-                    vec![StreamEvent::ThinkingDelta { thinking }]
-                }
-                ContentBlock::ToolUse {
-                    call_id,
-                    name,
-                    arguments,
-                } => vec![
-                    StreamEvent::ToolUseStart { call_id, name },
-                    StreamEvent::ToolUseDelta {
-                        partial_json: arguments.to_string(),
-                    },
-                    StreamEvent::ToolUseEnd,
-                ],
-                ContentBlock::ToolResult { .. } | ContentBlock::Image { .. } => vec![],
-            }
+        .map(|block| match block {
+            ContentBlock::Text { text } => StreamEvent::TextDelta { text },
+            ContentBlock::Thinking { thinking } => StreamEvent::ThinkingDelta { thinking },
         })
         .collect()
 }
@@ -100,7 +72,6 @@ fn content_to_stream_events(content: Vec<ContentBlock>) -> Vec<StreamEvent> {
 #[cfg(test)]
 mod tests {
     use futures::StreamExt;
-    use serde_json::json;
 
     use super::*;
     use crate::types::{Message, ModelRef, StopReason, Usage};
@@ -174,15 +145,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_default_stream_preserves_tool_calls() {
+    async fn test_default_stream_preserves_reasoning_before_text() {
         let provider = StubProvider {
             response: Ok(CompletionResponse::new(
-                vec![ContentBlock::tool_use(
-                    "c1",
-                    "current_time",
-                    json!({"timezone": "UTC"}),
-                )],
-                StopReason::ToolUse,
+                vec![ContentBlock::thinking("hmm"), ContentBlock::text("hi")],
+                StopReason::EndTurn,
                 Usage::default(),
             )),
         };
@@ -199,21 +166,14 @@ mod tests {
 
         assert_eq!(
             events[0],
-            StreamEvent::ToolUseStart {
-                call_id: "c1".to_string(),
-                name: "current_time".to_string()
+            StreamEvent::ThinkingDelta {
+                thinking: "hmm".to_string()
             },
-            "a tool call must not be silently dropped by the default stream wrapper"
+            "reasoning should replay in its original order"
         );
-        assert!(
-            matches!(events[1], StreamEvent::ToolUseDelta { .. }),
-            "the tool call arguments should follow as a delta"
-        );
-        assert_eq!(
-            events[2],
-            StreamEvent::ToolUseEnd,
-            "the tool call should be closed before usage and done"
-        );
+        assert_eq!(events[1], StreamEvent::TextDelta {
+            text: "hi".to_string()
+        });
     }
 
     #[tokio::test]

@@ -5,22 +5,28 @@
 
 mod common;
 
-use chrono::{Timelike, Utc};
+use chrono::Utc;
 use common::TestDb;
 use munibot_core::db::{
     models::{AutoDeleteTimerRow, GuildConfig},
     operations,
 };
 
+/// A `GuildConfig` with `guild_id` and `logging_channel` set, kept as one
+/// helper so adding a config field in the future means updating this one
+/// place, not every test that builds a `GuildConfig` from scratch.
+fn guild_config(guild_id: i64, logging_channel: Option<i64>) -> GuildConfig {
+    GuildConfig {
+        guild_id,
+        logging_channel,
+    }
+}
+
 #[tokio::test]
 async fn test_upsert_and_get_guild_config() {
     let db = TestDb::new().await;
 
-    let config = GuildConfig {
-        guild_id: 1001,
-        logging_channel: Some(9999),
-    };
-    let saved = operations::upsert_guild_config(&db.pool, config)
+    let saved = operations::upsert_guild_config(&db.pool, guild_config(1001, Some(9999)))
         .await
         .expect("upsert failed");
 
@@ -40,19 +46,13 @@ async fn test_upsert_and_get_guild_config() {
 async fn test_upsert_guild_config_overwrites_existing() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1002,
-        logging_channel: Some(111),
-    })
-    .await
-    .expect("first upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1002, Some(111)))
+        .await
+        .expect("first upsert failed");
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1002,
-        logging_channel: Some(222),
-    })
-    .await
-    .expect("second upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1002, Some(222)))
+        .await
+        .expect("second upsert failed");
 
     let fetched = operations::get_guild_config(&db.pool, 1002)
         .await
@@ -79,12 +79,9 @@ async fn test_get_guild_config_missing_returns_none() {
 async fn test_delete_guild_config() {
     let db = TestDb::new().await;
 
-    operations::upsert_guild_config(&db.pool, GuildConfig {
-        guild_id: 1003,
-        logging_channel: None,
-    })
-    .await
-    .expect("upsert failed");
+    operations::upsert_guild_config(&db.pool, guild_config(1003, None))
+        .await
+        .expect("upsert failed");
 
     let deleted = operations::delete_guild_config(&db.pool, 1003)
         .await
@@ -645,58 +642,6 @@ async fn test_get_or_create_user_from_linked_account_returns_existing() {
 }
 
 #[tokio::test]
-async fn test_update_linked_account_tokens_overwrites_existing() {
-    let db = TestDb::new().await;
-
-    let user = operations::get_or_create_user_from_linked_account(
-        &db.pool,
-        "discord",
-        "777888999",
-        "refresh_me",
-        "Refresh Me",
-        None,
-        "access-token-old",
-        Some("refresh-token-old"),
-        None,
-    )
-    .await
-    .expect("sign-in failed");
-
-    let link = operations::get_linked_account(&db.pool, user.id, "discord")
-        .await
-        .expect("get_linked_account failed")
-        .expect("linked account should exist");
-
-    // mysql's DATETIME column has no fractional-second precision, so a
-    // sub-second component here would never round-trip
-    let new_expiry = (Utc::now().naive_utc() + chrono::Duration::hours(1))
-        .with_nanosecond(0)
-        .expect("0 nanoseconds is always valid");
-
-    operations::update_linked_account_tokens(
-        &db.pool,
-        link.id,
-        "access-token-new",
-        Some("refresh-token-new"),
-        Some(new_expiry),
-    )
-    .await
-    .expect("update_linked_account_tokens failed");
-
-    let refreshed = operations::get_linked_account(&db.pool, user.id, "discord")
-        .await
-        .expect("get_linked_account failed")
-        .expect("linked account should still exist");
-
-    assert_eq!(refreshed.access_token, "access-token-new");
-    assert_eq!(
-        refreshed.refresh_token.as_deref(),
-        Some("refresh-token-new")
-    );
-    assert_eq!(refreshed.token_expires_at, Some(new_expiry));
-}
-
-#[tokio::test]
 async fn test_get_linked_account_missing_returns_none() {
     let db = TestDb::new().await;
 
@@ -728,125 +673,6 @@ async fn test_get_user_missing_returns_none() {
         .await
         .expect("query failed");
     assert!(missing.is_none());
-}
-
-#[tokio::test]
-async fn test_find_user_by_linked_account_finds_an_existing_user() {
-    let db = TestDb::new().await;
-
-    let user = operations::get_or_create_user_from_linked_account(
-        &db.pool,
-        "discord",
-        "operator-snowflake",
-        "muni",
-        "muni",
-        None,
-        "access-token",
-        None,
-        None,
-    )
-    .await
-    .expect("get_or_create failed");
-
-    let found = operations::find_user_by_linked_account(&db.pool, "discord", "operator-snowflake")
-        .await
-        .expect("query failed")
-        .expect("should find the user");
-    assert_eq!(found.id, user.id);
-}
-
-#[tokio::test]
-async fn test_find_user_by_linked_account_missing_returns_none_without_creating_one() {
-    let db = TestDb::new().await;
-
-    let missing = operations::find_user_by_linked_account(&db.pool, "discord", "never-signed-in")
-        .await
-        .expect("query failed");
-    assert!(missing.is_none());
-}
-
-#[tokio::test]
-async fn test_grant_permission_then_list_shows_it() {
-    let db = TestDb::new().await;
-    let user = operations::get_or_create_user_from_linked_account(
-        &db.pool,
-        "discord",
-        "grant-test",
-        "muni",
-        "muni",
-        None,
-        "access-token",
-        None,
-        None,
-    )
-    .await
-    .expect("get_or_create failed");
-
-    operations::grant_permission(&db.pool, user.id, "operator")
-        .await
-        .expect("grant failed");
-
-    let permissions = operations::list_user_permissions(&db.pool, user.id)
-        .await
-        .expect("list failed");
-    assert_eq!(permissions, vec!["operator".to_string()]);
-}
-
-#[tokio::test]
-async fn test_granting_the_same_permission_twice_is_not_an_error() {
-    let db = TestDb::new().await;
-    let user = operations::get_or_create_user_from_linked_account(
-        &db.pool,
-        "discord",
-        "grant-twice-test",
-        "muni",
-        "muni",
-        None,
-        "access-token",
-        None,
-        None,
-    )
-    .await
-    .expect("get_or_create failed");
-
-    operations::grant_permission(&db.pool, user.id, "operator")
-        .await
-        .expect("first grant failed");
-    operations::grant_permission(&db.pool, user.id, "operator")
-        .await
-        .expect("second grant should not error");
-
-    let permissions = operations::list_user_permissions(&db.pool, user.id)
-        .await
-        .expect("list failed");
-    assert_eq!(
-        permissions,
-        vec!["operator".to_string()],
-        "granting twice should not duplicate the row"
-    );
-}
-
-#[tokio::test]
-async fn test_list_user_permissions_for_a_user_with_none_is_empty() {
-    let db = TestDb::new().await;
-    let user = operations::get_or_create_user_from_linked_account(
-        &db.pool,
-        "discord",
-        "no-permissions-test",
-        "muni",
-        "muni",
-        None,
-        "access-token",
-        None,
-        None,
-    )
-    .await
-    .expect("get_or_create failed");
-
-    let permissions = operations::list_user_permissions(&db.pool, user.id)
-        .await
-        .expect("list failed");
-    assert!(permissions.is_empty());
 }
 
 // email_signin_tokens

@@ -4,7 +4,7 @@ use futures::{StreamExt, stream::BoxStream};
 use rig_core::{
     completion::{
         CompletionModel, CompletionRequest as RigCompletionRequest, GetTokenUsage,
-        message::{Message as RigMessage, ToolChoice as RigToolChoice},
+        message::Message as RigMessage,
     },
     one_or_many::OneOrMany,
 };
@@ -16,7 +16,6 @@ use crate::{
     },
     types::{
         AiError, CompletionRequest, CompletionResponse, ContentBlock, StopReason, StreamEvent,
-        ToolChoice,
     },
 };
 
@@ -60,61 +59,35 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
         )
     })?;
 
-    let tools = request
-        .tools
-        .iter()
-        .map(convert::to_tool_definition)
-        .collect();
-
     Ok(RigCompletionRequest {
-        // this adapter is already bound to one model at construction time; no per-request override
+        // this adapter is already bound to one model at construction time; no
+        // per-request override
         model: None,
-        // the system prompt goes into chat_history as a leading Message::System instead of the
-        // legacy preamble field, which rig itself documents as the preferred representation
+        // the system prompt goes into chat_history as a leading Message::System
+        // instead of the legacy preamble field, which rig itself documents as
+        // the preferred representation
         preamble: None,
         chat_history,
         documents: vec![],
-        tools,
+        tools: vec![],
         temperature: request.params.temperature.map(f64::from),
         max_tokens: request.params.max_tokens.map(u64::from),
         additional_params: None,
-        tool_choice: Some(to_rig_tool_choice(&request.tool_choice)),
+        tool_choice: None,
         output_schema: None,
         record_telemetry_content: false,
     })
 }
 
-fn to_rig_tool_choice(choice: &ToolChoice) -> RigToolChoice {
-    match choice {
-        ToolChoice::Auto => RigToolChoice::Auto,
-        ToolChoice::None => RigToolChoice::None,
-        ToolChoice::Required => RigToolChoice::Required,
-        ToolChoice::Specific { names } => RigToolChoice::Specific {
-            function_names: names.clone(),
-        },
-    }
-}
-
-/// Infers a stop reason from content alone: [`StopReason::ToolUse`] if the
-/// model asked for any tool call, [`StopReason::EndTurn`] otherwise.
+/// The stop reason every reply is reported with.
 ///
 /// rig's generic `CompletionResponse<T>` and `StreamingCompletionResponse<T>`
 /// expose no normalized finish/stop reason - only the provider-specific raw
 /// response does, which would defeat the point of a provider-agnostic type.
-/// `MaxTokens`, `StopSequence`, and `Refusal` are therefore not
-/// currently derivable through this adapter. This is a third rig API gap
-/// alongside the two recorded in `docs/notes/ai-preflight-findings.md`, and is
-/// an honest limitation rather than a bug: the harness only ever branches on
-/// `ToolUse` versus everything else, so loop correctness is unaffected, though
-/// diagnostic precision for a truncated response is lost until a per-provider
-/// raw-response inspection is worth the genericity cost.
-fn infer_stop_reason(content: &[ContentBlock]) -> StopReason {
-    if content.iter().any(ContentBlock::is_tool_use) {
-        StopReason::ToolUse
-    } else {
-        StopReason::EndTurn
-    }
-}
+/// `MaxTokens`, `StopSequence`, and `Refusal` are therefore not derivable
+/// through this adapter, which is an honest limitation rather than a bug: see
+/// `docs/notes/rig-provider-findings.md`.
+const STOP_REASON: StopReason = StopReason::EndTurn;
 
 #[async_trait]
 impl<M> Provider for RigProvider<M>
@@ -138,12 +111,11 @@ where
         let content: Vec<ContentBlock> = response
             .choice
             .into_iter()
-            .map(convert::from_assistant_content)
+            .filter_map(convert::from_assistant_content)
             .collect();
         let usage = convert::from_rig_usage(response.usage);
-        let stop_reason = infer_stop_reason(&content);
 
-        Ok(CompletionResponse::new(content, stop_reason, usage))
+        Ok(CompletionResponse::new(content, STOP_REASON, usage))
     }
 
     async fn stream(
@@ -172,15 +144,8 @@ where
                 }
             }
 
-            // the underlying stream has drained; rig has now populated `choice` and `response`
-            // with the fully accumulated content and the raw provider response
-            let final_content: Vec<ContentBlock> = inner
-                .choice
-                .iter()
-                .cloned()
-                .map(convert::from_assistant_content)
-                .collect();
-            let stop_reason = infer_stop_reason(&final_content);
+            // the underlying stream has drained; rig has now populated `response` with the raw
+            // provider response
             let usage = inner
                 .response
                 .as_ref()
@@ -188,7 +153,7 @@ where
                 .unwrap_or_default();
 
             yield Ok(StreamEvent::Usage { usage });
-            yield Ok(StreamEvent::Done { stop_reason });
+            yield Ok(StreamEvent::Done { stop_reason: STOP_REASON });
         };
 
         Ok(Box::pin(events))
@@ -197,8 +162,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
     use crate::types::{History, Message, ModelParams, ModelRef};
 
@@ -237,22 +200,10 @@ mod tests {
     }
 
     #[test]
-    fn test_tools_are_converted() {
-        let request = request().with_tools(vec![crate::types::ToolSchema::no_arguments(
-            "ping",
-            "does nothing",
-        )]);
-        let rig_request = build_completion_request(request).expect("should build");
-
-        assert_eq!(rig_request.tools.len(), 1);
-        assert_eq!(rig_request.tools[0].name, "ping");
-    }
-
-    #[test]
     fn test_params_are_widened_not_truncated() {
-        // 0.5 is exactly representable in both f32 and f64, so this proves the widen is
-        // present without also asserting on f32-to-f64 rounding behaviour,
-        // which is not what this test is for
+        // 0.5 is exactly representable in both f32 and f64, so this proves the
+        // widen is present without also asserting on f32-to-f64 rounding
+        // behaviour, which is not what this test is for
         let request = request().with_params(
             ModelParams::new()
                 .with_temperature(0.5)
@@ -265,24 +216,10 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_choice_required_maps_across() {
-        let request = request().with_tool_choice(ToolChoice::Required);
-        let rig_request = build_completion_request(request).expect("should build");
-        assert_eq!(rig_request.tool_choice, Some(RigToolChoice::Required));
-    }
-
-    #[test]
-    fn test_tool_choice_specific_maps_names() {
-        let request = request().with_tool_choice(ToolChoice::Specific {
-            names: vec!["handoff".to_string()],
-        });
-        let rig_request = build_completion_request(request).expect("should build");
-        assert_eq!(
-            rig_request.tool_choice,
-            Some(RigToolChoice::Specific {
-                function_names: vec!["handoff".to_string()]
-            })
-        );
+    fn test_no_tools_are_offered() {
+        let rig_request = build_completion_request(request()).expect("should build");
+        assert!(rig_request.tools.is_empty(), "a conversation has no tools");
+        assert_eq!(rig_request.tool_choice, None);
     }
 
     #[test]
@@ -293,20 +230,6 @@ mod tests {
             build_completion_request(empty).is_err(),
             "a request with no system prompt and no history has nothing to send"
         );
-    }
-
-    // --- infer_stop_reason ---
-
-    #[test]
-    fn test_infer_stop_reason_tool_use() {
-        let content = vec![ContentBlock::tool_use("c1", "current_time", json!({}))];
-        assert_eq!(infer_stop_reason(&content), StopReason::ToolUse);
-    }
-
-    #[test]
-    fn test_infer_stop_reason_end_turn() {
-        let content = vec![ContentBlock::text("hi")];
-        assert_eq!(infer_stop_reason(&content), StopReason::EndTurn);
     }
 
     // --- RigProvider against a fake CompletionModel ---
@@ -323,11 +246,6 @@ mod tests {
     #[derive(Clone)]
     enum FakeModel {
         Text(String),
-        ToolCall {
-            id: String,
-            name: String,
-            arguments: serde_json::Value,
-        },
         Error,
     }
 
@@ -354,22 +272,6 @@ mod tests {
                     raw_response: (),
                     message_id: None,
                 }),
-                FakeModel::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                } => Ok(rig_core::completion::CompletionResponse {
-                    choice: OneOrMany::one(
-                        rig_core::completion::message::AssistantContent::tool_call(
-                            id.clone(),
-                            name.clone(),
-                            arguments.clone(),
-                        ),
-                    ),
-                    usage: rig_core::completion::Usage::new(),
-                    raw_response: (),
-                    message_id: None,
-                }),
                 FakeModel::Error => Err(CompletionError::ResponseError("boom".to_string())),
             }
         }
@@ -383,9 +285,6 @@ mod tests {
                     Ok(RawStreamingChoice::Message(text.clone())),
                     Ok(RawStreamingChoice::FinalResponse(())),
                 ],
-                FakeModel::ToolCall { .. } => {
-                    vec![Ok(RawStreamingChoice::FinalResponse(()))]
-                }
                 FakeModel::Error => {
                     vec![Err(CompletionError::ResponseError("boom".to_string()))]
                 }
@@ -408,21 +307,6 @@ mod tests {
 
         assert_eq!(response.text(), "hello");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
-    }
-
-    #[tokio::test]
-    async fn test_complete_converts_tool_call_response() {
-        let response = provider(FakeModel::ToolCall {
-            id: "c1".to_string(),
-            name: "current_time".to_string(),
-            arguments: json!({}),
-        })
-        .complete(request())
-        .await
-        .expect("should succeed");
-
-        assert_eq!(response.stop_reason, StopReason::ToolUse);
-        assert!(response.has_tool_uses());
     }
 
     #[tokio::test]

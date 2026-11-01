@@ -46,29 +46,11 @@ in
   '';
 
   env = {
-    RUST_LOG = "info,munibot=debug,munibot_api=debug,munibot_core=debug,munibot_discord=debug,munibot_gui=debug,munibot_twitch=debug";
+    RUST_LOG = "error,munibot=debug,munibot_api=debug,munibot_core=debug,munibot_discord=debug,munibot_gui=debug,munibot_twitch=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
     # matches the redirect URI registered with discord for local development
     PORT = 8080;
   };
-
-  # the ai sandbox (munibot_ai::sandbox) talks to rootless podman over its
-  # own socket via bollard, never the setuid docker socket. Deliberately no
-  # DOCKER_HOST override here: devenv's own `env` is plain Nix, with no
-  # shell expansion, so a Nix string literally containing `$XDG_RUNTIME_DIR`
-  # would set DOCKER_HOST to that unexpanded text rather than the real
-  # per-session path - worse than not setting it at all, since bollard's
-  # Docker::connect_with_podman_defaults() checks DOCKER_HOST *first* and
-  # would try to use it verbatim. Its own fallback probe of
-  # `$XDG_RUNTIME_DIR/podman/podman.sock` (a real shell expansion, evaluated
-  # at runtime inside bollard itself) already finds the right socket with no
-  # help from this file - see docs/notes/ai-preflight-findings.md finding 11.
-  #
-  # One-time host setup, outside this devenv shell since it's a per-user
-  # systemd unit: `systemctl --user enable --now podman.socket`. Sandbox
-  # integration tests are gated behind a feature flag (see
-  # munibot_ai/Cargo.toml's "sandbox-integration" feature) so `devenv test`
-  # stays green on a machine where this was never set up.
 
   # setup helix to format dioxus rust and scss with treefmt
   files.".helix/languages.toml".toml.language = [
@@ -135,7 +117,6 @@ in
     [
       diesel-cli
       flyctl
-      podman
       tailwindcss_4
       wasm-bindgen-cli-pinned
       cargo-expand
@@ -190,7 +171,6 @@ in
         "devenv:processes:redis"
       ];
       ready.http.get.port = 8080;
-      env.DATABASE_URL = "mysql://munibot:sillylittlepassword@localhost:${toString config.processes.mysql.ports.main.value}/munibot";
     };
   };
 

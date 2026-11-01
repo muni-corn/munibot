@@ -1,17 +1,10 @@
 //! Discord OAuth2 client: authorization-code exchange, and the REST calls
 //! made with the resulting user access token.
 
-use std::time::Duration;
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod bot;
-pub mod client;
-pub mod credentials;
-pub mod guild_cache;
-pub mod rate_limit;
-pub mod token;
 
 const API_BASE: &str = "https://discord.com/api/v10";
 
@@ -30,31 +23,6 @@ pub enum DiscordOAuthError {
         error: String,
         error_description: Option<String>,
     },
-
-    #[error("couldn't deserialize json: {0}")]
-    Deserialize(#[from] serde_json::Error),
-
-    /// Discord rejected the request with a `429`, even after retrying with
-    /// backoff. `global` distinguishes a shared, ip-wide limit from a
-    /// per-route/per-user one -- both mean the same thing to a caller, but
-    /// it's useful in logs.
-    #[error("discord is rate limiting us; try again in {retry_after:?} :<")]
-    RateLimited { retry_after: Duration, global: bool },
-}
-
-impl From<rate_limit::SendError> for DiscordOAuthError {
-    fn from(e: rate_limit::SendError) -> Self {
-        match e {
-            rate_limit::SendError::Request(e) => Self::Request(e),
-            rate_limit::SendError::RateLimited {
-                retry_after,
-                global,
-            } => Self::RateLimited {
-                retry_after,
-                global,
-            },
-        }
-    }
 }
 
 /// The redirect URI munibot registers with discord for the oauth2 callback.
@@ -105,22 +73,26 @@ enum TokenResponse {
     },
 }
 
-/// Posts a `grant_type`-keyed form to `/oauth2/token`, shared by
-/// `exchange_code` and `refresh_access_token`.
-async fn token_request(
-    form: &[(&str, &str)],
+/// Exchanges an authorization code (from the callback's `?code=` query
+/// parameter) for an access token.
+pub async fn exchange_code(
+    code: &str,
+    base_url: &str,
     client_id: &str,
     client_secret: &str,
 ) -> Result<Token, DiscordOAuthError> {
-    let response = rate_limit::send_with_retries(
-        client::client()
-            .post(format!("{API_BASE}/oauth2/token"))
-            .form(form)
-            .basic_auth(client_id, Some(client_secret)),
-    )
-    .await?
-    .json::<TokenResponse>()
-    .await?;
+    let response = reqwest::Client::new()
+        .post(format!("{API_BASE}/oauth2/token"))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", &redirect_uri(base_url)),
+        ])
+        .basic_auth(client_id, Some(client_secret))
+        .send()
+        .await?
+        .json::<TokenResponse>()
+        .await?;
 
     match response {
         TokenResponse::Success {
@@ -140,44 +112,6 @@ async fn token_request(
             error_description,
         }),
     }
-}
-
-/// Exchanges an authorization code (from the callback's `?code=` query
-/// parameter) for an access token.
-pub async fn exchange_code(
-    code: &str,
-    base_url: &str,
-    client_id: &str,
-    client_secret: &str,
-) -> Result<Token, DiscordOAuthError> {
-    token_request(
-        &[
-            ("grant_type", "authorization_code"),
-            ("code", code),
-            ("redirect_uri", &redirect_uri(base_url)),
-        ],
-        client_id,
-        client_secret,
-    )
-    .await
-}
-
-/// Exchanges a refresh token for a new access token, once the previous one
-/// has expired (or is close to it).
-pub async fn refresh_access_token(
-    refresh_token: &str,
-    client_id: &str,
-    client_secret: &str,
-) -> Result<Token, DiscordOAuthError> {
-    token_request(
-        &[
-            ("grant_type", "refresh_token"),
-            ("refresh_token", refresh_token),
-        ],
-        client_id,
-        client_secret,
-    )
-    .await
 }
 
 /// The subset of discord's user object munibot cares about.
@@ -206,14 +140,13 @@ impl DiscordUser {
 
 /// Fetches the identity of the user who owns `access_token`.
 pub async fn get_current_user(access_token: &str) -> Result<DiscordUser, DiscordOAuthError> {
-    Ok(rate_limit::send_with_retries(
-        client::client()
-            .get(format!("{API_BASE}/users/@me"))
-            .bearer_auth(access_token),
-    )
-    .await?
-    .json::<DiscordUser>()
-    .await?)
+    Ok(reqwest::Client::new()
+        .get(format!("{API_BASE}/users/@me"))
+        .bearer_auth(access_token)
+        .send()
+        .await?
+        .json::<DiscordUser>()
+        .await?)
 }
 
 /// The `MANAGE_GUILD` permission bit, per discord's permissions bitfield.
@@ -253,12 +186,11 @@ impl DiscordGuild {
 pub async fn get_current_user_guilds(
     access_token: &str,
 ) -> Result<Vec<DiscordGuild>, DiscordOAuthError> {
-    Ok(rate_limit::send_with_retries(
-        client::client()
-            .get(format!("{API_BASE}/users/@me/guilds"))
-            .bearer_auth(access_token),
-    )
-    .await?
-    .json::<Vec<DiscordGuild>>()
-    .await?)
+    Ok(reqwest::Client::new()
+        .get(format!("{API_BASE}/users/@me/guilds"))
+        .bearer_auth(access_token)
+        .send()
+        .await?
+        .json::<Vec<DiscordGuild>>()
+        .await?)
 }

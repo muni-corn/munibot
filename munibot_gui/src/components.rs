@@ -24,6 +24,8 @@ pub fn AccountStatus() -> Element {
             let name = user.display_name.clone();
             rsx! {
                 span { "hi, {name}! ^-^ " }
+                Link { to: Route::Chat {}, "chat" }
+                " · "
                 Link { to: Route::DashboardIndex {}, "your servers" }
                 " · "
                 Link { to: Route::Account {}, "account" }

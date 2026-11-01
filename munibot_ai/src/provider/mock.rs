@@ -1,7 +1,6 @@
 use std::{collections::VecDeque, sync::Mutex};
 
 use async_trait::async_trait;
-use serde_json::Value;
 
 use crate::{
     provider::Provider,
@@ -12,8 +11,8 @@ use crate::{
 ///
 /// Push expected responses in the order the code under test should receive
 /// them, then run the code. Every request is recorded, so a test can assert on
-/// what the harness actually sent — the system prompt it built, the tools it
-/// offered, the history it assembled. Running out of scripted responses is a
+/// what the code under test actually sent — the system prompt it built and
+/// the history it assembled. Running out of scripted responses is a
 /// test bug, not a runtime condition, so it panics with a message naming which
 /// request went unanswered rather than returning an error a caller might
 /// quietly paper over.
@@ -45,20 +44,6 @@ impl MockProvider {
         self.respond(Ok(CompletionResponse::new(
             vec![ContentBlock::text(text)],
             StopReason::EndTurn,
-            Usage::default(),
-        )))
-    }
-
-    /// Queues a response that calls a single tool.
-    pub fn respond_tool_use(
-        self,
-        call_id: impl Into<String>,
-        name: impl Into<String>,
-        arguments: Value,
-    ) -> Self {
-        self.respond(Ok(CompletionResponse::new(
-            vec![ContentBlock::tool_use(call_id, name, arguments)],
-            StopReason::ToolUse,
             Usage::default(),
         )))
     }
@@ -113,8 +98,8 @@ impl Provider for MockProvider {
             .unwrap_or_else(|| {
                 panic!(
                     "MockProvider ran out of scripted responses on request {request_number} - \
-                     queue more with respond_text, respond_tool_use, respond_error, or respond \
-                     before running the code under test"
+                     queue more with respond_text, respond_error, or respond before running the \
+                     code under test"
                 )
             })
     }
@@ -122,8 +107,6 @@ impl Provider for MockProvider {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     fn request() -> CompletionRequest {
@@ -145,25 +128,6 @@ mod tests {
             "the scripted text should come back verbatim"
         );
         assert_eq!(response.stop_reason, StopReason::EndTurn);
-    }
-
-    #[tokio::test]
-    async fn test_respond_tool_use_is_returned_by_complete() {
-        let provider =
-            MockProvider::new().respond_tool_use("c1", "current_time", json!({"timezone": "UTC"}));
-
-        let response = provider.complete(request()).await.expect("should succeed");
-
-        assert_eq!(
-            response.stop_reason,
-            StopReason::ToolUse,
-            "a tool call should stop the turn there"
-        );
-        let (call_id, name, _) = response.content[0]
-            .as_tool_use()
-            .expect("the queued response should be a tool call");
-        assert_eq!(call_id, "c1");
-        assert_eq!(name, "current_time");
     }
 
     #[tokio::test]

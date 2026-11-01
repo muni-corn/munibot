@@ -8,6 +8,6 @@
 //     alongside it
 
 #[cfg(feature = "server")]
-pub mod bot;
+pub mod ai;
 #[cfg(feature = "server")]
-pub mod permissions;
+pub mod bot;

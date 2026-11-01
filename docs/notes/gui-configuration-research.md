@@ -22,8 +22,7 @@ even once the bug is gone -- except the two storage bugs in the section
 immediately below, which are gone outright now that they're fixed: a stale
 note costs more than no note. What is still outstanding: the two autodelete
 storage bugs, the missing `ON DELETE CASCADE` on `linked_accounts`, and the
-quote timestamp timezone. All four are scheduled in
-`docs/plans/ai/milestone-7-projects.md` phase 28.
+quote timestamp timezone.
 
 ## Existing settings surfaces (as of the fork point)
 
@@ -37,9 +36,9 @@ At the fork point, all guild settings were Discord-slash-command only, gated
 on `required_permissions = "MANAGE_GUILD"` (`admin.rs:28`). That gate is the
 precedent a GUI equivalent must mirror.
 
-**Since then**, logging and AI settings both gained a GUI surface under
+**Since then**, logging settings gained a GUI surface under
 `/dashboard/:guild_id` (`munibot_gui/src/pages/guild_settings/`), and the
-prediction above held: they mirror the slash-command gate through
+prediction above held: it mirrors the slash-command gate through
 `munibot_api/src/auth/guild.rs::require_guild_admin` rather than reusing
 `is_administered_by_user`, which remains a display filter and not an
 authorization check. Autodelete is still slash-command only, and the two
@@ -48,13 +47,13 @@ fixed.
 
 ## Storage bugs found by this research
 
-Two of the four this research originally found are fixed:
-`upsert_guild_config` now uses `on_conflict(DuplicatedKeys).do_update()`
-(`operations.rs:47`) instead of a nulling `REPLACE INTO`, and `/admin
-stop-logging` now calls `set_guild_logging_channel(db, guild_id, None)`
-(`admin.rs:107-114`) instead of deleting the whole row via
-`delete_guild_config` (which still exists but has no caller outside its own
-test). Two are still live:
+Two of the four this research originally found no longer apply. `guild_configs`
+only holds the logging channel, so `upsert_guild_config`'s `REPLACE INTO` and
+`/admin stop-logging`'s whole-row delete both behave exactly like a
+single-column write. If another setting is ever added to that row, both
+become hazards again: a `REPLACE INTO` nulls every column the caller didn't
+populate, and a row delete wipes every setting at once, so writes would need
+to read the existing row first and merge. Two are still live:
 
 - `AutoDeleteHandler` loads every timer into a `HashMap` once at boot
   (`autodelete.rs:30-53`) and never re-reads. A GUI (or any external) write
@@ -69,29 +68,22 @@ test). Two are still live:
   settings columns from sweep-state columns (or at minimum, not re-writing
   sweep state on a settings-only change) fixes this.
 
-Both are planned as commits 249 and 250 in
-`docs/plans/ai/milestone-7-projects.md`.
+Both are still open.
 
 ## Authorization gap
 
 **Resolved.** This section described a real gap at the time this research was
-written, but `HasPermission::has` now checks a real, session-loaded
-permission set (`User::permissions`, populated from `user_permissions` by
-`Authentication::load_user`) rather than always returning `false` - see
-`docs/notes/permission-system.md` for the full design.
-`munibot_api/src/auth/operator.rs::require_operator` is the operator-gated
-counterpart to the guild-admin check below, for the administrative pages
-(the safety/usage dashboards, the transcript viewer) that gate on it.
+written: nothing checked that a signed-in user actually administers the guild
+they were editing. `munibot_api/src/auth/guild.rs::require_guild_admin` is that
+check now.
 
-The rest of this section is still accurate: `DiscordGuild::is_administered_by_user`
+What this section found is still accurate: `DiscordGuild::is_administered_by_user`
 (`oauth/discord.rs`) remains a **display filter** in `get_guilds`, never an
 authorization check on its own, and every guild-scoped settings server
 function still needs its own `require_guild_admin`-style check: linked
 account -> `get_current_user_guilds` -> `is_administered_by_user`, done fresh
 (or short-TTL cached) per request, since there's no local cache of guild
-membership to check against instead. The operator permission and the
-guild-admin check are two different authorities, gating two different kinds
-of page, and neither substitutes for the other.
+membership to check against instead.
 
 ## Getting a channel list: the bot token, not the user's oauth token
 
@@ -186,6 +178,5 @@ Pre-existing, unrelated bug noticed in passing: `munibot_twitch/src/handlers/quo
 stores `Local::now().naive_local()` for `quotes.created_at`, while every
 other table in the schema stores UTC (`Utc::now().naive_utc()`, e.g.
 `economy/payout.rs:38,73`). Worth fixing independently of any settings work;
-existing rows would need a decision on whether to backfill. Planned as commit
-251 in `docs/plans/ai/milestone-7-projects.md`.
+existing rows would need a decision on whether to backfill.
 </content>

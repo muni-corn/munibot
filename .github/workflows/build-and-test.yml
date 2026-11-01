@@ -102,13 +102,6 @@ jobs:
       - name: treefmt
         run: devenv shell -- treefmt --fail-on-change
 
-      # sandbox-integration deliberately left out here: those tests need a
-      # rootless podman socket, which this runner does not have - every one
-      # of them is #[cfg_attr(not(feature = "sandbox-integration"), ignore)]
-      # and stays skipped rather than failing for want of podman. Run them
-      # locally instead, via `devenv shell -- test-sandbox`
-      # (docs/ai-operations.md, docs/notes/sandbox-verification-gaps.md).
-      # This is a deliberate decision, not an oversight.
       - name: test
         run: >-
           devenv shell -- cargo test --workspace

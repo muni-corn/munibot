@@ -19,7 +19,7 @@ pub enum ModelRefError {
 /// Which provider and model to use.
 ///
 /// Written as `provider:model` everywhere a human touches it, which is what
-/// lets a persona pick its provider with a single string in configuration.
+/// lets configuration pick a provider with a single string.
 ///
 /// # Example
 /// ```
@@ -64,9 +64,9 @@ impl FromStr for ModelRef {
             .split_once(':')
             .ok_or_else(|| ModelRefError::MissingSeparator(raw.to_string()))?;
 
-        // a half-written reference is a configuration mistake worth naming precisely,
-        // because it otherwise surfaces much later as a confusing "unknown
-        // provider"
+        // a half-written reference is a configuration mistake worth naming
+        // precisely, because it otherwise surfaces much later as a confusing
+        // "unknown provider"
         if provider.trim().is_empty() {
             return Err(ModelRefError::EmptyProvider(raw.to_string()));
         }
@@ -100,7 +100,7 @@ impl From<ModelRef> for String {
 
 /// Sampling and length knobs for one request.
 ///
-/// Every field is optional so that a persona only states what it cares about
+/// Every field is optional so that a caller only states what it cares about
 /// and the provider's own default covers the rest.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct ModelParams {

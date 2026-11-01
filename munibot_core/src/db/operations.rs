@@ -3,18 +3,16 @@ use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use rand::seq::IndexedRandom;
 
-pub mod ai;
-
 use crate::db::{
     DbPool,
     models::{
         AutoDeleteTimerRow, CommunityLink, EmailSigninToken, GuildConfig, GuildPayout, GuildWallet,
         LinkedAccount, NewCommunityLink, NewEmailSigninToken, NewGuildPayout, NewGuildWallet,
-        NewLinkedAccount, NewQuote, NewUser, NewUserPermission, Quote, UpdateAutoDeleteTimer, User,
+        NewLinkedAccount, NewQuote, NewUser, Quote, UpdateAutoDeleteTimer, User,
     },
     schema::{
         autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
-        guild_wallets, linked_accounts, quotes, user_permissions, users,
+        guild_wallets, linked_accounts, quotes, users,
     },
 };
 
@@ -26,19 +24,12 @@ diesel::define_sql_function!(fn last_insert_id() -> diesel::sql_types::Unsigned<
 
 /// Inserts or updates a guild config row, returning the saved record.
 ///
-/// Uses MySQL's `INSERT ... ON DUPLICATE KEY UPDATE` rather than
-/// `REPLACE INTO`. `REPLACE INTO` deletes the existing row and reinserts it,
-/// which would null out every column not present in `config` -- as soon as
-/// `guild_configs` gains a second setting, a write to one column would
-/// silently erase the other. `ON DUPLICATE KEY UPDATE` only touches the
-/// columns named in the changeset.
+/// Uses MySQL's `REPLACE INTO` which deletes the old row and inserts the new
+/// one when a duplicate primary key is found.
 pub async fn upsert_guild_config(pool: &DbPool, config: GuildConfig) -> QueryResult<GuildConfig> {
     let mut conn = pool.get().await.expect("couldn't get db connection");
-    diesel::insert_into(guild_configs::table)
+    diesel::replace_into(guild_configs::table)
         .values(&config)
-        .on_conflict(diesel::dsl::DuplicatedKeys)
-        .do_update()
-        .set(&config)
         .execute(&mut conn)
         .await?;
     guild_configs::table
@@ -570,26 +561,6 @@ pub async fn get_or_create_user_from_linked_account(
         .await
 }
 
-/// Finds the user linked to a provider account, without creating one -
-/// unlike `get_or_create_user_from_linked_account`, for a caller (resolving
-/// a configured operator) that only ever wants an existing user, never a
-/// newly created one.
-pub async fn find_user_by_linked_account(
-    pool: &DbPool,
-    provider: &str,
-    provider_user_id: &str,
-) -> QueryResult<Option<User>> {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    users::table
-        .inner_join(linked_accounts::table)
-        .filter(linked_accounts::provider.eq(provider))
-        .filter(linked_accounts::provider_user_id.eq(provider_user_id))
-        .select(User::as_select())
-        .first(&mut conn)
-        .await
-        .optional()
-}
-
 /// Every provider account linked to a user, for an account settings page
 /// and for `unlink_linked_account`'s own "not the last one" check.
 pub async fn list_linked_accounts(pool: &DbPool, user_id: i64) -> QueryResult<Vec<LinkedAccount>> {
@@ -687,13 +658,10 @@ pub enum UnlinkAccountOutcome {
     Unlinked,
     /// `user_id` has no other linked account - unlinking this one would
     /// leave them with no way to ever sign in again. Refused rather than
-    /// allowed and hoped nobody hits it: the memory-wipe promise (a
-    /// consistent `users.id` across every provider) is worthless to
-    /// someone who can no longer reach their own `users.id` at all.
+    /// allowed and hoped nobody hits it.
     LastRemainingAccount,
     /// No linked account for `user_id` on that provider - not an error,
-    /// the same reasoning `forget_memory`'s own doc comment documents for
-    /// forgetting a memory that never existed.
+    /// since there is nothing to undo.
     NotFound,
 }
 
@@ -722,40 +690,6 @@ pub async fn unlink_linked_account(
     .await?;
 
     Ok(UnlinkAccountOutcome::Unlinked)
-}
-
-// user_permissions
-
-/// Grants `permission` (a `crate::permission::Permission`'s string form) to
-/// a user, idempotently - granting a permission a user already has is not
-/// an error, since `user_permissions` has nothing else to update on a
-/// repeat grant.
-pub async fn grant_permission(pool: &DbPool, user_id: i64, permission: &str) -> QueryResult<()> {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    diesel::insert_into(user_permissions::table)
-        .values(NewUserPermission {
-            user_id,
-            permission: permission.to_owned(),
-            created_at: chrono::Utc::now().naive_utc(),
-        })
-        .on_conflict(diesel::dsl::DuplicatedKeys)
-        .do_update()
-        .set(user_permissions::permission.eq(user_permissions::permission))
-        .execute(&mut conn)
-        .await?;
-    Ok(())
-}
-
-/// Every permission a user currently holds, as canonical string tokens -
-/// what `munibot_api::auth::server::User::load_user` loads into the
-/// session's own in-memory permission set.
-pub async fn list_user_permissions(pool: &DbPool, user_id: i64) -> QueryResult<Vec<String>> {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    user_permissions::table
-        .filter(user_permissions::user_id.eq(user_id))
-        .select(user_permissions::permission)
-        .load(&mut conn)
-        .await
 }
 
 // email_signin_tokens
@@ -824,29 +758,4 @@ pub async fn consume_email_signin_token(
 
     let now = chrono::Utc::now().naive_utc();
     Ok((token.expires_at > now).then_some(token.email))
-}
-
-/// Overwrites a linked account's token fields, e.g. after refreshing an
-/// expired oauth access token.
-pub async fn update_linked_account_tokens(
-    pool: &DbPool,
-    linked_account_id: i64,
-    access_token: &str,
-    refresh_token: Option<&str>,
-    token_expires_at: Option<NaiveDateTime>,
-) -> QueryResult<()> {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    let now = chrono::Utc::now().naive_utc();
-
-    diesel::update(linked_accounts::table.find(linked_account_id))
-        .set((
-            linked_accounts::access_token.eq(access_token),
-            linked_accounts::refresh_token.eq(refresh_token),
-            linked_accounts::token_expires_at.eq(token_expires_at),
-            linked_accounts::updated_at.eq(now),
-        ))
-        .execute(&mut conn)
-        .await?;
-
-    Ok(())
 }

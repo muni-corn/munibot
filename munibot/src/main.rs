@@ -1,6 +1,8 @@
 #[cfg(feature = "server")]
 use clap::Parser;
 #[cfg(feature = "server")]
+use munibot_ai::AiConfig;
+#[cfg(feature = "server")]
 use munibot_core::{config::Config, db::run_pending_migrations};
 #[cfg(feature = "server")]
 use tracing::info;
@@ -50,6 +52,11 @@ async fn main() -> anyhow::Result<()> {
     // first things first, perform database migrations
     run_pending_migrations();
 
+    // built independently of the bots below: `MUNIBOT_DISABLE_BOTS` is the
+    // documented local gui development workflow, so gating this on the same
+    // guard would leave the chat page with no service behind it
+    let chat = munibot::ai::build(&AiConfig::load_from_file(&config_file)?)?;
+
     // start the bots alongside the gui server, unless explicitly disabled for
     // local gui development (so `dx serve` reloads don't reconnect discord)
     if std::env::var("MUNIBOT_DISABLE_BOTS").is_err() {
@@ -58,5 +65,5 @@ async fn main() -> anyhow::Result<()> {
         info!("MUNIBOT_DISABLE_BOTS is set; skipping discord and twitch startup");
     }
 
-    munibot_gui::server::run(config.discord).await
+    munibot_gui::server::run(config.discord, chat).await
 }

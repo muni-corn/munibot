@@ -1,4 +1,4 @@
-//! Provider-neutral domain types for munibot's ai harness.
+//! Provider-neutral domain types for munibot's conversation interface.
 //!
 //! Every other module in this crate speaks these types. Nothing here performs
 //! I/O, and nothing here depends on a specific model provider — that is what
@@ -14,14 +14,12 @@ pub mod error;
 pub mod message;
 pub mod model;
 pub mod stream;
-pub mod tool;
 pub mod usage;
 
-pub use completion::{CompletionRequest, CompletionResponse, StopReason, ToolChoice};
-pub use content::{ContentBlock, Image, ImageSource, Role};
+pub use completion::{CompletionRequest, CompletionResponse, StopReason};
+pub use content::{ContentBlock, Role};
 pub use error::AiError;
-pub use message::{History, Message, rough_token_estimate};
+pub use message::{History, Message};
 pub use model::{ModelParams, ModelRef, ModelRefError};
 pub use stream::StreamEvent;
-pub use tool::ToolSchema;
-pub use usage::{Cost, Usage};
+pub use usage::Usage;

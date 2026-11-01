@@ -347,9 +347,6 @@ struct EmailCallbackParams {
 
 /// Logs the current session out and returns home.
 async fn logout(auth: AuthSession) -> Redirect {
-    if let Some(user) = &auth.current_user {
-        discord::guild_cache::invalidate(user.id).await;
-    }
     auth.logout_user();
     Redirect::to("/")
 }

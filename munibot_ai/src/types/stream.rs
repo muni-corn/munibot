@@ -4,11 +4,9 @@ use crate::types::{completion::StopReason, usage::Usage};
 
 /// One increment of a streamed response.
 ///
-/// Deliberately mirrors the union of Anthropic's and OpenAI's stream shapes
-/// rather than either one alone, so that adapting a provider is a direct
-/// mapping instead of a lossy one. A tool call arrives as a start event naming
-/// it, zero or more argument deltas as its JSON accumulates, and an
-/// end event once the arguments are complete and parseable.
+/// Deliberately mirrors the shape of Anthropic's and OpenAI's streams rather
+/// than either one alone, so that adapting a provider is a direct mapping
+/// instead of a lossy one.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
@@ -16,12 +14,6 @@ pub enum StreamEvent {
     TextDelta { text: String },
     /// A chunk of reasoning, where the provider exposes it incrementally.
     ThinkingDelta { thinking: String },
-    /// The model has begun a tool call. Its arguments arrive next as deltas.
-    ToolUseStart { call_id: String, name: String },
-    /// A chunk of a tool call's JSON arguments, to be concatenated in order.
-    ToolUseDelta { partial_json: String },
-    /// A tool call's arguments are complete.
-    ToolUseEnd,
     /// Token accounting for the response so far. May arrive more than once, and
     /// the latest value wins.
     Usage { usage: Usage },
@@ -60,33 +52,15 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_use_lifecycle_roundtrips() {
-        for event in [
-            StreamEvent::ToolUseStart {
-                call_id: "c1".to_string(),
-                name: "current_time".to_string(),
-            },
-            StreamEvent::ToolUseDelta {
-                partial_json: "{\"timezone\":".to_string(),
-            },
-            StreamEvent::ToolUseEnd,
-        ] {
-            let encoded = serde_json::to_string(&event).expect("should serialize");
-            let decoded: StreamEvent = serde_json::from_str(&encoded).expect("should deserialize");
-            assert_eq!(
-                decoded, event,
-                "tool use lifecycle event should roundtrip: {event:?}"
-            );
-        }
-    }
-
-    #[test]
     fn test_events_are_internally_tagged() {
-        let encoded = serde_json::to_value(StreamEvent::ToolUseEnd).expect("should serialize");
+        let encoded = serde_json::to_value(StreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+        })
+        .expect("should serialize");
         assert_eq!(
             encoded,
-            serde_json::json!({"type": "tool_use_end"}),
-            "a unit-like variant should still carry its type tag"
+            serde_json::json!({"type": "done", "stop_reason": "end_turn"}),
+            "every event should carry its type tag"
         );
     }
 
@@ -95,7 +69,9 @@ mod tests {
         let text = StreamEvent::TextDelta {
             text: "hi".to_string(),
         };
-        let other = StreamEvent::ToolUseEnd;
+        let other = StreamEvent::ThinkingDelta {
+            thinking: "hmm".to_string(),
+        };
 
         assert_eq!(
             text.as_text_delta(),

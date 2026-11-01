@@ -13,11 +13,10 @@ use crate::{
     layouts::home::HomeLayout,
     pages::{
         account::Account,
-        chat::{Chat, ChatLayout, conversation::ChatConversation},
+        chat::Chat,
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
         home::Home,
-        transcript::TranscriptViewer,
     },
 };
 
@@ -41,10 +40,6 @@ pub enum Route {
         #[route("/")]
         Home,
         #[layout(HomeLayout)]
-            #[route("/account")]
-            Account {},
-            #[route("/transcript/:conversation_id", TranscriptViewer)]
-            Transcript { conversation_id: i64 },
             #[layout(Dashboard)]
                 #[route("/dashboard")]
                 DashboardIndex {},
@@ -56,9 +51,8 @@ pub enum Route {
                 #[route("/dashboard/:guild_id/logging", LoggingSettingsPage)]
                 GuildLoggingSettings { guild_id: String },
             #[end_layout]
-            #[layout(ChatLayout)]
-                #[route("/chat")]
-                Chat {},
-                #[route("/chat/:conversation_id")]
-                ChatConversation { conversation_id: i64 },
+            #[route("/chat")]
+            Chat {},
+            #[route("/account")]
+            Account {},
 }
