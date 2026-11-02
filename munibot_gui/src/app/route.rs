@@ -43,6 +43,8 @@ pub enum Route {
         #[layout(HomeLayout)]
             #[route("/account")]
             Account {},
+            #[route("/transcript/:conversation_id", TranscriptViewer)]
+            Transcript { conversation_id: i64 },
             #[layout(Dashboard)]
                 #[route("/dashboard")]
                 DashboardIndex {},
@@ -59,6 +61,4 @@ pub enum Route {
                 Chat {},
                 #[route("/chat/:conversation_id")]
                 ChatConversation { conversation_id: i64 },
-                #[route("/transcript/:conversation_id", TranscriptViewer)]
-                Transcript { conversation_id: i64 },
 }
