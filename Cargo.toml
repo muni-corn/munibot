@@ -8,7 +8,6 @@ members = [
   "munibot_discord",
   "munibot_gui",
   "munibot_twitch",
-  "munibot_vcs",
 ]
 
 [workspace.package]
