@@ -108,30 +108,6 @@ pub fn from_rig_usage(usage: rig_core::completion::Usage) -> Usage {
 pub fn from_streamed_content<R>(content: StreamedAssistantContent<R>) -> Vec<StreamEvent> {
     match content {
         StreamedAssistantContent::Text(text) => vec![StreamEvent::TextDelta { text: text.text }],
-        StreamedAssistantContent::ToolCall { tool_call, .. } => {
-            // a complete tool call arrived in one chunk; we have everything, so emit the
-            // full start/delta/end trio rather than leaving the caller to
-            // synthesize the end itself
-            let call_id = tool_call_correlation_id(&tool_call);
-            vec![
-                StreamEvent::ToolUseStart {
-                    call_id,
-                    name: tool_call.function.name,
-                },
-                StreamEvent::ToolUseDelta {
-                    partial_json: tool_call.function.arguments.to_string(),
-                },
-                StreamEvent::ToolUseEnd,
-            ]
-        }
-        StreamedAssistantContent::ToolCallDelta { id, content, .. } => match content {
-            rig_core::streaming::ToolCallDeltaContent::Name(name) => {
-                vec![StreamEvent::ToolUseStart { call_id: id, name }]
-            }
-            rig_core::streaming::ToolCallDeltaContent::Delta(partial_json) => {
-                vec![StreamEvent::ToolUseDelta { partial_json }]
-            }
-        },
         StreamedAssistantContent::Reasoning(reasoning) => {
             vec![StreamEvent::ThinkingDelta {
                 thinking: reasoning.first_text().unwrap_or_default().to_string(),
