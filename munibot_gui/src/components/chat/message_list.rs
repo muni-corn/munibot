@@ -1,10 +1,7 @@
 use dioxus::prelude::*;
 use munibot_api::chat::{ChatMessage, ChatRole};
 
-use crate::components::chat::{
-    markdown::render_markdown,
-    tool_activity::{ToolActivityEntry, ToolActivityStrip},
-};
+use crate::components::chat::markdown::render_markdown;
 
 /// Renders a conversation's messages as chat bubbles, oldest first.
 ///
