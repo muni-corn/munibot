@@ -44,6 +44,7 @@ impl From<ChatMessage> for munibot_ai::Message {
             ChatRole::Assistant => Self::assistant(message.content),
         }
     }
+}
 
     #[test]
     fn test_text_blocks_are_joined_into_plain_content() {
