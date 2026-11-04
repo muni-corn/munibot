@@ -4437,7 +4437,6 @@ dependencies = [
  "dioxus",
  "dioxus-desktop",
  "dioxus-html",
- "hmac 0.13.0",
  "munibot_ai",
  "munibot_api",
  "munibot_core",
