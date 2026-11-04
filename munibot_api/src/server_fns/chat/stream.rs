@@ -1,9 +1,4 @@
 use dioxus::prelude::*;
-// only the server actually builds a stream or constructs a ChatError -- the
-// client's stub never runs this function's body, so importing these
-// unconditionally would warn as unused when compiling for web
-#[cfg(feature = "server")]
-use futures::StreamExt;
 
 #[cfg(feature = "server")]
 use crate::chat::ChatError;
