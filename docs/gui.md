@@ -49,10 +49,7 @@ munibot/src/                (binary)
   main.rs           dual entry point: picks munibot_gui::launch_web() or ::server::run()
   lib.rs            module declarations
   bot.rs            (server only) discord/twitch startup, and the `discord` root tracing span
-  ai.rs             (server only) ai::build -- the single place every optional ai capability
-                     (tools, memory, delegation, usage, auditing, rate limits, spend caps,
-                     abuse detection, moderation, crisis classifier) is opted into
-  permissions.rs    (server only) sync_operators, granting Operator from [[operators]] at startup
+  ai.rs             (server only) ai::build -- builds the chat service from the [ai] config
 
 munibot_gui/src/
   lib.rs            module declarations, launch_web()
