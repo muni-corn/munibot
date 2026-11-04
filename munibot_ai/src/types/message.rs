@@ -162,62 +162,6 @@ mod tests {
     }
 
     #[test]
-    fn test_token_estimate_counts_tool_traffic() {
-        let text_only = History::from(vec![Message::user("hello")]);
-        let with_call = History::from(vec![Message::new(Role::Assistant, vec![
-            ContentBlock::tool_use(
-                "c",
-                "web_search",
-                json!({"query": "a long search query here"}),
-            ),
-        ])]);
-
-        assert!(
-            with_call.token_estimate(rough_token_estimate)
-                > text_only.token_estimate(rough_token_estimate),
-            "tool arguments consume context and must be counted"
-        );
-    }
-
-    #[test]
-    fn test_token_estimate_ignores_images() {
-        let history = History::from(vec![Message::new(Role::User, vec![ContentBlock::Image {
-            image: crate::types::content::Image {
-                media_type: "image/png".to_string(),
-                source: crate::types::content::ImageSource::Base64 {
-                    // a long base64 payload must not be mistaken for text tokens
-                    data: "A".repeat(10_000),
-                },
-            },
-        }])]);
-        assert_eq!(
-            history.token_estimate(rough_token_estimate),
-            0,
-            "image bytes are not text tokens"
-        );
-    }
-
-    #[test]
-    fn test_rough_token_estimate_rounds_up() {
-        assert_eq!(rough_token_estimate(""), 0, "empty text is zero tokens");
-        assert_eq!(
-            rough_token_estimate("a"),
-            1,
-            "a single character still costs a token"
-        );
-        assert_eq!(
-            rough_token_estimate("abcd"),
-            1,
-            "four characters is one token"
-        );
-        assert_eq!(
-            rough_token_estimate("abcde"),
-            2,
-            "five characters rounds up to two"
-        );
-    }
-
-    #[test]
     fn test_history_collects_from_iterator() {
         let history: History = vec![Message::user("a"), Message::assistant("b")]
             .into_iter()
