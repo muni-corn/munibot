@@ -162,8 +162,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
     use crate::types::{History, Message, ModelParams, ModelRef};
 
