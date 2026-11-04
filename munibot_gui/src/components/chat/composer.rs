@@ -7,25 +7,9 @@ use dioxus::{html::keyboard_types::Key, prelude::*};
 /// a second message can't be sent while munibot is still answering the first.
 /// The draft is cleared as soon as it is handed to `on_send`.
 #[component]
-pub fn Composer(conversation_id: i64, disabled: bool, on_sent: EventHandler<i64>) -> Element {
-    let mut drafts = use_context::<ChatDrafts>();
-    let mut sending = use_signal(|| false);
-    let mut attachments = use_signal(Vec::<PendingAttachment>::new);
-    let next_key = use_signal(|| 0u64);
-    let mut drag_hovered = use_signal(|| false);
-
-    let draft = drafts
-        .0
-        .read()
-        .get(&conversation_id)
-        .cloned()
-        .unwrap_or_default();
-
-    let has_pending_upload = attachments
-        .read()
-        .iter()
-        .any(|attachment| matches!(attachment.status, AttachmentStatus::Uploading));
-    let is_empty = draft.trim().is_empty() && attachments.read().is_empty();
+pub fn Composer(disabled: bool, on_send: EventHandler<String>) -> Element {
+    let mut draft = use_signal(String::new);
+    let is_empty = draft.read().trim().is_empty();
 
     let mut submit = move || {
         if *sending.read() {
