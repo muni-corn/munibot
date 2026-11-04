@@ -9,29 +9,6 @@ use crate::error::MuniBotError;
 pub struct Config {
     pub discord: DiscordConfig,
     pub twitch: TwitchConfig,
-    /// Users granted `Permission::Operator` on startup - see
-    /// `munibot::permissions::sync_operators`. Empty by default, so an
-    /// existing config file gains no operators until someone is added here.
-    #[serde(default)]
-    pub operators: Vec<OperatorConfig>,
-}
-
-/// One configured operator, identified either by a linked provider account
-/// (Discord, Twitch, ...) or directly by their munibot user id.
-///
-/// An untagged enum rather than two separate fields: TOML has no natural
-/// "exactly one of these" construct, and each variant's own field names
-/// already disambiguate which was meant.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(untagged)]
-pub enum OperatorConfig {
-    LinkedAccount {
-        provider: String,
-        provider_user_id: String,
-    },
-    MunibotUser {
-        munibot_user_id: i64,
-    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
