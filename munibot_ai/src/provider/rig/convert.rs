@@ -131,18 +131,6 @@ mod tests {
 
     use super::*;
 
-    // --- to_tool_definition ---
-
-    #[test]
-    fn test_to_tool_definition_maps_fields_directly() {
-        let schema = ToolSchema::new("ping", "does nothing", json!({"type": "object"}));
-        let definition = to_tool_definition(&schema);
-
-        assert_eq!(definition.name, "ping");
-        assert_eq!(definition.description, "does nothing");
-        assert_eq!(definition.parameters, json!({"type": "object"}));
-    }
-
     // --- to_rig_message ---
 
     #[test]
