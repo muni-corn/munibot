@@ -45,20 +45,6 @@ pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
     )
     .await?;
 
-    // GITHUB_WEBHOOK_SECRET absent means the autonomous pipeline's forge
-    // integration is simply off on this deployment, the same convention
-    // `ai` itself already follows -- see `webhooks::WebhookConfig`'s own
-    // doc comment.
-    let webhook_config = Arc::new(webhooks::WebhookConfig {
-        webhook_secret: std::env::var("GITHUB_WEBHOOK_SECRET").ok(),
-        bot_login: std::env::var("GITHUB_BOT_LOGIN").unwrap_or_else(|_| "munibot[bot]".to_string()),
-        // no repository has a trigger configured yet, and no pipeline is
-        // registered to dispatch to -- both arrive with the pipeline
-        // itself (see docs/plans/ai/milestone-5-autonomous.md phase 21)
-        triggers: Vec::new(),
-        dispatch: None,
-    });
-
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), App)
