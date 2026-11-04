@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
-    /// Operator instructions. Outranks every other role.
-    System,
     /// The human talking to munibot. Always treated as untrusted input.
     User,
     /// munibot's own output, including tool calls it wants to make.
