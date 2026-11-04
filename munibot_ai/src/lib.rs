@@ -13,7 +13,8 @@ pub mod conversation;
 pub mod provider;
 pub mod types;
 
-pub use service::{Ai, AiTurnRequest};
+pub use config::AiConfig;
+pub use conversation::Chat;
 pub use types::{
     AiError, CompletionRequest, CompletionResponse, ContentBlock, Cost, History, Image,
     ImageSource, Message, ModelParams, ModelRef, ModelRefError, Role, StopReason, StreamEvent,
