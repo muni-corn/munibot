@@ -51,7 +51,7 @@ server = [
   "dep:munibot_core",
   "dep:reqwest",
   "dep:sha2",
-  "dep:lettre",
-  "dep:rand",
+  "dep:tracing",
+  "dioxus/server",
 ]
 web = ["dioxus/web"]
