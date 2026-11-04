@@ -9,13 +9,8 @@ pub enum TurnFailure {
     NotSignedIn,
     /// `ai.enabled` is `false` in config.
     AiDisabled,
-    /// A configured budget was hit. Retrying immediately would just hit it
-    /// again, so no retry is offered.
-    BudgetExceeded(String),
-    /// A transient, provider-side problem - worth offering a retry for.
-    Transient(String),
-    /// Anything else. Not obviously worth a blind retry.
-    Other(String),
+    /// Anything else, with the message to show.
+    Failed(String),
 }
 
 impl TurnFailure {
