@@ -24,10 +24,9 @@ pub async fn chat_stream(
 
     use crate::chat::{ChatError, validate_conversation};
 
-    let message_row = ai::get_message(&pool, message_id)
-        .await?
-        .ok_or(ChatError::ConversationNotFound)?;
-    let conversation = owned_conversation(&pool, message_row.conversation_id, user.id).await?;
+    auth.current_user.as_ref().ok_or(ChatError::NotSignedIn)?;
+    let chat = ai.0.clone().ok_or(ChatError::AiDisabled)?;
+    validate_conversation(&messages)?;
 
     let blocks: Vec<ContentBlock> = serde_json::from_str(&message_row.content)
         .map_err(|e| ChatError::from(anyhow::anyhow!("couldn't decode message content :< {e}")))?;
