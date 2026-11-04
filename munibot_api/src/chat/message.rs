@@ -18,7 +18,6 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-#[cfg(feature = "server")]
 impl ChatMessage {
     /// Builds a `ChatMessage` from a stored row, its already-parsed content
     /// blocks, and whatever attachments were linked to it.
