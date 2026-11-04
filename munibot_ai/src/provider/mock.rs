@@ -98,8 +98,8 @@ impl Provider for MockProvider {
             .unwrap_or_else(|| {
                 panic!(
                     "MockProvider ran out of scripted responses on request {request_number} - \
-                     queue more with respond_text, respond_tool_use, respond_error, or respond \
-                     before running the code under test"
+                     queue more with respond_text, respond_error, or respond before running the \
+                     code under test"
                 )
             })
     }
