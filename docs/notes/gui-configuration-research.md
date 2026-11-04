@@ -73,15 +73,11 @@ Both are still open.
 ## Authorization gap
 
 **Resolved.** This section described a real gap at the time this research was
-written, but `HasPermission::has` now checks a real, session-loaded
-permission set (`User::permissions`, populated from `user_permissions` by
-`Authentication::load_user`) rather than always returning `false` - see
-`docs/notes/permission-system.md` for the full design.
-`munibot_api/src/auth/operator.rs::require_operator` is the operator-gated
-counterpart to the guild-admin check below, for the administrative pages
-(the safety/usage dashboards, the transcript viewer) that gate on it.
+written: nothing checked that a signed-in user actually administers the guild
+they were editing. `munibot_api/src/auth/guild.rs::require_guild_admin` is that
+check now.
 
-The rest of this section is still accurate: `DiscordGuild::is_administered_by_user`
+What this section found is still accurate: `DiscordGuild::is_administered_by_user`
 (`oauth/discord.rs`) remains a **display filter** in `get_guilds`, never an
 authorization check on its own, and every guild-scoped settings server
 function still needs its own `require_guild_admin`-style check: linked
