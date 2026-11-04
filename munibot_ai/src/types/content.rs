@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum Role {
     /// The human talking to munibot. Always treated as untrusted input.
     User,
-    /// munibot's own output, including tool calls it wants to make.
+    /// munibot's own output.
     Assistant,
     /// Results handed back to the model after it called a tool.
     Tool,
