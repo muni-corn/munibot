@@ -45,7 +45,6 @@ lettre = { version = "0.11.23", default-features = false, features = [
   "smtp-transport",
   "tokio1-native-tls",
 ] }
-moka = { version = "0.12", features = ["future"] }
 num-format = "0.4"
 octocrab = "0.54"
 once_cell = "1.18"
