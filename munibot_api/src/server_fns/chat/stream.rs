@@ -15,8 +15,7 @@ use crate::chat::{ChatEvent, ChatMessage, ChatResult};
 #[post(
     "/api/ai/chat/stream",
     auth: crate::auth::server::AuthSession,
-    pool: axum::extract::Extension<munibot_core::db::DbPool>,
-    ai: axum::extract::Extension<Option<std::sync::Arc<munibot_ai::Ai>>>,
+    ai: axum::extract::Extension<Option<std::sync::Arc<munibot_ai::Chat>>>,
 )]
 pub async fn chat_stream(message_id: i64) -> ChatResult<dioxus_fullstack::ServerEvents<ChatEvent>> {
     use munibot_ai::{
