@@ -98,14 +98,6 @@ in
         bind = "127.0.0.1";
       };
 
-      # the ai sandbox's container runtime - see ai::sandbox and
-      # munibot_toolagent. rootless podman needs a real subuid/subgid
-      # allocation and a persistent user systemd instance (linger) to run
-      # reliably from this system service rather than an interactive login
-      virtualisation.podman = lib.mkIf cfg.enableAiSandbox {
-        enable = true;
-      };
-
       systemd.services.munibot =
         let
           configFile = toml.generate "munibot.toml" cfg.settings;
