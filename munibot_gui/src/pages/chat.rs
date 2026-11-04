@@ -16,8 +16,13 @@ use crate::components::chat::{
 /// is sent back to the server in full with every message, so leaving or
 /// reloading the page starts over.
 #[component]
-pub fn ChatLayout() -> Element {
-    use_context_provider(|| ChatDrafts(Signal::new(HashMap::new())));
+pub fn Chat() -> Element {
+    let mut messages = use_signal(Vec::<ChatMessage>::new);
+    // `Some("")` the instant a reply starts, growing as text deltas arrive,
+    // and `None` once it's over -- kept out of `messages` until it finishes
+    // so a reply that fails partway never becomes part of the conversation
+    let mut live_reply = use_signal(|| None::<String>);
+    let mut failure = use_signal(|| None::<TurnFailure>);
 
     rsx! {
         div { class: "flex h-full flex-row",
