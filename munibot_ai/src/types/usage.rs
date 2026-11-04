@@ -155,7 +155,8 @@ mod tests {
 
     #[test]
     fn test_usage_deserializes_with_missing_cache_fields() {
-        // providers without prompt caching or extended thinking omit these entirely
+        // providers without prompt caching or extended thinking omit these
+        // entirely
         let usage: Usage =
             serde_json::from_value(serde_json::json!({"input_tokens": 10, "output_tokens": 5}))
                 .expect("should deserialize without cache or reasoning fields");
