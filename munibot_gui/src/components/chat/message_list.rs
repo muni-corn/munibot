@@ -48,12 +48,6 @@ fn LiveReplyBubble(text: String) -> Element {
 }
 
 /// One message's bubble, styled and aligned by role.
-///
-/// System and tool-role messages are rare in a web transcript -- the system
-/// prompt isn't stored as a message, and a stored tool result's content is
-/// already dropped to empty by `ChatMessage::from_row` -- but are still
-/// rendered, muted, rather than silently hidden: a missing bubble is more
-/// confusing than an unstyled one.
 #[component]
 fn MessageBubble(message: ChatMessage) -> Element {
     let (side, bubble_class) = match message.role {
