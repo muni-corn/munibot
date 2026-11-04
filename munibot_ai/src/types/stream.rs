@@ -69,7 +69,9 @@ mod tests {
         let text = StreamEvent::TextDelta {
             text: "hi".to_string(),
         };
-        let other = StreamEvent::ToolUseEnd;
+        let other = StreamEvent::ThinkingDelta {
+            thinking: "hmm".to_string(),
+        };
 
         assert_eq!(
             text.as_text_delta(),
