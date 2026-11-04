@@ -4,16 +4,9 @@
 //! pure and synchronous - no client, no network, so this whole file is
 //! unit-testable without a provider key.
 //!
-//! Two rig quirks shape everything below:
-//!
-//! - rig's [`rig_message::Message`] has no distinct "tool" role. A tool result
-//!   is wire-encoded as [`rig_message::UserContent::ToolResult`] inside a
-//!   `User`-role message. Our own [`Role::Tool`] therefore also becomes a rig
-//!   `User` message - see [`to_rig_message`].
-//! - rig's [`rig_message::ToolResult`] has no `is_error` flag, unlike our
-//!   [`ContentBlock::ToolResult`]. An error result is encoded by prefixing the
-//!   text with `Error: `, which every provider we target renders as plain text
-//!   to the model regardless.
+//! A conversation only ever holds text and reasoning, so anything else rig can
+//! carry (tool calls, images) has no representation here: in a reply it is
+//! dropped rather than failing the whole turn.
 
 use rig_core::{
     EmptyListError, OneOrMany,
