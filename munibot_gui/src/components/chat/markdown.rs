@@ -274,7 +274,7 @@ fn render_code_block(language: Option<String>, code: String) -> Element {
                 span { {label} }
                 CopyButton { text: code.clone() }
             }
-            pre { class: "p-4 overflow-x-auto text-sm",
+            pre { class: "overflow-x-auto p-4 text-sm",
                 code {
                     id,
                     class: lang_class,
