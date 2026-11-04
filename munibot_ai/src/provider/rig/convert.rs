@@ -177,12 +177,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_use_in_a_user_message_is_rejected() {
-        let message = Message::new(Role::User, vec![ContentBlock::tool_use(
-            "c1",
-            "current_time",
-            json!({}),
-        )]);
+    fn test_thinking_in_a_user_message_is_rejected() {
+        let message = Message::new(Role::User, vec![ContentBlock::thinking("hmm")]);
         assert!(
             to_rig_message(&message).is_err(),
             "a tool call can only ever come from the assistant"
