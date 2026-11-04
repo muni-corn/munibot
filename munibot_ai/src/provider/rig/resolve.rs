@@ -174,9 +174,9 @@ mod tests {
 
     #[test]
     fn test_resolving_a_different_model_on_the_same_provider_does_not_share_the_cached_instance() {
-        // the correctness property this whole cache design exists for: two distinct
-        // models on the same provider must never collapse onto one cached
-        // provider instance
+        // the correctness property this whole cache design exists for: two
+        // distinct models on the same provider must never collapse onto one
+        // cached provider instance
         let resolver = ProviderResolver::new();
 
         let small = resolver
