@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_default_stream_preserves_tool_calls() {
+    async fn test_default_stream_preserves_reasoning_before_text() {
         let provider = StubProvider {
             response: Ok(CompletionResponse::new(
                 vec![ContentBlock::tool_use(
