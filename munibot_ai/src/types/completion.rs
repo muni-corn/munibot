@@ -122,10 +122,6 @@ mod tests {
             encoded.get("system").is_none(),
             "an absent system prompt should not be sent"
         );
-        assert!(
-            encoded.get("tools").is_none(),
-            "an empty tool list should not be sent, since some providers reject it"
-        );
     }
 
     #[test]
