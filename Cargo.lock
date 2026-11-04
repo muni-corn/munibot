@@ -4440,8 +4440,6 @@ dependencies = [
  "munibot_ai",
  "munibot_api",
  "munibot_core",
- "munibot_github",
- "munibot_vcs",
  "pulldown-cmark",
  "redis",
  "redis_pool",
