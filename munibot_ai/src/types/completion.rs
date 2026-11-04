@@ -8,10 +8,6 @@ use crate::types::{
 };
 
 /// Everything needed to ask a model for one response.
-///
-/// This is a single round trip, not a whole turn. The agent loop in
-/// `munibot_ai_harness` builds one of these per iteration, appending tool
-/// results to the history as it goes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct CompletionRequest {
     /// Which provider and model to ask.
