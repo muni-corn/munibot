@@ -264,7 +264,7 @@ mod tests {
     fn test_streamed_tool_calls_produce_no_event() {
         let tool_call = rig_message::ToolCall::new(
             "c1".to_string(),
-            rig_message::ToolFunction::new("current_time".to_string(), json!({"timezone": "UTC"})),
+            rig_message::ToolFunction::new("current_time".to_string(), json!({})),
         );
         let events = from_streamed_content::<()>(StreamedAssistantContent::ToolCall {
             tool_call,
