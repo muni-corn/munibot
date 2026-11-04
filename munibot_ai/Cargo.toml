@@ -7,7 +7,6 @@ description = "munibot's conversation interface: a provider-agnostic, stateless 
 license.workspace = true
 
 [dependencies]
-anyhow.workspace = true
 async-stream.workspace = true
 async-trait.workspace = true
 backon.workspace = true
