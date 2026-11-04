@@ -1,12 +1,8 @@
 //! munibot's conversation interface.
 //!
-//! A provider-agnostic, tool-using, multi-persona AI system serving casual
-//! conversation, emotional support, creative writing, deep research, and
-//! autonomous software development.
-//!
-//! See `docs/plans/ai/overview.md` for the full architecture and
-//! `docs/notes/ai-preflight-findings.md` for the provider API research this
-//! crate is built on.
+//! A provider-agnostic way to hold a plain, temporary conversation with a
+//! model: [`Chat`] streams a reply to whatever history it is handed and
+//! remembers nothing afterwards.
 //!
 //! Organized as modules rather than separate crates for a project this size:
 //! `types` holds the provider-neutral domain types everything else speaks, and
