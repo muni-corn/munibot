@@ -17,18 +17,10 @@ use crate::chat::{ChatEvent, ChatMessage, ChatResult};
     auth: crate::auth::server::AuthSession,
     ai: axum::extract::Extension<Option<std::sync::Arc<munibot_ai::Chat>>>,
 )]
-pub async fn chat_stream(message_id: i64) -> ChatResult<dioxus_fullstack::ServerEvents<ChatEvent>> {
-    use munibot_ai::{
-        AiTurnRequest,
-        memory::ConversationScope,
-        persona::PersonaId,
-        tools::Platform,
-        types::{ContentBlock, Message, Role},
-    };
-    use munibot_core::db::operations::ai;
-    use tokio_util::sync::CancellationToken;
-
-    use crate::server_fns::chat::conversation::owned_conversation;
+pub async fn chat_stream(
+    messages: Vec<ChatMessage>,
+) -> ChatResult<dioxus_fullstack::ServerEvents<ChatEvent>> {
+    use futures::StreamExt;
 
     let user = auth.current_user.clone().ok_or(ChatError::NotSignedIn)?;
     let ai_service = ai.0.clone().ok_or(ChatError::AiDisabled)?;
