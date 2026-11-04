@@ -308,8 +308,8 @@ mod tests {
 
     #[test]
     fn test_streamed_final_produces_no_event_here() {
-        // Final's usage/stop-reason handling is a stream-level concern for the adapter,
-        // not this per-chunk conversion - see the function's doc comment.
+        // Final's usage handling is a stream-level concern for the adapter, not
+        // this per-chunk conversion - see the function's doc comment.
         let events = from_streamed_content(StreamedAssistantContent::Final(()));
         assert_eq!(events, Vec::new());
     }
