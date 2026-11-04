@@ -190,7 +190,7 @@ mod tests {
         let message = Message::new(Role::User, vec![]);
         assert!(
             to_rig_message(&message).is_err(),
-            "a tool result can only ever come from a user or tool role"
+            "rig needs at least one content block"
         );
     }
 
