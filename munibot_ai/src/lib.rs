@@ -6,11 +6,7 @@
 //!
 //! Organized as modules rather than separate crates for a project this size:
 //! `types` holds the provider-neutral domain types everything else speaks, and
-//! `provider` is the only module allowed to depend on `rig-core`. Forge
-//! integration (`munibot_vcs`, `munibot_github`) and the in-container
-//! tool agent (`munibot_toolagent`) stay as separate crates, since neither
-//! belongs to "ai" as a concern and the tool agent must stay small enough to
-//! ship into an untrusted container.
+//! `provider` is the only module allowed to depend on `rig-core`.
 
 pub mod audit;
 pub mod crisis;
