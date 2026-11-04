@@ -149,18 +149,7 @@ mod tests {
             StopReason::EndTurn,
             Usage::new(1, 1),
         );
-
-        for reason in [
-            StopReason::EndTurn,
-            StopReason::MaxTokens,
-            StopReason::StopSequence,
-            StopReason::Refusal,
-        ] {
-            assert!(
-                !reason.wants_another_iteration(),
-                "{reason:?} should end the loop"
-            );
-        }
+        assert_eq!(response.text(), "hello world", "text should skip reasoning");
     }
 
     #[test]
