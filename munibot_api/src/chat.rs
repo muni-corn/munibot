@@ -9,9 +9,7 @@
 mod error;
 mod event;
 mod message;
-mod persona;
-mod transcript;
-mod usage;
+mod validate;
 
 pub use attachment::{ALLOWED_MEDIA_TYPES, AttachmentSummary, MAX_ATTACHMENT_BYTES};
 pub use conversation::ConversationSummary;
