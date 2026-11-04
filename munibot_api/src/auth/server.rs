@@ -44,14 +44,7 @@ impl Authentication<User, String, DbPool> for User {
             .await?
             .ok_or_else(|| anyhow::anyhow!("no user found with id '{id}'"))?;
 
-        let permissions = operations::list_user_permissions(pool, user_id)
-            .await?
-            .into_iter()
-            .collect();
-
-        let mut user: User = row.into();
-        user.permissions = permissions;
-        Ok(user)
+        Ok(row.into())
     }
 
     fn is_authenticated(&self) -> bool {
