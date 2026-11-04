@@ -14,6 +14,4 @@ mod validate;
 pub use error::{ChatError, ChatResult};
 pub use event::ChatEvent;
 pub use message::{ChatMessage, ChatRole};
-pub use persona::PersonaSummary;
-pub use transcript::{AiTranscript, TranscriptMessage, TranscriptToolCall};
-pub use usage::{SpendCapStatus, UsageSummary, UsageTotals};
+pub use validate::{MAX_CONVERSATION_CHARS, MAX_CONVERSATION_MESSAGES, validate_conversation};
