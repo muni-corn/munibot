@@ -117,7 +117,6 @@ in
     [
       diesel-cli
       flyctl
-      podman
       tailwindcss_4
       wasm-bindgen-cli-pinned
       cargo-expand
