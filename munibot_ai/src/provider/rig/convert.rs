@@ -68,30 +68,9 @@ fn empty_message_error(_: EmptyListError) -> String {
     "a message needs at least one content block".to_string()
 }
 
-fn to_rig_image(image: &Image) -> rig_message::Image {
-    rig_message::Image {
-        data: match &image.source {
-            ImageSource::Base64 { data } => rig_message::DocumentSourceKind::Base64(data.clone()),
-            ImageSource::Url { url } => rig_message::DocumentSourceKind::Url(url.clone()),
-        },
-        media_type: rig_media_type_from_mime(&image.media_type),
-        detail: None,
-        additional_params: None,
-    }
-}
-
-fn rig_media_type_from_mime(mime_type: &str) -> Option<rig_message::ImageMediaType> {
-    use rig_message::MimeType;
-    rig_message::ImageMediaType::from_mime_type(mime_type)
-}
-
-/// Converts one block of an assistant's response back into our own type.
-///
-/// Prefers `call_id` and falls back to `id` for a tool call's correlation
-/// identifier: some providers use `call_id` for matching a tool result to its
-/// call, and getting this backwards breaks tool loops on exactly those
-/// providers.
-pub fn from_assistant_content(content: rig_message::AssistantContent) -> ContentBlock {
+/// Converts one block of an assistant's response back into our own type, or
+/// `None` for anything a conversation has no use for (a tool call, an image).
+pub fn from_assistant_content(content: rig_message::AssistantContent) -> Option<ContentBlock> {
     match content {
         rig_message::AssistantContent::Text(text) => ContentBlock::text(text.text),
         rig_message::AssistantContent::ToolCall(tool_call) => {
