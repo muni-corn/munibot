@@ -40,9 +40,8 @@ impl AiError {
     /// Returns `true` if retrying the same request has a reasonable chance of
     /// succeeding.
     ///
-    /// The retry layer in the `provider` module consumes this directly: a rate
-    /// limit or a provider-side outage is worth retrying, but a bad
-    /// configuration or a cancelled turn is not, and retrying it would just
+    /// A rate limit or a provider-side outage is worth retrying, but a bad
+    /// configuration or a rejected request is not, and retrying it would just
     /// repeat the failure.
     pub fn is_transient(&self) -> bool {
         matches!(self, Self::Provider(_) | Self::RateLimited { .. })
