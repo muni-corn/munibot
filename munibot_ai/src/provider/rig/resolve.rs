@@ -146,8 +146,9 @@ mod tests {
 
     #[test]
     fn test_ollama_resolves_without_any_key() {
-        // ollama needs no credentials, which makes it the one provider we can construct
-        // deterministically in a test regardless of the ambient environment's api keys
+        // ollama needs no credentials, which makes it the one provider we can
+        // construct deterministically in a test regardless of the ambient
+        // environment's api keys
         let resolver = ProviderResolver::new();
         let provider = resolver
             .resolve(&ModelRef::new("ollama", "llama3"))
