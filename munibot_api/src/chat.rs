@@ -12,8 +12,7 @@ mod message;
 mod validate;
 
 pub use error::{ChatError, ChatResult};
-pub use event::{ChatEvent, ChatFailureKind};
-pub use memory::{MemoryEntry, MemorySettings};
+pub use event::ChatEvent;
 pub use message::{ChatMessage, ChatRole};
 pub use persona::PersonaSummary;
 pub use transcript::{AiTranscript, TranscriptMessage, TranscriptToolCall};
