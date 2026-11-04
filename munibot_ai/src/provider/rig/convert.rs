@@ -22,11 +22,7 @@ use crate::types::{ContentBlock, Message, Role, StreamEvent, Usage};
 /// user message, which only a model can ever produce.
 pub fn to_rig_message(message: &Message) -> Result<rig_message::Message, String> {
     match message.role {
-        Role::System => Ok(rig_message::Message::system(concatenate_text(
-            &message.content,
-        ))),
-        // rig has no "tool" role; a tool result is user content on the wire.
-        Role::User | Role::Tool => Ok(rig_message::Message::User {
+        Role::User => Ok(rig_message::Message::User {
             content: to_rig_user_content(&message.content)?,
         }),
         Role::Assistant => Ok(rig_message::Message::Assistant {
