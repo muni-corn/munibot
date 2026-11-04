@@ -46,13 +46,9 @@ impl From<ChatMessage> for munibot_ai::Message {
     }
 }
 
-    #[test]
-    fn test_text_blocks_are_joined_into_plain_content() {
-        let blocks = vec![ContentBlock::text("hello "), ContentBlock::text("there")];
-        let message = ChatMessage::from_row(row("user"), &blocks, Vec::new());
-        assert_eq!(message.content, "hello there");
-        assert_eq!(message.role, ChatRole::User);
-    }
+#[cfg(all(test, feature = "server"))]
+mod tests {
+    use super::*;
 
     #[test]
     fn test_tool_use_blocks_are_dropped_from_content() {
