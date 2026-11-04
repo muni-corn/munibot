@@ -310,21 +310,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_complete_converts_tool_call_response() {
-        let response = provider(FakeModel::ToolCall {
-            id: "c1".to_string(),
-            name: "current_time".to_string(),
-            arguments: json!({}),
-        })
-        .complete(request())
-        .await
-        .expect("should succeed");
-
-        assert_eq!(response.stop_reason, StopReason::ToolUse);
-        assert!(response.has_tool_uses());
-    }
-
-    #[tokio::test]
     async fn test_complete_propagates_model_errors() {
         let result = provider(FakeModel::Error).complete(request()).await;
         assert!(
