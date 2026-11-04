@@ -104,16 +104,6 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(ai_attachments -> ai_conversations (conversation_id));
-diesel::joinable!(ai_attachments -> ai_messages (message_id));
-diesel::joinable!(ai_conversations -> users (owner_user_id));
-diesel::joinable!(ai_memories -> users (user_id));
-diesel::joinable!(ai_messages -> ai_conversations (conversation_id));
-diesel::joinable!(ai_pipeline_events -> ai_pipelines (pipeline_id));
-diesel::joinable!(ai_tool_calls -> ai_conversations (conversation_id));
-diesel::joinable!(ai_usage -> ai_conversations (conversation_id));
-diesel::joinable!(ai_usage -> users (user_id));
-diesel::joinable!(ai_user_settings -> users (user_id));
 diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
 diesel::joinable!(user_permissions -> users (user_id));
