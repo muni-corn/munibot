@@ -206,7 +206,7 @@ fn render_tag(tag: &Tag<'_>, children: Vec<Element>) -> Element {
 fn render_heading(level: HeadingLevel, children: Vec<Element>) -> Element {
     match level {
         HeadingLevel::H1 => rsx! {
-            h1 { class: "font-black text-2xl",
+            h1 { class: "text-2xl font-black",
                 for child in children {
                     {child}
                 }
