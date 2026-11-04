@@ -246,11 +246,6 @@ mod tests {
     #[derive(Clone)]
     enum FakeModel {
         Text(String),
-        ToolCall {
-            id: String,
-            name: String,
-            arguments: serde_json::Value,
-        },
         Error,
     }
 
