@@ -109,15 +109,6 @@ impl IntoIterator for History {
     }
 }
 
-/// A crude token estimate of roughly four characters per token.
-///
-/// Useful as a default before a provider-specific tokenizer is available. It is
-/// deliberately pessimistic by rounding up, so a budget built on it errs toward
-/// sending less rather than overflowing a context window.
-pub fn rough_token_estimate(text: &str) -> usize {
-    text.len().div_ceil(4)
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;
