@@ -699,40 +699,6 @@ pub async fn unlink_linked_account(
     Ok(UnlinkAccountOutcome::Unlinked)
 }
 
-// user_permissions
-
-/// Grants `permission` (a `crate::permission::Permission`'s string form) to
-/// a user, idempotently - granting a permission a user already has is not
-/// an error, since `user_permissions` has nothing else to update on a
-/// repeat grant.
-pub async fn grant_permission(pool: &DbPool, user_id: i64, permission: &str) -> QueryResult<()> {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    diesel::insert_into(user_permissions::table)
-        .values(NewUserPermission {
-            user_id,
-            permission: permission.to_owned(),
-            created_at: chrono::Utc::now().naive_utc(),
-        })
-        .on_conflict(diesel::dsl::DuplicatedKeys)
-        .do_update()
-        .set(user_permissions::permission.eq(user_permissions::permission))
-        .execute(&mut conn)
-        .await?;
-    Ok(())
-}
-
-/// Every permission a user currently holds, as canonical string tokens -
-/// what `munibot_api::auth::server::User::load_user` loads into the
-/// session's own in-memory permission set.
-pub async fn list_user_permissions(pool: &DbPool, user_id: i64) -> QueryResult<Vec<String>> {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    user_permissions::table
-        .filter(user_permissions::user_id.eq(user_id))
-        .select(user_permissions::permission)
-        .load(&mut conn)
-        .await
-}
-
 // email_signin_tokens
 
 /// Records a fresh magic-link request for `email`, replacing any
