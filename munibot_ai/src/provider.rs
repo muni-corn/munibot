@@ -148,12 +148,8 @@ mod tests {
     async fn test_default_stream_preserves_reasoning_before_text() {
         let provider = StubProvider {
             response: Ok(CompletionResponse::new(
-                vec![ContentBlock::tool_use(
-                    "c1",
-                    "current_time",
-                    json!({"timezone": "UTC"}),
-                )],
-                StopReason::ToolUse,
+                vec![ContentBlock::thinking("hmm"), ContentBlock::text("hi")],
+                StopReason::EndTurn,
                 Usage::default(),
             )),
         };
