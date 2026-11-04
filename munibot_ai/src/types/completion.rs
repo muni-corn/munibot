@@ -80,7 +80,7 @@ impl CompletionResponse {
         }
     }
 
-    /// Concatenates every text block, ignoring reasoning and tool calls.
+    /// Concatenates every text block, ignoring reasoning.
     pub fn text(&self) -> String {
         self.content
             .iter()
