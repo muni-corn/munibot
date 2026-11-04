@@ -29,7 +29,6 @@ axum = { workspace = true, optional = true }
 axum_session = { workspace = true, optional = true }
 axum_session_auth = { workspace = true, optional = true }
 axum_session_redispool = { workspace = true, optional = true }
-bytes = { workspace = true, optional = true }
 munibot_ai = { path = "../munibot_ai", optional = true }
 munibot_core = { path = "../munibot_core", optional = true }
 munibot_github = { path = "../munibot_github", optional = true }
