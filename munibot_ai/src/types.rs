@@ -1,4 +1,4 @@
-//! Provider-neutral domain types for munibot's ai harness.
+//! Provider-neutral domain types for munibot's conversation interface.
 //!
 //! Every other module in this crate speaks these types. Nothing here performs
 //! I/O, and nothing here depends on a specific model provider — that is what
