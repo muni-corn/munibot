@@ -72,13 +72,6 @@ The following span boundaries are instrumented:
 
 ## Known limitations
 
-Two places where a span does not cover as much as its name suggests. Both are noted inline at their
-own definitions too, but they are easy to trip over while reading output rather than code.
-
-- **`turn_streamed` covers setup only** — persona resolution, rate limiting, and context assembly.
-  The stream itself keeps producing events after the span has already closed, because `tracing`'s
-  `Instrument` extension supports `Future` and not `Stream`. Events emitted while a reply is
-  streaming therefore carry no `turn_streamed` context.
 - **`Passing::pass()` discards context** — see the section below. It records that _something_ failed,
   not what was being attempted.
 
