@@ -14,40 +14,27 @@ pub enum ChatEvent {
 }
 
 #[cfg(feature = "server")]
-impl From<munibot_ai::harness::HarnessEvent> for ChatEvent {
-    fn from(event: munibot_ai::harness::HarnessEvent) -> Self {
-        use munibot_ai::harness::HarnessEvent;
+impl ChatEvent {
+    /// Turns a reply's chunks into the events the chat page consumes: each
+    /// chunk becomes a [`Self::TextDelta`], then the stream ends with
+    /// [`Self::Finished`], or with [`Self::Failed`] at the first error,
+    /// whichever comes first.
+    pub fn stream_from_reply(
+        reply: futures::stream::BoxStream<'static, Result<String, munibot_ai::AiError>>,
+    ) -> futures::stream::BoxStream<'static, Self> {
+        use futures::StreamExt;
 
-        match event {
-            HarnessEvent::TurnStarted { persona } => Self::TurnStarted { persona },
-            HarnessEvent::Thinking(text) => Self::Thinking(text),
-            HarnessEvent::TextDelta(text) => Self::TextDelta(text),
-            HarnessEvent::ToolStarted { name } => Self::ToolStarted { name },
-            HarnessEvent::ToolFinished {
-                name,
-                duration,
-                ok,
-                result,
-            } => Self::ToolFinished {
-                name,
-                duration_ms: duration.as_millis() as u64,
-                ok,
-                result,
-            },
-            HarnessEvent::IterationComplete { iteration, usage } => Self::IterationComplete {
-                iteration,
-                usage: usage.into(),
-            },
-            HarnessEvent::Handoff(payload) => Self::Handoff(payload),
-            HarnessEvent::TurnFinished { usage, cost } => Self::TurnFinished {
-                usage: usage.into(),
-                cost_micros: cost.0,
-            },
-            HarnessEvent::Failed(error) => Self::Failed {
-                kind: ChatFailureKind::from(&error),
-                message: error.to_string(),
-            },
-        }
+        // `None` once the terminal event has gone out, so nothing is ever
+        // emitted after `Finished` or `Failed`
+        futures::stream::unfold(Some(reply), |state| async move {
+            let mut reply = state?;
+            match reply.next().await {
+                Some(Ok(text)) => Some((Self::TextDelta(text), Some(reply))),
+                Some(Err(error)) => Some((Self::Failed(error.to_string()), None)),
+                None => Some((Self::Finished, None)),
+            }
+        })
+        .boxed()
     }
 }
 
