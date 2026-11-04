@@ -48,20 +48,6 @@ impl MockProvider {
         )))
     }
 
-    /// Queues a response that calls a single tool.
-    pub fn respond_tool_use(
-        self,
-        call_id: impl Into<String>,
-        name: impl Into<String>,
-        arguments: Value,
-    ) -> Self {
-        self.respond(Ok(CompletionResponse::new(
-            vec![ContentBlock::tool_use(call_id, name, arguments)],
-            StopReason::ToolUse,
-            Usage::default(),
-        )))
-    }
-
     /// Queues a failure.
     pub fn respond_error(self, error: AiError) -> Self {
         self.respond(Err(error))
