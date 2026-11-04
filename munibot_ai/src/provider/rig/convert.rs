@@ -59,7 +59,7 @@ fn to_rig_assistant_content(
                 rig_message::AssistantContent::reasoning(thinking)
             }
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Vec<_>>();
 
     OneOrMany::many(items).map_err(empty_message_error)
 }
