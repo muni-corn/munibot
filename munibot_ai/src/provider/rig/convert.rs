@@ -118,7 +118,10 @@ pub fn from_streamed_content<R>(content: StreamedAssistantContent<R>) -> Vec<Str
                 thinking: reasoning,
             }]
         }
-        StreamedAssistantContent::Final(_) | StreamedAssistantContent::Unknown(_) => vec![],
+        StreamedAssistantContent::ToolCall { .. }
+        | StreamedAssistantContent::ToolCallDelta { .. }
+        | StreamedAssistantContent::Final(_)
+        | StreamedAssistantContent::Unknown(_) => vec![],
     }
 }
 
