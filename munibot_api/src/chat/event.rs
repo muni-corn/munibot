@@ -55,15 +55,11 @@ mod tests {
     async fn test_text_chunks_become_deltas_then_finished() {
         let events = events(vec![Ok("hi ".to_string()), Ok("there".to_string())]).await;
 
-    #[test]
-    fn test_tool_started_maps_the_tool_name() {
-        let event: ChatEvent = HarnessEvent::ToolStarted {
-            name: "web_search".to_string(),
-        }
-        .into();
-        assert_eq!(event, ChatEvent::ToolStarted {
-            name: "web_search".to_string()
-        });
+        assert_eq!(events, vec![
+            ChatEvent::TextDelta("hi ".to_string()),
+            ChatEvent::TextDelta("there".to_string()),
+            ChatEvent::Finished,
+        ]);
     }
 
     #[test]
