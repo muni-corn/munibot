@@ -1,7 +1,5 @@
 // server.rs: the axum server that renders the gui, serves munibot_api's
-// server functions, backs login sessions with redis, and serves a
-// signed-in user's own uploaded attachments directly (see the
-// `attachments` submodule).
+// server functions, and backs login sessions with redis.
 //
 // only compiled with the `server` feature -- native only, since it depends
 // on axum, redis, and munibot_core's diesel pool, none of which can target
