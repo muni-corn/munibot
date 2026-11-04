@@ -40,8 +40,8 @@ impl Message {
 
 /// An ordered conversation.
 ///
-/// Serialized transparently as a JSON array so that stored rows and provider
-/// payloads both see a plain list of messages.
+/// Serialized transparently as a JSON array, so provider payloads see a plain
+/// list of messages.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(transparent)]
 pub struct History(Vec<Message>);
