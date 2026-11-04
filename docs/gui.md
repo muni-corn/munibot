@@ -65,11 +65,8 @@ munibot_gui/src/
 munibot_api/src/
   lib.rs            module declarations
   auth.rs           shared types: UserData, AuthError/AuthResult
-  auth/server.rs    (server only) Authentication/HasPermission impls, session User type -- see
-                     docs/notes/permission-system.md for how HasPermission is actually resolved
-  auth/operator.rs  (server only) require_operator, the gate every operator-only page uses
-  auth/guild.rs     (server only) require_guild_admin, the per-guild counterpart -- a different
-                     authority to require_operator, and neither substitutes for the other
+  auth/server.rs    (server only) Authentication impl, session User type
+  auth/guild.rs     (server only) require_guild_admin, the gate every guild settings page uses
   auth/linked_account.rs (server only) linking/unlinking, refusing to remove the last provider
   guilds.rs         shared type: GuildSummary
   chat.rs           + chat/ -- shared chat dtos: conversation, message, event, persona, memory,
