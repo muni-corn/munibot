@@ -37,7 +37,7 @@ pub async fn list_linked_accounts() -> AuthResult<Vec<LinkedAccountSummary>> {
 /// only remaining sign-in method - see
 /// `munibot_core::db::operations::UnlinkAccountOutcome`'s own doc comment
 /// for why. Not an error if that provider was never linked in the first
-/// place, the same "nothing to undo" reasoning `forget_memory` documents.
+/// place, since there's nothing to undo.
 #[server(
     auth: crate::auth::server::AuthSession,
     pool: axum::extract::Extension<munibot_core::db::DbPool>,
