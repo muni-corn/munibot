@@ -111,8 +111,6 @@ impl IntoIterator for History {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     #[test]
