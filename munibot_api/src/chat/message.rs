@@ -11,15 +11,7 @@ pub enum ChatRole {
     Assistant,
 }
 
-/// One persisted message in a conversation, as loaded for the transcript.
-///
-/// `content` is already flattened to plain text -- the text blocks of the
-/// stored message joined together. A stored message can also carry tool use
-/// and tool result blocks, but those are surfaced live as
-/// [`crate::chat::ChatEvent::ToolStarted`]/
-/// [`crate::chat::ChatEvent::ToolFinished`] while a turn is in flight, not
-/// replayed as transcript entries once it's over, so they are dropped here
-/// rather than serialized in some other shape nothing renders.
+/// One message in a conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChatMessage {
     pub id: i64,
