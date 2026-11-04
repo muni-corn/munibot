@@ -10,4 +10,4 @@
 #[cfg(feature = "server")]
 pub mod ai;
 #[cfg(feature = "server")]
-pub mod permissions;
+pub mod bot;
