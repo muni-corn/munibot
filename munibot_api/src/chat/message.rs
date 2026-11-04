@@ -36,24 +36,12 @@ impl ChatMessage {
     }
 }
 
-#[cfg(all(test, feature = "server"))]
-mod tests {
-    use chrono::NaiveDateTime;
-    use munibot_ai::types::ContentBlock;
-    use munibot_core::db::models::AiMessage;
-
-    use super::*;
-
-    fn row(role: &str) -> AiMessage {
-        AiMessage {
-            id: 1,
-            conversation_id: 1,
-            seq: 0,
-            role: role.to_string(),
-            content: "[]".to_string(),
-            token_count: 0,
-            created_at: NaiveDateTime::parse_from_str("2026-07-30 10:00:00", "%Y-%m-%d %H:%M:%S")
-                .unwrap(),
+#[cfg(feature = "server")]
+impl From<ChatMessage> for munibot_ai::Message {
+    fn from(message: ChatMessage) -> Self {
+        match message.role {
+            ChatRole::User => Self::user(message.content),
+            ChatRole::Assistant => Self::assistant(message.content),
         }
     }
 
