@@ -64,9 +64,9 @@ impl FromStr for ModelRef {
             .split_once(':')
             .ok_or_else(|| ModelRefError::MissingSeparator(raw.to_string()))?;
 
-        // a half-written reference is a configuration mistake worth naming precisely,
-        // because it otherwise surfaces much later as a confusing "unknown
-        // provider"
+        // a half-written reference is a configuration mistake worth naming
+        // precisely, because it otherwise surfaces much later as a confusing
+        // "unknown provider"
         if provider.trim().is_empty() {
             return Err(ModelRefError::EmptyProvider(raw.to_string()));
         }
