@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn test_streamed_complete_tool_call_emits_start_delta_end() {
+    fn test_streamed_tool_calls_produce_no_event() {
         let tool_call = rig_message::ToolCall::new(
             "c1".to_string(),
             rig_message::ToolFunction::new("current_time".to_string(), json!({"timezone": "UTC"})),
