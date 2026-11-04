@@ -4467,6 +4467,10 @@ dependencies = [
  "strum",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
+ "twitch-irc",
+ "twitch_api",
+ "twitch_oauth2",
  "url",
 ]
 
