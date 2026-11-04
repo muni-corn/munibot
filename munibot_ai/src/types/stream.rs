@@ -14,12 +14,6 @@ pub enum StreamEvent {
     TextDelta { text: String },
     /// A chunk of reasoning, where the provider exposes it incrementally.
     ThinkingDelta { thinking: String },
-    /// The model has begun a tool call. Its arguments arrive next as deltas.
-    ToolUseStart { call_id: String, name: String },
-    /// A chunk of a tool call's JSON arguments, to be concatenated in order.
-    ToolUseDelta { partial_json: String },
-    /// A tool call's arguments are complete.
-    ToolUseEnd,
     /// Token accounting for the response so far. May arrive more than once, and
     /// the latest value wins.
     Usage { usage: Usage },
