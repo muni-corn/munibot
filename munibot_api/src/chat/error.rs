@@ -83,8 +83,6 @@ mod tests {
 
     #[test]
     fn test_variants_are_distinguishable_by_matching_not_just_by_message() {
-        // this is the whole point of ChatError existing rather than a single
-        // generic failure: a caller must be able to match structurally
         assert!(matches!(ChatError::NotSignedIn, ChatError::NotSignedIn));
         assert!(matches!(ChatError::AiDisabled, ChatError::AiDisabled));
         assert!(!matches!(ChatError::NotSignedIn, ChatError::AiDisabled));
