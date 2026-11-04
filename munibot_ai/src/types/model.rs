@@ -19,7 +19,7 @@ pub enum ModelRefError {
 /// Which provider and model to use.
 ///
 /// Written as `provider:model` everywhere a human touches it, which is what
-/// lets a persona pick its provider with a single string in configuration.
+/// lets configuration pick a provider with a single string.
 ///
 /// # Example
 /// ```
