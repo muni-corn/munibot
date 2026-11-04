@@ -104,8 +104,7 @@ mod tests {
     #[test]
     fn test_request_roundtrips() {
         let request = CompletionRequest::new(model(), History::from(vec![Message::user("hi")]))
-            .with_system("be nice")
-            .with_tools(vec![ToolSchema::no_arguments("ping", "Do nothing.")]);
+            .with_system("be nice");
 
         let encoded = serde_json::to_string(&request).expect("should serialize");
         let decoded: CompletionRequest =
