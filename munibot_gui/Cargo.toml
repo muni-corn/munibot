@@ -41,7 +41,6 @@ default = []
 desktop = ["dep:dioxus-desktop", "dioxus/desktop"]
 server = [
   "dep:anyhow",
-  "dep:async-trait",
   "dep:axum",
   "dep:axum_session",
   "dep:axum_session_auth",
