@@ -42,7 +42,7 @@ impl TurnFailure {
 pub fn TurnFailureBanner(failure: TurnFailure, on_retry: EventHandler<()>) -> Element {
     match failure {
         TurnFailure::NotSignedIn => rsx! {
-            div { class: "alert alert-warning mx-4 mb-2 text-sm",
+            div { class: "mx-4 mb-2 alert text-sm alert-warning",
                 span { "you've been signed out. " }
                 a { class: "link", href: "/auth/discord/authorize", "sign in again" }
                 span { " to keep chatting." }
