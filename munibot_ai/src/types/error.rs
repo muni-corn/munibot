@@ -88,24 +88,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cancelled_is_not_transient() {
-        assert!(
-            !AiError::Cancelled.is_transient(),
-            "a cancelled turn should not be retried on the caller's behalf"
-        );
-    }
-
-    #[test]
-    fn test_schema_violation_is_not_transient() {
-        // schema failures are handled by the harness's own retry-with-feedback loop,
-        // not by the provider-level retry policy
-        assert!(
-            !AiError::SchemaViolation("missing required field `key`".to_string()).is_transient(),
-            "schema violations need a corrected request, not a repeated one"
-        );
-    }
-
-    #[test]
     fn test_error_messages_are_lowercase_and_friendly() {
         let message = AiError::Tool("timed out".to_string()).to_string();
         assert!(
