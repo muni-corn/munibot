@@ -22,8 +22,7 @@ pub async fn chat_stream(
 ) -> ChatResult<dioxus_fullstack::ServerEvents<ChatEvent>> {
     use futures::StreamExt;
 
-    let user = auth.current_user.clone().ok_or(ChatError::NotSignedIn)?;
-    let ai_service = ai.0.clone().ok_or(ChatError::AiDisabled)?;
+    use crate::chat::{ChatError, validate_conversation};
 
     let message_row = ai::get_message(&pool, message_id)
         .await?
