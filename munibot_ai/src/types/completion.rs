@@ -145,7 +145,6 @@ mod tests {
                 ContentBlock::thinking("hmm"),
                 ContentBlock::text("hello "),
                 ContentBlock::text("world"),
-                ContentBlock::tool_use("c", "ping", json!({})),
             ],
             StopReason::ToolUse,
             Usage::new(1, 1),
