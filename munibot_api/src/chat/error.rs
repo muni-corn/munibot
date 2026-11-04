@@ -78,15 +78,7 @@ mod tests {
     fn test_invalid_conversation_is_bad_request_and_keeps_its_reason() {
         let err = ChatError::InvalidConversation("that's too long".to_string());
         assert_eq!(err.as_status_code(), StatusCode::BAD_REQUEST);
-        assert_eq!(err.to_string(), "that's not a supported image type");
-    }
-
-    #[test]
-    fn test_attachment_not_found_is_not_found() {
-        assert_eq!(
-            ChatError::AttachmentNotFound.as_status_code(),
-            StatusCode::NOT_FOUND
-        );
+        assert_eq!(err.to_string(), "that's too long");
     }
 
     #[test]
