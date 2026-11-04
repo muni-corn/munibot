@@ -18,14 +18,6 @@ pub struct User {
 
     #[serde(flatten)]
     pub data: UserData,
-
-    /// Every permission this user currently holds, as canonical
-    /// `munibot_core::Permission` string tokens - loaded once in
-    /// [`Authentication::load_user`] and checked entirely in memory from
-    /// then on, the same pattern `axum_session_auth`'s own docs recommend
-    /// for permissions that do not change mid-session.
-    #[serde(default)]
-    pub permissions: HashSet<String>,
 }
 
 impl From<db::models::User> for User {
