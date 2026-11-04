@@ -39,12 +39,6 @@ impl CompletionRequest {
         self
     }
 
-    /// Offers a set of tools.
-    pub fn with_tools(mut self, tools: Vec<ToolSchema>) -> Self {
-        self.tools = tools;
-        self
-    }
-
     /// Sets sampling and length parameters.
     pub fn with_params(mut self, params: ModelParams) -> Self {
         self.params = params;
