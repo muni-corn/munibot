@@ -63,8 +63,7 @@ pub enum StopReason {
 /// One response from a model.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct CompletionResponse {
-    /// The blocks the model produced, which may mix reasoning, text, and tool
-    /// calls.
+    /// The blocks the model produced, which may mix reasoning and text.
     pub content: Vec<ContentBlock>,
     pub stop_reason: StopReason,
     #[serde(default)]
