@@ -16,8 +16,8 @@ pub enum Role {
 
 /// One piece of a message.
 ///
-/// A single message can mix several blocks: an assistant turn commonly contains
-/// reasoning, then text, then one or more tool calls.
+/// A single message can mix several blocks: an assistant turn can contain
+/// reasoning followed by text.
 ///
 /// The representation is internally tagged to match how providers wire these on
 /// the network, which keeps the conversion layer in the `provider` module close
