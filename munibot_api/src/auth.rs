@@ -42,7 +42,6 @@ impl AsStatusCode for AuthError {
     fn as_status_code(&self) -> StatusCode {
         match self {
             Self::NoAuthSession => StatusCode::UNAUTHORIZED,
-            Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::AlreadyLinkedElsewhere | Self::LastRemainingAccount => StatusCode::CONFLICT,
             Self::ServerFnError(e) => e.as_status_code(),
         }
