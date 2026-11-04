@@ -27,6 +27,8 @@ impl ChatMessage {
         }
     }
 
+    /// A message from munibot.
+    pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             id: row.id,
             role: munibot_ai::types::Role::from_key(&row.role)
