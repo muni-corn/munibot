@@ -83,9 +83,7 @@ authorization check on its own, and every guild-scoped settings server
 function still needs its own `require_guild_admin`-style check: linked
 account -> `get_current_user_guilds` -> `is_administered_by_user`, done fresh
 (or short-TTL cached) per request, since there's no local cache of guild
-membership to check against instead. The operator permission and the
-guild-admin check are two different authorities, gating two different kinds
-of page, and neither substitutes for the other.
+membership to check against instead.
 
 ## Getting a channel list: the bot token, not the user's oauth token
 
