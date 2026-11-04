@@ -4,9 +4,8 @@ use thiserror::Error;
 
 /// Something that went wrong talking to a model.
 ///
-/// Every `munibot_ai_*` crate reports failures through this type, so a caller
-/// several layers up (a Discord handler, a pipeline executor) can react to one
-/// error hierarchy rather than a different one per crate.
+/// Everything in this crate reports failures through this type, so a caller
+/// several layers up can react to one error hierarchy.
 #[derive(Error, Debug)]
 pub enum AiError {
     /// The provider had a transient problem: an outage, a connection reset, a
