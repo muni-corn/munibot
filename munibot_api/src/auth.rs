@@ -75,14 +75,8 @@ impl From<anyhow::Error> for AuthError {
 #[cfg(feature = "server")]
 impl From<crate::oauth::discord::DiscordOAuthError> for AuthError {
     fn from(e: crate::oauth::discord::DiscordOAuthError) -> Self {
-        match e {
-            crate::oauth::discord::DiscordOAuthError::RateLimited { retry_after, .. } => {
-                Self::RateLimited {
-                    retry_after_secs: retry_after.as_secs(),
-                }
-            }
-            other => Self::ServerFnError(ServerFnError::ServerError {
-                message: other.to_string(),
+        Self::ServerFnError(ServerFnError::ServerError {
+            message: e.to_string(),
             code: StatusCode::INTERNAL_SERVER_ERROR.into(),
             details: None,
             }),
