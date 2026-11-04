@@ -153,7 +153,7 @@ where
                 .unwrap_or_default();
 
             yield Ok(StreamEvent::Usage { usage });
-            yield Ok(StreamEvent::Done { stop_reason });
+            yield Ok(StreamEvent::Done { stop_reason: STOP_REASON });
         };
 
         Ok(Box::pin(events))
