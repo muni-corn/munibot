@@ -8,7 +8,7 @@ use crate::db::{
     models::{
         AutoDeleteTimerRow, CommunityLink, EmailSigninToken, GuildConfig, GuildPayout, GuildWallet,
         LinkedAccount, NewCommunityLink, NewEmailSigninToken, NewGuildPayout, NewGuildWallet,
-        NewLinkedAccount, NewQuote, NewUser, NewUserPermission, Quote, UpdateAutoDeleteTimer, User,
+        NewLinkedAccount, NewQuote, NewUser, Quote, UpdateAutoDeleteTimer, User,
     },
     schema::{
         autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
