@@ -16,7 +16,6 @@ pub mod types;
 pub use config::AiConfig;
 pub use conversation::Chat;
 pub use types::{
-    AiError, CompletionRequest, CompletionResponse, ContentBlock, Cost, History, Image,
-    ImageSource, Message, ModelParams, ModelRef, ModelRefError, Role, StopReason, StreamEvent,
-    ToolChoice, ToolSchema, Usage, rough_token_estimate,
+    AiError, CompletionRequest, CompletionResponse, ContentBlock, History, Message, ModelParams,
+    ModelRef, ModelRefError, Role, StopReason, StreamEvent, Usage,
 };
