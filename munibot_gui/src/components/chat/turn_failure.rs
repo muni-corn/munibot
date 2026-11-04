@@ -51,11 +51,8 @@ pub fn TurnFailureBanner(failure: TurnFailure, on_retry: EventHandler<()>) -> El
         TurnFailure::AiDisabled => rsx! {
             div { class: "mx-4 mb-2 alert text-sm alert-warning", "chat isn't turned on right now :<" }
         },
-        TurnFailure::BudgetExceeded(message) => rsx! {
-            div { class: "alert alert-warning mx-4 mb-2 text-sm", {message} }
-        },
-        TurnFailure::Transient(message) => rsx! {
-            div { class: "flex items-center alert alert-error mx-4 mb-2 justify-between text-sm",
+        TurnFailure::Failed(message) => rsx! {
+            div { class: "mx-4 mb-2 alert flex items-center justify-between text-sm alert-error",
                 span { {message} }
                 button {
                     class: "btn btn-ghost btn-xs",
