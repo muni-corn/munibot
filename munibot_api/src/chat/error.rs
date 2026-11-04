@@ -35,8 +35,7 @@ impl AsStatusCode for ChatError {
         match self {
             Self::NotSignedIn => StatusCode::UNAUTHORIZED,
             Self::AiDisabled => StatusCode::SERVICE_UNAVAILABLE,
-            Self::AttachmentRejected(_) => StatusCode::BAD_REQUEST,
-            Self::AttachmentNotFound => StatusCode::NOT_FOUND,
+            Self::InvalidConversation(_) => StatusCode::BAD_REQUEST,
             Self::ServerFnError(e) => e.as_status_code(),
         }
     }
