@@ -220,7 +220,7 @@ fn render_heading(level: HeadingLevel, children: Vec<Element>) -> Element {
             }
         },
         HeadingLevel::H3 => rsx! {
-            h3 { class: "font-bold text-lg",
+            h3 { class: "text-lg font-bold",
                 for child in children {
                     {child}
                 }
