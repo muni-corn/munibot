@@ -11,9 +11,6 @@
 pub mod config;
 pub mod conversation;
 pub mod provider;
-pub mod sandbox;
-pub mod service;
-pub mod tools;
 pub mod types;
 pub mod usage;
 
