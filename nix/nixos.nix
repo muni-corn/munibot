@@ -155,11 +155,5 @@ in
           group = cfg.group;
         };
       };
-
-      # starts (and keeps running) this user's own systemd instance at boot,
-      # which is what actually owns the rootless podman socket - without
-      # this, podman would only work for the duration of an interactive
-      # login this system service never has
-      users.users.${cfg.user}.linger = lib.mkIf cfg.enableAiSandbox true;
     };
 }
