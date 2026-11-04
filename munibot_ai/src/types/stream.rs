@@ -4,11 +4,9 @@ use crate::types::{completion::StopReason, usage::Usage};
 
 /// One increment of a streamed response.
 ///
-/// Deliberately mirrors the union of Anthropic's and OpenAI's stream shapes
-/// rather than either one alone, so that adapting a provider is a direct
-/// mapping instead of a lossy one. A tool call arrives as a start event naming
-/// it, zero or more argument deltas as its JSON accumulates, and an
-/// end event once the arguments are complete and parseable.
+/// Deliberately mirrors the shape of Anthropic's and OpenAI's streams rather
+/// than either one alone, so that adapting a provider is a direct mapping
+/// instead of a lossy one.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
