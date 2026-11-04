@@ -61,8 +61,5 @@ pub fn TurnFailureBanner(failure: TurnFailure, on_retry: EventHandler<()>) -> El
                 }
             }
         },
-        TurnFailure::Other(message) => rsx! {
-            div { class: "alert alert-error mx-4 mb-2 text-sm", {message} }
-        },
     }
 }
