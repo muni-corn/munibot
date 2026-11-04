@@ -7,8 +7,7 @@
 //! `linked_accounts` with `provider = "email"` and the address itself as
 //! `provider_user_id`, via the same provider-generic
 //! `get_or_create_user_from_linked_account` every other provider already
-//! reuses - no separate identity model, matching the milestone 6 plan's
-//! own framing.
+//! reuses - no separate identity model.
 
 use chrono::Duration;
 use munibot_core::db::{DbPool, operations};
