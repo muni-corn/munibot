@@ -31,8 +31,6 @@ axum_session_auth = { workspace = true, optional = true }
 axum_session_redispool = { workspace = true, optional = true }
 munibot_ai = { path = "../munibot_ai", optional = true }
 munibot_core = { path = "../munibot_core", optional = true }
-munibot_github = { path = "../munibot_github", optional = true }
-munibot_vcs = { path = "../munibot_vcs", optional = true }
 redis = { workspace = true, optional = true }
 redis_pool = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
