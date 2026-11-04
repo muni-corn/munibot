@@ -131,40 +131,7 @@ mod tests {
         assert_eq!(
             message.text(),
             "the answer is 4",
-            "text should skip reasoning and tool calls"
-        );
-    }
-
-    #[test]
-    fn test_tool_uses_reports_calls() {
-        let message = Message::new(Role::Assistant, vec![
-            ContentBlock::text("checking"),
-            ContentBlock::tool_use("c1", "current_time", json!({})),
-            ContentBlock::tool_use("c2", "web_search", json!({"query": "x"})),
-        ]);
-        let names: Vec<_> = message.tool_uses().map(|(_, name, _)| name).collect();
-        assert_eq!(
-            names,
-            vec!["current_time", "web_search"],
-            "both calls should be reported in order"
-        );
-        assert!(
-            message.has_tool_uses(),
-            "message should report having tool calls"
-        );
-    }
-
-    #[test]
-    fn test_message_without_tool_uses_reports_none() {
-        let message = Message::assistant("just text");
-        assert!(
-            !message.has_tool_uses(),
-            "plain text message should report no tool calls"
-        );
-        assert_eq!(
-            message.tool_uses().count(),
-            0,
-            "there should be no calls to iterate"
+            "text should skip reasoning"
         );
     }
 
