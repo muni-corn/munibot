@@ -45,6 +45,7 @@ in
   '';
 
   env = {
+    __CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT = 1;
     RUST_LOG = "info,munibot=debug,munibot_api=debug,munibot_core=debug,munibot_discord=debug,munibot_gui=debug,munibot_twitch=debug";
     LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
     # matches the redirect URI registered with discord for local development
