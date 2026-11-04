@@ -58,7 +58,7 @@ pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
         .layer(SessionLayer::new(session_store))
         .layer(Extension(pool))
         .layer(Extension(discord_config))
-        .layer(Extension(webhook_config));
+        .layer(Extension(chat));
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     info!(address = %address, "listening");
