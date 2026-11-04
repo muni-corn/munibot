@@ -1,4 +1,4 @@
-//! munibot's ai agent harness.
+//! munibot's conversation interface.
 //!
 //! A provider-agnostic, tool-using, multi-persona AI system serving casual
 //! conversation, emotional support, creative writing, deep research, and
