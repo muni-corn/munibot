@@ -48,9 +48,8 @@ pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
     let address = dioxus::cli_config::fullstack_address_or_localhost();
     let app = axum::Router::new()
         .serve_dioxus_application(ServeConfig::new(), App)
-        // merged before the layers below so sign-in/logout (and an
-        // attachment fetch) see the same session + db state as everything
-        // else
+        // merged before the layers below so sign-in/logout sees the same
+        // session + db state as everything else
         .merge(munibot_api::oauth::routes::router())
         .merge(attachments::router())
         .merge(webhooks::router())
