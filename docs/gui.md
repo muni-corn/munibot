@@ -58,9 +58,7 @@ munibot_gui/src/
   components.rs     route-aware glue (AccountStatus, nav)
   components/chat/  composer, message list, markdown, turn failure
   components/settings.rs
-  pages/            route targets: home, dashboard, account, chat (+ sidebar, conversation),
-                     memory, personas, usage, transcript, pipelines,
-                     guild_settings (+ logging, ai)
+  pages/            route targets: home, dashboard, account, chat, guild_settings (+ logging)
   server.rs         (server only) builds/serves the axum app: dioxus fullstack + oauth routes +
                      attachments + github webhooks + redis sessions + extensions
   server/attachments.rs  (server only) attachment fetch route
