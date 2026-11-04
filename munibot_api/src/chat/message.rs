@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::chat::AttachmentSummary;
-
-/// Who sent one message in a conversation transcript.
+/// Who said a message in a conversation.
 ///
 /// Mirrors `munibot_ai::types::Role`, since that type lives in a server-only
 /// dependency of this crate and can't be named from wasm-buildable code.
