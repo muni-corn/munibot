@@ -1,8 +1,6 @@
 use dioxus::prelude::*;
 
-#[cfg(feature = "server")]
-use crate::chat::ChatError;
-use crate::chat::{ChatEvent, ChatResult};
+use crate::chat::{ChatEvent, ChatMessage, ChatResult};
 
 /// The tier a signed-in web user's turns run at, matching what discord
 /// grants today (`DISCORD_GRANTED_TIER` in `munibot_discord::handlers::ai`):
