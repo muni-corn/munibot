@@ -75,8 +75,8 @@ mod tests {
     }
 
     #[test]
-    fn test_attachment_rejected_is_bad_request_and_keeps_its_reason() {
-        let err = ChatError::AttachmentRejected("that's not a supported image type".to_string());
+    fn test_invalid_conversation_is_bad_request_and_keeps_its_reason() {
+        let err = ChatError::InvalidConversation("that's too long".to_string());
         assert_eq!(err.as_status_code(), StatusCode::BAD_REQUEST);
         assert_eq!(err.to_string(), "that's not a supported image type");
     }
