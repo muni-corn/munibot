@@ -6,8 +6,6 @@
 //! concern, kept in each file's own `#[cfg(feature = "server")]`-gated
 //! impl, since `munibot_ai` is a server-only dependency of this crate.
 
-mod attachment;
-mod conversation;
 mod error;
 mod event;
 mod memory;
