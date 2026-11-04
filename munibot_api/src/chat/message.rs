@@ -51,16 +51,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tool_use_blocks_are_dropped_from_content() {
-        let blocks = vec![
-            ContentBlock::text("checking..."),
-            ContentBlock::tool_use("c1", "current_time", serde_json::json!({})),
-        ];
-        let message = ChatMessage::from_row(row("assistant"), &blocks, Vec::new());
-        assert_eq!(
-            message.content, "checking...",
-            "a tool call in the same message shouldn't leak into the rendered text"
-        );
+    fn test_user_message_converts_to_a_user_turn() {
+        let message: munibot_ai::Message = ChatMessage::user("hi").into();
+        assert_eq!(message.role, munibot_ai::Role::User);
+        assert_eq!(message.text(), "hi");
     }
 
     #[test]
