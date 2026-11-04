@@ -24,16 +24,13 @@ impl TurnFailure {
         match error {
             ChatError::NotSignedIn => Self::NotSignedIn,
             ChatError::AiDisabled => Self::AiDisabled,
-            other => Self::Other(other.to_string()),
-        }
-    }
-
-    /// Maps a `ChatEvent::Failed`'s own kind and message.
-    pub fn from_event(kind: ChatFailureKind, message: String) -> Self {
-        match kind {
-            ChatFailureKind::BudgetExceeded => Self::BudgetExceeded(message),
-            ChatFailureKind::Transient => Self::Transient(message),
-            ChatFailureKind::Other => Self::Other(message),
+            ChatError::ServerFnError(ServerFnError::Request(RequestError::Status(_, 401))) => {
+                Self::NotSignedIn
+            }
+            ChatError::ServerFnError(ServerFnError::Request(RequestError::Status(_, 503))) => {
+                Self::AiDisabled
+            }
+            other => Self::Failed(other.to_string()),
         }
     }
 
