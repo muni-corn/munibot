@@ -3375,7 +3375,6 @@ dependencies = [
  "hyper",
  "hyper-util",
  "rustls 0.23.46",
- "rustls-native-certs",
  "tokio",
  "tokio-rustls 0.26.6",
  "tower-service",
