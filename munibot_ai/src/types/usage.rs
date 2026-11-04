@@ -1,5 +1,4 @@
 use std::{
-    fmt,
     iter::Sum,
     ops::{Add, AddAssign},
 };
