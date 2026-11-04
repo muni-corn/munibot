@@ -285,9 +285,6 @@ mod tests {
                     Ok(RawStreamingChoice::Message(text.clone())),
                     Ok(RawStreamingChoice::FinalResponse(())),
                 ],
-                FakeModel::ToolCall { .. } => {
-                    vec![Ok(RawStreamingChoice::FinalResponse(()))]
-                }
                 FakeModel::Error => {
                     vec![Err(CompletionError::ResponseError("boom".to_string()))]
                 }
