@@ -19,9 +19,6 @@ use tracing::info;
 
 use crate::app::App;
 
-mod attachments;
-mod webhooks;
-
 /// Builds and serves the gui's axum app: the dioxus fullstack app, the
 /// discord oauth routes, and the redis-backed session/auth layers.
 ///
