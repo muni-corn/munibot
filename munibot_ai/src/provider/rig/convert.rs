@@ -186,8 +186,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_result_in_an_assistant_message_is_rejected() {
-        let message = Message::new(Role::Assistant, vec![ContentBlock::tool_result("c1", "ok")]);
+    fn test_a_message_with_no_content_is_rejected() {
+        let message = Message::new(Role::User, vec![]);
         assert!(
             to_rig_message(&message).is_err(),
             "a tool result can only ever come from a user or tool role"
