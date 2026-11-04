@@ -56,27 +56,7 @@ fn to_rig_assistant_content(
         .map(|block| match block {
             ContentBlock::Text { text } => rig_message::AssistantContent::text(text.clone()),
             ContentBlock::Thinking { thinking } => {
-                Ok(rig_message::AssistantContent::reasoning(thinking))
-            }
-            ContentBlock::Image { image } => {
-                Ok(rig_message::AssistantContent::Image(to_rig_image(image)))
-            }
-            ContentBlock::ToolUse {
-                call_id,
-                name,
-                arguments,
-            } => {
-                // populate both id and call_id with our value, so whichever field a provider
-                // reads for correlation still matches what we send back in the tool result
-                Ok(rig_message::AssistantContent::tool_call_with_call_id(
-                    call_id.clone(),
-                    call_id.clone(),
-                    name.clone(),
-                    arguments.clone(),
-                ))
-            }
-            ContentBlock::ToolResult { .. } => {
-                Err(format!("{block:?} cannot appear in an assistant message"))
+                rig_message::AssistantContent::reasoning(thinking)
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
