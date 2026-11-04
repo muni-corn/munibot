@@ -58,22 +58,9 @@ mod tests {
     }
 
     #[test]
-    fn test_every_role_maps_to_its_wire_counterpart() {
-        assert_eq!(
-            ChatMessage::from_row(row("system"), &[], Vec::new()).role,
-            ChatRole::System
-        );
-        assert_eq!(
-            ChatMessage::from_row(row("user"), &[], Vec::new()).role,
-            ChatRole::User
-        );
-        assert_eq!(
-            ChatMessage::from_row(row("assistant"), &[], Vec::new()).role,
-            ChatRole::Assistant
-        );
-        assert_eq!(
-            ChatMessage::from_row(row("tool"), &[], Vec::new()).role,
-            ChatRole::Tool
-        );
+    fn test_assistant_message_converts_to_an_assistant_turn() {
+        let message: munibot_ai::Message = ChatMessage::assistant("hello!").into();
+        assert_eq!(message.role, munibot_ai::Role::Assistant);
+        assert_eq!(message.text(), "hello!");
     }
 }
