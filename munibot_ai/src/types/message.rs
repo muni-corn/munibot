@@ -36,16 +36,6 @@ impl Message {
             .collect::<Vec<_>>()
             .join("")
     }
-
-    /// Iterates the tool calls this message asks for.
-    pub fn tool_uses(&self) -> impl Iterator<Item = (&str, &str, &Value)> {
-        self.content.iter().filter_map(ContentBlock::as_tool_use)
-    }
-
-    /// Returns `true` if this message asks for at least one tool call.
-    pub fn has_tool_uses(&self) -> bool {
-        self.content.iter().any(ContentBlock::is_tool_use)
-    }
 }
 
 /// An ordered conversation.
