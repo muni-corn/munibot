@@ -23,24 +23,17 @@ pub fn Composer(disabled: bool, on_send: EventHandler<String>) -> Element {
     rsx! {
         div { class: "border-t border-slate-800",
             div { class: "flex items-end gap-2 p-4",
-                label {
-                    r#for: "composer-file-input",
-                    class: "btn btn-ghost",
-                    title: "attach an image",
-                    i { class: "ph-duotone ph-paperclip" }
-                }
-                input {
-                    r#type: "file",
-                    id: "composer-file-input",
-                    class: "hidden",
-                    accept: ALLOWED_MEDIA_TYPES.join(","),
-                    multiple: true,
-                    onchange: move |event| {
-                        let files = event.files();
-                        async move {
-                            for file in files {
-                                queue_upload(conversation_id, attachments, next_key, file).await;
-                            }
+                textarea {
+                    class: "textarea w-full resize-none",
+                    style: "field-sizing: content; max-height: 16rem;",
+                    placeholder: "message munibot...",
+                    disabled,
+                    value: draft,
+                    oninput: move |event| draft.set(event.value()),
+                    onkeydown: move |event| {
+                        if event.key() == Key::Named(NamedKey::Enter) && !event.modifiers().shift() {
+                            event.prevent_default();
+                            submit();
                         }
                     },
                 }
