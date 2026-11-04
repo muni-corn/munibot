@@ -20,8 +20,8 @@ feature:
   axum app (the dioxus fullstack app, the oauth routes from `munibot_api`, the redis-backed session
   layers, and the `Extension`s carrying the db pool, the discord config, and `Option<Arc<Chat>>`).
 - **`munibot`** -- the thin binary. `main.rs` just picks an entry point: `munibot_gui::launch_web()`
-  for the wasm client, or (server-only) tracing setup, config, migrations, operator permission sync,
-  `ai::build`, `bot::start` (discord/twitch), then `munibot_gui::server::run()`.
+  for the wasm client, or (server-only) tracing setup, config, migrations, `ai::build`,
+  `bot::start` (discord/twitch), then `munibot_gui::server::run()`.
 
 `Arc<Ai>` is built in `main.rs` **unconditionally and outside the `MUNIBOT_DISABLE_BOTS` guard**, and
 handed to both the bots and the gui server. That ordering is deliberate: the chat page needs the ai
