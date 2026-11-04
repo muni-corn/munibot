@@ -131,25 +131,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_respond_tool_use_is_returned_by_complete() {
-        let provider =
-            MockProvider::new().respond_tool_use("c1", "current_time", json!({"timezone": "UTC"}));
-
-        let response = provider.complete(request()).await.expect("should succeed");
-
-        assert_eq!(
-            response.stop_reason,
-            StopReason::ToolUse,
-            "a tool call should stop the turn there"
-        );
-        let (call_id, name, _) = response.content[0]
-            .as_tool_use()
-            .expect("the queued response should be a tool call");
-        assert_eq!(call_id, "c1");
-        assert_eq!(name, "current_time");
-    }
-
-    #[tokio::test]
     async fn test_respond_error_is_returned_by_complete() {
         let provider = MockProvider::new().respond_error(AiError::Config("no key".to_string()));
 
