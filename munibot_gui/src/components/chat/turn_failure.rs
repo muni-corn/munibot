@@ -35,11 +35,9 @@ impl TurnFailure {
     }
 }
 
-/// An inline banner for a failed turn, matched structurally rather than
-/// showing one generic message for everything: signed-out prompts a
-/// sign-in, a budget refusal explains itself kindly, and a transient
-/// provider outage offers a retry that re-asks munibot to answer the same,
-/// already-persisted message rather than sending a new one.
+/// An inline banner for a failed reply: signed-out prompts a sign-in, a
+/// disabled chat explains itself, and anything else offers a retry that asks
+/// munibot to answer the same conversation again.
 #[component]
 pub fn TurnFailureBanner(failure: TurnFailure, on_retry: EventHandler<()>) -> Element {
     match failure {
