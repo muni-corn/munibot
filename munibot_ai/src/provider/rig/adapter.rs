@@ -4,7 +4,7 @@ use futures::{StreamExt, stream::BoxStream};
 use rig_core::{
     completion::{
         CompletionModel, CompletionRequest as RigCompletionRequest, GetTokenUsage,
-        message::{Message as RigMessage, ToolChoice as RigToolChoice},
+        message::Message as RigMessage,
     },
     one_or_many::OneOrMany,
 };
