@@ -13,19 +13,7 @@ use rig_core::{
     streaming::StreamedAssistantContent,
 };
 
-use crate::types::{
-    ContentBlock, Image, ImageSource, Message, Role, StreamEvent, ToolSchema, Usage,
-};
-
-/// Converts our [`ToolSchema`] into rig's tool definition shape. A direct field
-/// mapping - both sides settled on the same three fields independently.
-pub fn to_tool_definition(schema: &ToolSchema) -> ToolDefinition {
-    ToolDefinition {
-        name: schema.name.clone(),
-        description: schema.description.clone(),
-        parameters: schema.input_schema.clone(),
-    }
-}
+use crate::types::{ContentBlock, Message, Role, StreamEvent, Usage};
 
 /// Converts one of our messages into rig's message type.
 ///
