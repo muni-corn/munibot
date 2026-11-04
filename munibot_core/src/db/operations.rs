@@ -12,7 +12,7 @@ use crate::db::{
     },
     schema::{
         autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
-        guild_wallets, linked_accounts, quotes, user_permissions, users,
+        guild_wallets, linked_accounts, quotes, users,
     },
 };
 
