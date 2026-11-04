@@ -665,9 +665,7 @@ pub enum UnlinkAccountOutcome {
     Unlinked,
     /// `user_id` has no other linked account - unlinking this one would
     /// leave them with no way to ever sign in again. Refused rather than
-    /// allowed and hoped nobody hits it: the memory-wipe promise (a
-    /// consistent `users.id` across every provider) is worthless to
-    /// someone who can no longer reach their own `users.id` at all.
+    /// allowed and hoped nobody hits it.
     LastRemainingAccount,
     /// No linked account for `user_id` on that provider - not an error,
     /// the same reasoning `forget_memory`'s own doc comment documents for
