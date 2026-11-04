@@ -86,41 +86,6 @@ impl History {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
-
-    /// Estimates how many tokens this history occupies.
-    ///
-    /// The counter is supplied by the caller because only the provider knows
-    /// the real tokenizer. Tool arguments and results are counted too,
-    /// since they consume context just as text does.
-    ///
-    /// # Example
-    /// ```
-    /// use munibot_ai::{History, Message, rough_token_estimate};
-    ///
-    /// let mut history = History::new();
-    /// history.push(Message::user("hello"));
-    /// assert!(history.token_estimate(rough_token_estimate) > 0);
-    /// ```
-    pub fn token_estimate<F>(&self, counter: F) -> usize
-    where
-        F: Fn(&str) -> usize,
-    {
-        self.0
-            .iter()
-            .flat_map(|message| message.content.iter())
-            .map(|block| match block {
-                ContentBlock::Text { text } => counter(text),
-                ContentBlock::Thinking { thinking } => counter(thinking),
-                ContentBlock::ToolResult { content, .. } => counter(content),
-                ContentBlock::ToolUse {
-                    name, arguments, ..
-                } => counter(name) + counter(&arguments.to_string()),
-                // images are billed per-image by area, not per-token, so a text counter cannot
-                // say anything useful about them
-                ContentBlock::Image { .. } => 0,
-            })
-            .sum()
-    }
 }
 
 impl From<Vec<Message>> for History {
