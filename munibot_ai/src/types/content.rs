@@ -52,24 +52,6 @@ impl ContentBlock {
             Self::Thinking { .. } => None,
         }
     }
-
-    /// Returns the call identifier, name, and arguments of a tool call, or
-    /// `None` otherwise.
-    pub fn as_tool_use(&self) -> Option<(&str, &str, &Value)> {
-        match self {
-            Self::ToolUse {
-                call_id,
-                name,
-                arguments,
-            } => Some((call_id, name, arguments)),
-            _ => None,
-        }
-    }
-
-    /// Returns `true` if this block is a tool call.
-    pub fn is_tool_use(&self) -> bool {
-        matches!(self, Self::ToolUse { .. })
-    }
 }
 
 #[cfg(test)]
