@@ -31,8 +31,9 @@ pub async fn chat_stream(
     let reply = chat
         .reply(messages.into_iter().map(Into::into).collect())
         .await
-        .map_err(ChatError::from)?
-        .map(|event| Ok::<ChatEvent, axum::BoxError>(ChatEvent::from(event)));
+        .map_err(ChatError::from)?;
+
+    let events = ChatEvent::stream_from_reply(reply).map(Ok::<ChatEvent, axum::BoxError>);
 
     Ok(dioxus_fullstack::ServerEvents::from_stream(events))
 }
