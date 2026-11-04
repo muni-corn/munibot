@@ -3,8 +3,6 @@ use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use rand::seq::IndexedRandom;
 
-pub mod ai;
-
 use crate::db::{
     DbPool,
     models::{
