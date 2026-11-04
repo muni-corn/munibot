@@ -21,40 +21,7 @@ pub fn Composer(disabled: bool, on_send: EventHandler<String>) -> Element {
     };
 
     rsx! {
-        div {
-            id: DROP_ZONE_ID,
-            class: if *drag_hovered.read() { "border-t border-primary bg-primary/5" } else { "border-t border-slate-800" },
-            ondragover: move |event| {
-                event.prevent_default();
-                drag_hovered.set(true);
-            },
-            ondragleave: move |_| drag_hovered.set(false),
-            ondrop: move |event| {
-                event.prevent_default();
-                drag_hovered.set(false);
-                let files = event.files();
-                async move {
-                    for file in files {
-                        queue_upload(conversation_id, attachments, next_key, file).await;
-                    }
-                }
-            },
-            onmounted: move |_| {
-                spawn(listen_for_pasted_images(conversation_id, attachments, next_key));
-            },
-            if !attachments.read().is_empty() {
-                div { class: "flex flex-wrap gap-2 px-4 pt-4",
-                    for attachment in attachments.read().iter().cloned() {
-                        AttachmentThumbnail {
-                            key: "{attachment.key}",
-                            attachment: attachment.clone(),
-                            on_remove: move |key| {
-                                attachments.write().retain(|a| a.key != key);
-                            },
-                        }
-                    }
-                }
-            }
+        div { class: "border-t border-slate-800",
             div { class: "flex items-end gap-2 p-4",
                 label {
                     r#for: "composer-file-input",
