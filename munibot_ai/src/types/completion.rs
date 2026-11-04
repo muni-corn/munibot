@@ -30,7 +30,6 @@ impl CompletionRequest {
             system: None,
             history,
             params: ModelParams::default(),
-            tool_choice: ToolChoice::default(),
         }
     }
 
