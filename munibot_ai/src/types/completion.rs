@@ -88,19 +88,6 @@ impl CompletionResponse {
             .collect::<Vec<_>>()
             .join("")
     }
-
-    /// Borrows every tool call the model asked for, in the order it asked.
-    pub fn tool_uses(&self) -> Vec<&ContentBlock> {
-        self.content
-            .iter()
-            .filter(|block| block.is_tool_use())
-            .collect()
-    }
-
-    /// Returns `true` if the model asked for at least one tool call.
-    pub fn has_tool_uses(&self) -> bool {
-        self.content.iter().any(ContentBlock::is_tool_use)
-    }
 }
 
 #[cfg(test)]
