@@ -51,14 +51,9 @@ mod tests {
             .await
     }
 
-    #[test]
-    fn test_thinking_and_text_delta_map_their_own_text() {
-        let thinking: ChatEvent = HarnessEvent::Thinking("hmm".to_string()).into();
-        assert_eq!(thinking, ChatEvent::Thinking("hmm".to_string()));
-
-        let text: ChatEvent = HarnessEvent::TextDelta("hi".to_string()).into();
-        assert_eq!(text, ChatEvent::TextDelta("hi".to_string()));
-    }
+    #[tokio::test]
+    async fn test_text_chunks_become_deltas_then_finished() {
+        let events = events(vec![Ok("hi ".to_string()), Ok("there".to_string())]).await;
 
     #[test]
     fn test_tool_started_maps_the_tool_name() {
