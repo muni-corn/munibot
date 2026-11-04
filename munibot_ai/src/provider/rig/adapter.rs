@@ -201,9 +201,9 @@ mod tests {
 
     #[test]
     fn test_params_are_widened_not_truncated() {
-        // 0.5 is exactly representable in both f32 and f64, so this proves the widen is
-        // present without also asserting on f32-to-f64 rounding behaviour,
-        // which is not what this test is for
+        // 0.5 is exactly representable in both f32 and f64, so this proves the
+        // widen is present without also asserting on f32-to-f64 rounding
+        // behaviour, which is not what this test is for
         let request = request().with_params(
             ModelParams::new()
                 .with_temperature(0.5)
