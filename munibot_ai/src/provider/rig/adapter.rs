@@ -79,19 +79,7 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
     })
 }
 
-fn to_rig_tool_choice(choice: &ToolChoice) -> RigToolChoice {
-    match choice {
-        ToolChoice::Auto => RigToolChoice::Auto,
-        ToolChoice::None => RigToolChoice::None,
-        ToolChoice::Required => RigToolChoice::Required,
-        ToolChoice::Specific { names } => RigToolChoice::Specific {
-            function_names: names.clone(),
-        },
-    }
-}
-
-/// Infers a stop reason from content alone: [`StopReason::ToolUse`] if the
-/// model asked for any tool call, [`StopReason::EndTurn`] otherwise.
+/// The stop reason every reply is reported with.
 ///
 /// rig's generic `CompletionResponse<T>` and `StreamingCompletionResponse<T>`
 /// expose no normalized finish/stop reason - only the provider-specific raw
