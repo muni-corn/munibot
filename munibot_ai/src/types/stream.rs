@@ -59,8 +59,8 @@ mod tests {
         .expect("should serialize");
         assert_eq!(
             encoded,
-            serde_json::json!({"type": "tool_use_end"}),
-            "a unit-like variant should still carry its type tag"
+            serde_json::json!({"type": "done", "stop_reason": "end_turn"}),
+            "every event should carry its type tag"
         );
     }
 
