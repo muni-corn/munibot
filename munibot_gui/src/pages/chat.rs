@@ -12,12 +12,9 @@ use crate::components::chat::{
 
 /// A temporary conversation with munibot.
 ///
-/// Not nested under `Dashboard`: that layout's sidebar is guild-scoped and
-/// irrelevant to a person's own chat history, and this is munibot's own
-/// page rather than a settings screen.
-///
-/// The sidebar itself is a placeholder here -- the real conversation list,
-/// from `list_conversations`, arrives in a later commit.
+/// Nothing is saved: the conversation lives in this component's own state and
+/// is sent back to the server in full with every message, so leaving or
+/// reloading the page starts over.
 #[component]
 pub fn ChatLayout() -> Element {
     use_context_provider(|| ChatDrafts(Signal::new(HashMap::new())));
