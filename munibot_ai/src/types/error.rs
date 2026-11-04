@@ -48,12 +48,6 @@ impl AiError {
     }
 }
 
-impl From<anyhow::Error> for AiError {
-    fn from(value: anyhow::Error) -> Self {
-        Self::Other(value.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
