@@ -51,9 +51,8 @@ pub enum Route {
                 #[route("/dashboard/:guild_id/logging", LoggingSettingsPage)]
                 GuildLoggingSettings { guild_id: String },
             #[end_layout]
-            #[layout(ChatLayout)]
-                #[route("/chat")]
-                Chat {},
-                #[route("/chat/:conversation_id")]
-                ChatConversation { conversation_id: i64 },
+            #[route("/chat")]
+            Chat {},
+            #[route("/account")]
+            Account {},
 }
