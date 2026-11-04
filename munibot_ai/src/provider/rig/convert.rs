@@ -54,7 +54,7 @@ fn to_rig_assistant_content(
     let items = content
         .iter()
         .map(|block| match block {
-            ContentBlock::Text { text } => Ok(rig_message::AssistantContent::text(text.clone())),
+            ContentBlock::Text { text } => rig_message::AssistantContent::text(text.clone()),
             ContentBlock::Thinking { thinking } => {
                 Ok(rig_message::AssistantContent::reasoning(thinking))
             }
