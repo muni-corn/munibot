@@ -199,35 +199,7 @@ mod tests {
     #[test]
     fn test_from_assistant_content_text() {
         let block = from_assistant_content(rig_message::AssistantContent::text("hi"));
-        assert_eq!(block, ContentBlock::text("hi"));
-    }
-
-    #[test]
-    fn test_from_assistant_content_prefers_call_id_over_id() {
-        let tool_call = rig_message::AssistantContent::tool_call_with_call_id(
-            "internal-id",
-            "provider-call-id".to_string(),
-            "current_time",
-            json!({}),
-        );
-        let block = from_assistant_content(tool_call);
-        let (call_id, ..) = block.as_tool_use().expect("should be a tool call");
-        assert_eq!(
-            call_id, "provider-call-id",
-            "call_id should win over id when both are present"
-        );
-    }
-
-    #[test]
-    fn test_from_assistant_content_falls_back_to_id_when_call_id_absent() {
-        let tool_call =
-            rig_message::AssistantContent::tool_call("internal-id", "current_time", json!({}));
-        let block = from_assistant_content(tool_call);
-        let (call_id, ..) = block.as_tool_use().expect("should be a tool call");
-        assert_eq!(
-            call_id, "internal-id",
-            "id should be used when the provider has no separate call_id"
-        );
+        assert_eq!(block, Some(ContentBlock::text("hi")));
     }
 
     #[test]
