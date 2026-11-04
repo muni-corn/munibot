@@ -668,8 +668,7 @@ pub enum UnlinkAccountOutcome {
     /// allowed and hoped nobody hits it.
     LastRemainingAccount,
     /// No linked account for `user_id` on that provider - not an error,
-    /// the same reasoning `forget_memory`'s own doc comment documents for
-    /// forgetting a memory that never existed.
+    /// since there is nothing to undo.
     NotFound,
 }
 
