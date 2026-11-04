@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use munibot_api::chat::{AttachmentSummary, ChatMessage, ChatRole};
+use munibot_api::chat::{ChatMessage, ChatRole};
 
 use crate::components::chat::{
     markdown::render_markdown,
