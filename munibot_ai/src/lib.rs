@@ -12,7 +12,6 @@ pub mod config;
 pub mod conversation;
 pub mod provider;
 pub mod types;
-pub mod usage;
 
 pub use service::{Ai, AiTurnRequest};
 pub use types::{
