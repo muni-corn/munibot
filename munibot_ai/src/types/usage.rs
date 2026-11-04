@@ -121,7 +121,7 @@ mod tests {
         assert_eq!(
             total,
             Usage::new(9, 12),
-            "an agent loop should be able to total itself"
+            "several requests should be able to total themselves"
         );
     }
 
