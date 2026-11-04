@@ -2,16 +2,13 @@ use dioxus::prelude::*;
 
 use crate::chat::{ChatEvent, ChatMessage, ChatResult};
 
-/// The tier a signed-in web user's turns run at, matching what discord
-/// grants today (`DISCORD_GRANTED_TIER` in `munibot_discord::handlers::ai`):
-/// `Safe` plus read-only network access, nothing that reaches munibot's own
-/// data or a sandbox. Revisit once either concept exists for the web
-/// surface specifically.
-#[cfg(feature = "server")]
-const WEB_GRANTED_TIER: munibot_ai::tools::RiskTier = munibot_ai::tools::RiskTier::NetworkRead;
-
-/// Streams the events of one turn answering `message_id`, a turn identifier
-/// previously returned by `send_message`.
+/// Streams munibot's reply to `messages`, the whole conversation so far.
+///
+/// Nothing is stored server-side: the browser holds the conversation and
+/// sends all of it every turn, so a conversation lasts exactly as long as the
+/// page that started it. SSE rather than a websocket: the client sends
+/// exactly one request per reply, so duplex buys nothing, while SSE is
+/// readable in devtools.
 ///
 /// `#[server]` hard-codes `POST`, so this is a `#[get]` route instead - the
 /// `name: Type` extractor syntax parses identically on it. SSE rather than a
