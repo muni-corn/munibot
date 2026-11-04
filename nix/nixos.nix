@@ -153,21 +153,6 @@ in
           isSystemUser = true;
           name = cfg.user;
           group = cfg.group;
-          # rootless podman maps container uids/gids into this range - see
-          # cfg.enableAiSandbox's own doc comment for why both this and
-          # linger are needed for a system service rather than a login session
-          subUidRanges = lib.mkIf cfg.enableAiSandbox [
-            {
-              count = 65536;
-              startUid = 100000;
-            }
-          ];
-          subGidRanges = lib.mkIf cfg.enableAiSandbox [
-            {
-              count = 65536;
-              startGid = 100000;
-            }
-          ];
         };
       };
 
