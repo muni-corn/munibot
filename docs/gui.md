@@ -60,10 +60,7 @@ munibot_gui/src/
   components/settings.rs
   pages/            route targets: home, dashboard, account, chat, guild_settings (+ logging)
   server.rs         (server only) builds/serves the axum app: dioxus fullstack + oauth routes +
-                     attachments + github webhooks + redis sessions + extensions
-  server/attachments.rs  (server only) attachment fetch route
-  server/webhooks.rs     (server only) POST /webhooks/github: signature verification,
-                          normalization, trigger matching, dispatch
+                     redis sessions + extensions
 
 munibot_api/src/
   lib.rs            module declarations
