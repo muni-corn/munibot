@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-/// Something that went wrong somewhere in the ai harness.
+/// Something that went wrong talking to a model.
 ///
 /// Every `munibot_ai_*` crate reports failures through this type, so a caller
 /// several layers up (a Discord handler, a pipeline executor) can react to one
