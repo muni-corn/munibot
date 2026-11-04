@@ -3,16 +3,7 @@ use diesel::prelude::*;
 
 use crate::db::schema::{
     autodelete_timers, community_links, email_signin_tokens, guild_configs, guild_payouts,
-    guild_wallets, linked_accounts, quotes, user_permissions, users,
-};
-
-pub mod ai;
-
-pub use ai::{
-    AiAttachment, AiAttachmentMeta, AiConversation, AiMemory, AiMessage, AiPipeline,
-    AiPipelineEvent, AiRateLimit, AiSpendCap, AiToolCall, AiUsage, AiUserSettings, NewAiAttachment,
-    NewAiConversation, NewAiMemory, NewAiMessage, NewAiPipeline, NewAiPipelineEvent,
-    NewAiRateLimit, NewAiSpendCap, NewAiToolCall, NewAiUsage, NewAiUserSettings,
+    guild_wallets, linked_accounts, quotes, users,
 };
 
 // guild_configs
