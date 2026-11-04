@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 
 /// Who said a message in a conversation.
 ///
-/// Mirrors `munibot_ai::types::Role`, since that type lives in a server-only
-/// dependency of this crate and can't be named from wasm-buildable code.
+/// Deliberately has no system or tool role: the browser holds the
+/// conversation and sends it back every turn, so anything it can say has to
+/// be something a person or the model could legitimately have said.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ChatRole {
     System,
