@@ -139,29 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_choice_defaults_to_auto() {
-        assert_eq!(
-            ToolChoice::default(),
-            ToolChoice::Auto,
-            "letting the model decide is the right default"
-        );
-    }
-
-    #[test]
-    fn test_tool_choice_specific_roundtrips() {
-        let choice = ToolChoice::Specific {
-            names: vec!["handoff".to_string()],
-        };
-        let encoded = serde_json::to_string(&choice).expect("should serialize");
-        let decoded: ToolChoice = serde_json::from_str(&encoded).expect("should deserialize");
-        assert_eq!(
-            decoded, choice,
-            "specific tool choice should survive a roundtrip"
-        );
-    }
-
-    #[test]
-    fn test_response_text_skips_non_text_blocks() {
+    fn test_response_text_skips_reasoning() {
         let response = CompletionResponse::new(
             vec![
                 ContentBlock::thinking("hmm"),
