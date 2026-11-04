@@ -9,19 +9,6 @@ use serde::{Deserialize, Serialize};
 pub enum ChatRole {
     User,
     Assistant,
-    Tool,
-}
-
-#[cfg(feature = "server")]
-impl From<munibot_ai::types::Role> for ChatRole {
-    fn from(role: munibot_ai::types::Role) -> Self {
-        match role {
-            munibot_ai::types::Role::System => Self::System,
-            munibot_ai::types::Role::User => Self::User,
-            munibot_ai::types::Role::Assistant => Self::Assistant,
-            munibot_ai::types::Role::Tool => Self::Tool,
-        }
-    }
 }
 
 /// One persisted message in a conversation, as loaded for the transcript.
