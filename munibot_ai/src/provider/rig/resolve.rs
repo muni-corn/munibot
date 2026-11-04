@@ -51,9 +51,9 @@ impl ProviderResolver {
 
         let provider = build_provider(model.provider(), model.model())?;
 
-        // another thread may have built the same provider concurrently; keep whichever
-        // won the race rather than paying for a second lock upgrade to detect
-        // and discard the loser
+        // another thread may have built the same provider concurrently; keep
+        // whichever won the race rather than paying for a second lock upgrade
+        // to detect and discard the loser
         let mut cache = self.cache.write().unwrap();
         Ok(Arc::clone(cache.entry(key).or_insert(provider)))
     }
