@@ -11,8 +11,6 @@ mod event;
 mod message;
 mod validate;
 
-pub use attachment::{ALLOWED_MEDIA_TYPES, AttachmentSummary, MAX_ATTACHMENT_BYTES};
-pub use conversation::ConversationSummary;
 pub use error::{ChatError, ChatResult};
 pub use event::{ChatEvent, ChatFailureKind};
 pub use memory::{MemoryEntry, MemorySettings};
