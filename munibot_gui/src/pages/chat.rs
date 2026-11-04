@@ -24,13 +24,69 @@ pub fn Chat() -> Element {
     let mut live_reply = use_signal(|| None::<String>);
     let mut failure = use_signal(|| None::<TurnFailure>);
 
-    rsx! {
-        div { class: "flex h-full flex-row",
-            div { class: "p-4 text-slate-300 w-64 border-e border-slate-800", "conversations" }
-            div { class: "grow bg-slate-950/50 sm:rounded-ss-3xl", Outlet::<Route> {} }
-        }
-    }
-}
+    // asks munibot to answer the conversation as it stands: used both for a
+    // freshly sent message and for retrying one whose reply failed
+    let mut run_turn = move || {
+        failure.set(None);
+        live_reply.set(Some(String::new()));
+        let history = messages.read().clone();
+
+        spawn(async move {
+            match chat_stream(history).await {
+                Ok(mut stream) => {
+                    let mut finished = false;
+                    while let Some(event) = stream.recv().await {
+                        match event {
+                            Ok(ChatEvent::TextDelta(text)) => {
+                                if let Some(reply) = live_reply.write().as_mut() {
+                                    reply.push_str(&text);
+                                }
+                            }
+                            Ok(ChatEvent::Finished) => {
+                                finished = true;
+                                break;
+                            }
+                            Ok(ChatEvent::Failed(message)) => {
+                                failure.set(Some(TurnFailure::Failed(message)));
+                                break;
+                            }
+                            Err(error) => {
+                                failure.set(Some(TurnFailure::Failed(error.to_string())));
+                                break;
+                            }
+                        }
+                    }
+
+                    if finished {
+                        let reply = live_reply.read().clone().unwrap_or_default();
+                        if reply.trim().is_empty() {
+                            failure.set(Some(TurnFailure::Failed(
+                                "munibot didn't say anything back :<".to_string(),
+                            )));
+                        } else {
+                            messages.write().push(ChatMessage::assistant(reply));
+                        }
+                    } else if failure.read().is_none() {
+                        failure.set(Some(TurnFailure::Failed(
+                            "the connection dropped before the reply finished :<".to_string(),
+                        )));
+                    }
+                }
+                Err(error) => failure.set(Some(TurnFailure::from_chat_error(&error))),
+            }
+
+            live_reply.set(None);
+        });
+    };
+
+    let on_send = move |text: String| {
+        messages.write().push(ChatMessage::user(text));
+        run_turn();
+    };
+
+    let retry = move |_| run_turn();
+
+    let is_replying = live_reply.read().is_some();
 
 /// Content shown in `ChatLayout`'s outlet at the bare `/chat` path, before a
 /// conversation has been picked from the sidebar or started.
