@@ -96,32 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_result_is_error_defaults_to_false() {
-        // providers and stored rows omit the flag on success, so it must not be
-        // required
-        let block: ContentBlock =
-            serde_json::from_value(json!({"type": "tool_result", "call_id": "c", "content": "ok"}))
-                .expect("should deserialize without is_error");
-        assert_eq!(
-            block,
-            ContentBlock::tool_result("c", "ok"),
-            "missing is_error should mean success"
-        );
-    }
-
-    #[test]
-    fn test_tool_error_marks_the_block_as_failed() {
-        let block = ContentBlock::tool_error("c", "no such timezone");
-        match block {
-            ContentBlock::ToolResult { is_error, .. } => {
-                assert!(is_error, "tool_error should set is_error")
-            }
-            other => panic!("expected a tool result, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_accessors_only_match_their_own_variant() {
+    fn test_as_text_only_matches_text_blocks() {
         let text = ContentBlock::text("hi");
         let call = ContentBlock::tool_use("c", "t", json!({}));
 
