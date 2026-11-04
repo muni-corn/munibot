@@ -46,7 +46,6 @@ lettre = { version = "0.11.23", default-features = false, features = [
   "tokio1-native-tls",
 ] }
 num-format = "0.4"
-octocrab = "0.54"
 once_cell = "1.18"
 poise = { version = "0.6", features = ["cache"] }
 rand = { version = "0.10.1", features = ["std_rng"] }
