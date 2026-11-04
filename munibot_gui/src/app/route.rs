@@ -13,7 +13,7 @@ use crate::{
     layouts::home::HomeLayout,
     pages::{
         account::Account,
-        chat::{Chat, ChatLayout, conversation::ChatConversation},
+        chat::Chat,
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
         home::Home,
