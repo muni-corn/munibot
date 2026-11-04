@@ -86,9 +86,9 @@ munibot_api/src/
 `munibot_core/src/db/{schema,models,operations}.rs`) -- a `users` row is a munibot account; each
 `linked_accounts` row links one external provider account to a user. A user can have multiple linked
 accounts; a provider account belongs to exactly one user. That shape is what let discord, github, and
-email sign-in all land without a schema change, and it is why every ai table keys on the internal
-`users.id` rather than a platform's own identifier -- see
-`docs/notes/gui-configuration-research.md`'s "per-user settings" section for the trap that avoids.
+email sign-in all land without a schema change -- see `docs/notes/gui-configuration-research.md`'s
+"per-user settings" section for why per-user state should key on the internal `users.id` rather
+than a platform's own identifier.
 
 ### A pattern worth knowing: server-only extractor types in shared code
 
