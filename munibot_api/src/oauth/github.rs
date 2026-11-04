@@ -14,8 +14,7 @@ const API_BASE: &str = "https://api.github.com";
 
 /// Scope requested during the authorize step: `read:user` is enough for
 /// the profile fields munibot actually reads (id, login, name, avatar) -
-/// no repository access is ever requested through this flow, that being
-/// entirely the separate GitHub App's concern.
+/// no repository access is ever requested through this flow.
 const SCOPE: &str = "read:user";
 
 /// Error talking to GitHub's oauth2 or REST endpoints.
