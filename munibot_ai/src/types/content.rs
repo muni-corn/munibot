@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 /// Who authored a piece of conversation.
+///
+/// There is deliberately no system role: operator instructions travel as the
+/// request's own `system` field, since most providers treat them as a
+/// distinct input.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
