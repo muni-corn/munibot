@@ -44,30 +44,8 @@ impl AsStatusCode for ChatError {
 pub type ChatResult<T> = Result<T, ChatError>;
 
 #[cfg(feature = "server")]
-impl From<munibot_ai::types::AiError> for ChatError {
-    fn from(e: munibot_ai::types::AiError) -> Self {
-        Self::ServerFnError(ServerFnError::ServerError {
-            message: e.to_string(),
-            code: StatusCode::INTERNAL_SERVER_ERROR.into(),
-            details: None,
-        })
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<anyhow::Error> for ChatError {
-    fn from(e: anyhow::Error) -> Self {
-        Self::ServerFnError(ServerFnError::ServerError {
-            message: e.to_string(),
-            code: StatusCode::INTERNAL_SERVER_ERROR.into(),
-            details: None,
-        })
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<diesel::result::Error> for ChatError {
-    fn from(e: diesel::result::Error) -> Self {
+impl From<munibot_ai::AiError> for ChatError {
+    fn from(e: munibot_ai::AiError) -> Self {
         Self::ServerFnError(ServerFnError::ServerError {
             message: e.to_string(),
             code: StatusCode::INTERNAL_SERVER_ERROR.into(),
