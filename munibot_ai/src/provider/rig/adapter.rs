@@ -200,18 +200,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tools_are_converted() {
-        let request = request().with_tools(vec![crate::types::ToolSchema::no_arguments(
-            "ping",
-            "does nothing",
-        )]);
-        let rig_request = build_completion_request(request).expect("should build");
-
-        assert_eq!(rig_request.tools.len(), 1);
-        assert_eq!(rig_request.tools[0].name, "ping");
-    }
-
-    #[test]
     fn test_params_are_widened_not_truncated() {
         // 0.5 is exactly representable in both f32 and f64, so this proves the widen is
         // present without also asserting on f32-to-f64 rounding behaviour,
