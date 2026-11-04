@@ -4,7 +4,6 @@ use crate::types::{
     content::ContentBlock,
     message::History,
     model::{ModelParams, ModelRef},
-    tool::ToolSchema,
     usage::Usage,
 };
 
