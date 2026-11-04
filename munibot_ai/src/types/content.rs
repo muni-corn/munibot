@@ -27,26 +27,6 @@ pub enum Role {
 pub enum ContentBlock {
     /// Plain text.
     Text { text: String },
-    /// An image.
-    Image { image: Image },
-    /// The model asking to call a tool.
-    ToolUse {
-        /// Correlates this call with its eventual [`ContentBlock::ToolResult`].
-        call_id: String,
-        name: String,
-        arguments: Value,
-    },
-    /// The outcome of a tool call, handed back to the model.
-    ToolResult {
-        /// Must match the `call_id` of the [`ContentBlock::ToolUse`] this
-        /// answers.
-        call_id: String,
-        content: String,
-        /// Whether the tool failed. Errors are surfaced to the model so it can
-        /// recover, rather than aborting the turn.
-        #[serde(default)]
-        is_error: bool,
-    },
     /// Structured reasoning, where the provider exposes it.
     Thinking { thinking: String },
 }
