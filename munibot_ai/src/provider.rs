@@ -62,25 +62,9 @@ pub trait Provider: Send + Sync {
 fn content_to_stream_events(content: Vec<ContentBlock>) -> Vec<StreamEvent> {
     content
         .into_iter()
-        .flat_map(|block| -> Vec<StreamEvent> {
-            match block {
-                ContentBlock::Text { text } => vec![StreamEvent::TextDelta { text }],
-                ContentBlock::Thinking { thinking } => {
-                    vec![StreamEvent::ThinkingDelta { thinking }]
-                }
-                ContentBlock::ToolUse {
-                    call_id,
-                    name,
-                    arguments,
-                } => vec![
-                    StreamEvent::ToolUseStart { call_id, name },
-                    StreamEvent::ToolUseDelta {
-                        partial_json: arguments.to_string(),
-                    },
-                    StreamEvent::ToolUseEnd,
-                ],
-                ContentBlock::ToolResult { .. } | ContentBlock::Image { .. } => vec![],
-            }
+        .map(|block| match block {
+            ContentBlock::Text { text } => StreamEvent::TextDelta { text },
+            ContentBlock::Thinking { thinking } => StreamEvent::ThinkingDelta { thinking },
         })
         .collect()
 }
