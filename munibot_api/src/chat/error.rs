@@ -12,27 +12,10 @@ pub enum ChatError {
     #[error("you need to sign in first")]
     NotSignedIn,
 
-    /// The signed-in user lacks `Permission::Operator`. Distinct from
-    /// [`Self::NotSignedIn`] - a 403 rather than a 401 - since this person
-    /// is genuinely signed in, just not authorized for this.
-    #[error("you don't have permission to see that")]
-    NotOperator,
-
-    /// The conversation exists, but belongs to someone else. Kept distinct
-    /// from [`Self::ConversationNotFound`] at the type level even though both
-    /// currently render the same "not found" response -- returning 404
-    /// either way avoids confirming to a caller that a conversation id they
-    /// don't own actually exists.
-    #[error("that conversation doesn't belong to you")]
-    NotYourConversation,
-
-    #[error("that conversation doesn't exist")]
-    ConversationNotFound,
-
-    /// `ai.enabled` is `false` in config, so no `Ai` service was ever built.
-    /// Distinct from every other failure so the chat page can show "the
-    /// companion is turned off right now" instead of a scary generic error.
-    #[error("the companion isn't turned on right now")]
+    /// `ai.enabled` is `false` in config, so no chat service was ever built.
+    /// Distinct from every other failure so the chat page can say the chat
+    /// is turned off instead of showing a scary generic error.
+    #[error("chat isn't turned on right now")]
     AiDisabled,
 
     /// An upload was rejected for a reason the person can actually fix --
