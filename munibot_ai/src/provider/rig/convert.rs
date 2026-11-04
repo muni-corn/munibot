@@ -79,37 +79,6 @@ pub fn from_assistant_content(content: rig_message::AssistantContent) -> Option<
         rig_message::AssistantContent::ToolCall(_) | rig_message::AssistantContent::Image(_) => {
             None
         }
-        rig_message::AssistantContent::Image(image) => from_rig_image(image),
-    }
-}
-
-fn tool_call_correlation_id(tool_call: &rig_message::ToolCall) -> String {
-    tool_call
-        .call_id
-        .clone()
-        .unwrap_or_else(|| tool_call.id.clone())
-}
-
-fn from_rig_image(image: rig_message::Image) -> ContentBlock {
-    use rig_message::MimeType;
-
-    let media_type = image
-        .media_type
-        .as_ref()
-        .map(|mt| mt.to_mime_type().to_string())
-        .unwrap_or_else(|| "application/octet-stream".to_string());
-
-    let source = match image.data {
-        rig_message::DocumentSourceKind::Base64(data) => ImageSource::Base64 { data },
-        rig_message::DocumentSourceKind::Url(url) => ImageSource::Url { url },
-        // rig models source kinds (a provider-side file id, raw bytes, a bare string) that we
-        // have no representation for. Rather than fail the whole turn over an image we cannot
-        // carry forward, fall back to a text block describing what was dropped.
-        other => return ContentBlock::text(format!("[unsupported image source: {other:?}]")),
-    };
-
-    ContentBlock::Image {
-        image: Image { media_type, source },
     }
 }
 
