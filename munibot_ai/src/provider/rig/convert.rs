@@ -18,10 +18,8 @@ use crate::types::{ContentBlock, Message, Role, StreamEvent, Usage};
 /// Converts one of our messages into rig's message type.
 ///
 /// Fails only when a message's content cannot be represented at all: an empty
-/// content list (`rig` requires at least one block), or a block that cannot
-/// legally appear for that role. A tool call in a `User` message is one
-/// example; our own types allow constructing this even though nothing should
-/// ever do so.
+/// content list (`rig` requires at least one block), or a reasoning block in a
+/// user message, which only a model can ever produce.
 pub fn to_rig_message(message: &Message) -> Result<rig_message::Message, String> {
     match message.role {
         Role::System => Ok(rig_message::Message::system(concatenate_text(
