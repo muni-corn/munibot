@@ -51,8 +51,6 @@ pub async fn run(discord_config: DiscordConfig) -> anyhow::Result<()> {
         // merged before the layers below so sign-in/logout sees the same
         // session + db state as everything else
         .merge(munibot_api::oauth::routes::router())
-        .merge(attachments::router())
-        .merge(webhooks::router())
         .layer(
             AuthSessionLayer::<User, String, SessionRedisPool, _>::new(Some(pool.clone()))
                 .with_config(AuthConfig::<String>::default()),
