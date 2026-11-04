@@ -79,28 +79,6 @@ impl From<crate::oauth::discord::DiscordOAuthError> for AuthError {
             message: e.to_string(),
             code: StatusCode::INTERNAL_SERVER_ERROR.into(),
             details: None,
-            }),
-        }
-    }
-}
-
-/// `try_get_with`'s coalesced error type -- multiple concurrent callers that
-/// all miss the guild cache share one underlying request, and so also share
-/// one `Arc`-wrapped error.
-#[cfg(feature = "server")]
-impl From<std::sync::Arc<crate::oauth::discord::DiscordOAuthError>> for AuthError {
-    fn from(e: std::sync::Arc<crate::oauth::discord::DiscordOAuthError>) -> Self {
-        match &*e {
-            crate::oauth::discord::DiscordOAuthError::RateLimited { retry_after, .. } => {
-                Self::RateLimited {
-                    retry_after_secs: retry_after.as_secs(),
-                }
-            }
-            other => Self::ServerFnError(ServerFnError::ServerError {
-                message: other.to_string(),
-                code: StatusCode::INTERNAL_SERVER_ERROR.into(),
-                details: None,
-            }),
-        }
+        })
     }
 }
