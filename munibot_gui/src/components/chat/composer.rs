@@ -1,8 +1,7 @@
 use dioxus::{html::keyboard_types::Key, prelude::*};
 
 /// The growing textarea a conversation is driven from: enter sends,
-/// shift+enter inserts a newline, and the draft survives navigating away
-/// and back (see [`ChatDrafts`]).
+/// shift+enter inserts a newline.
 ///
 /// `disabled` is meant to cover a whole turn, not just this component's own
 /// brief `send_message` round trip -- the parent sets it once streaming (a
