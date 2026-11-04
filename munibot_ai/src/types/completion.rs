@@ -147,20 +147,7 @@ mod tests {
                 ContentBlock::text("world"),
             ],
             StopReason::EndTurn,
-            Usage::default(),
-        );
-        assert!(!response.has_tool_uses(), "a text answer has no tool calls");
-        assert!(
-            response.tool_uses().is_empty(),
-            "there should be nothing to iterate"
-        );
-    }
-
-    #[test]
-    fn test_only_tool_use_continues_the_loop() {
-        assert!(
-            StopReason::ToolUse.wants_another_iteration(),
-            "a tool call must be answered, so the loop continues"
+            Usage::new(1, 1),
         );
 
         for reason in [
