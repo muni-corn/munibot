@@ -28,7 +28,7 @@ use crate::{
 /// underlying rig client (cheap: it parses an env var and builds a
 /// `reqwest::Client`, no network round trip) once per distinct model rather
 /// than once per provider, which is an acceptable trade for correctness given
-/// personas resolve their model once at startup, not per request.
+/// a model is resolved once at startup, not per request.
 #[derive(Default)]
 pub struct ProviderResolver {
     cache: RwLock<HashMap<String, Arc<dyn Provider>>>,
