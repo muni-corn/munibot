@@ -1,11 +1,8 @@
 use dioxus::{fullstack::RequestError, prelude::*};
 use munibot_api::chat::ChatError;
 
-/// Enough structure about a failed turn to react appropriately in the
-/// chat page, unifying the two places a failure can come from:
-/// [`ChatError`] (the stream failed to even start) and
-/// [`ChatFailureKind`] (the turn started, but the model's reply itself
-/// failed).
+/// Why a reply didn't arrive, with enough structure to react appropriately
+/// in the chat page rather than showing one generic message for everything.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TurnFailure {
     /// The session has expired or was signed out from another tab.
