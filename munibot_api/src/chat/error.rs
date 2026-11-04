@@ -18,10 +18,9 @@ pub enum ChatError {
     #[error("chat isn't turned on right now")]
     AiDisabled,
 
-    /// An upload was rejected for a reason the person can actually fix --
-    /// wrong media type, too big, or malformed base64. Carries the specific
-    /// reason rather than folding into `ServerFnError` since the composer
-    /// needs to show it verbatim, not a generic "something went wrong".
+    /// The conversation sent can't be answered, for a reason the person can
+    /// act on. Carries the specific reason rather than folding into
+    /// `ServerFnError`, since the chat page shows it verbatim.
     #[error("{0}")]
     AttachmentRejected(String),
 
