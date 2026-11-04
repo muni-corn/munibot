@@ -178,6 +178,5 @@ Pre-existing, unrelated bug noticed in passing: `munibot_twitch/src/handlers/quo
 stores `Local::now().naive_local()` for `quotes.created_at`, while every
 other table in the schema stores UTC (`Utc::now().naive_utc()`, e.g.
 `economy/payout.rs:38,73`). Worth fixing independently of any settings work;
-existing rows would need a decision on whether to backfill. Planned as commit
-251 in `docs/plans/ai/milestone-7-projects.md`.
+existing rows would need a decision on whether to backfill.
 </content>
