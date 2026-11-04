@@ -53,9 +53,6 @@ fn MessageBubble(message: ChatMessage) -> Element {
     let (side, bubble_class) = match message.role {
         ChatRole::User => ("chat-end", "chat-bubble-primary"),
         ChatRole::Assistant => ("chat-start", ""),
-        ChatRole::System | ChatRole::Tool => {
-            ("chat-start", "chat-bubble-neutral text-xs opacity-70")
-        }
     };
 
     rsx! {
