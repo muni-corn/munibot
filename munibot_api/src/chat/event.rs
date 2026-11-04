@@ -40,9 +40,8 @@ impl ChatEvent {
 
 #[cfg(all(test, feature = "server"))]
 mod tests {
-    use std::time::Duration;
-
-    use munibot_ai::{harness::HarnessEvent, types::AiError};
+    use futures::{StreamExt, stream};
+    use munibot_ai::AiError;
 
     use super::*;
 
