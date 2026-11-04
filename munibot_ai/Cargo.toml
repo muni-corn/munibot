@@ -2,6 +2,8 @@
 name = "munibot_ai"
 version.workspace = true
 authors.workspace = true
+edition.workspace = true
+description = "munibot's conversation interface: a provider-agnostic, stateless chat with a model"
 license.workspace = true
 
 [dependencies]
