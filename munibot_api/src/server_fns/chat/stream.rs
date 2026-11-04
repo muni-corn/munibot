@@ -28,24 +28,8 @@ pub async fn chat_stream(
     let chat = ai.0.clone().ok_or(ChatError::AiDisabled)?;
     validate_conversation(&messages)?;
 
-    let blocks: Vec<ContentBlock> = serde_json::from_str(&message_row.content)
-        .map_err(|e| ChatError::from(anyhow::anyhow!("couldn't decode message content :< {e}")))?;
-    let text = Message::new(Role::User, blocks).text();
-
-    let request = AiTurnRequest {
-        persona_id: PersonaId::new(conversation.persona_id.clone()),
-        scope: ConversationScope::new(Platform::Web, conversation.scope_key.clone()),
-        user_id: user.id as u64,
-        user_name: user.data.display_name.clone(),
-        granted_tier: WEB_GRANTED_TIER,
-        guild_id: None,
-        message: text,
-        cancellation: CancellationToken::new(),
-        already_persisted: true,
-    };
-
-    let events = ai_service
-        .turn_streamed(request)
+    let reply = chat
+        .reply(messages.into_iter().map(Into::into).collect())
         .await
         .map_err(ChatError::from)?
         .map(|event| Ok::<ChatEvent, axum::BoxError>(ChatEvent::from(event)));
