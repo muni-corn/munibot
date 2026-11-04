@@ -9,11 +9,6 @@ license.workspace = true
 [dependencies]
 async-stream.workspace = true
 async-trait.workspace = true
-backon.workspace = true
-bollard.workspace = true
-chrono.workspace = true
-chrono-tz.workspace = true
-decancer.workspace = true
 futures.workspace = true
 html2text.workspace = true
 humantime.workspace = true
