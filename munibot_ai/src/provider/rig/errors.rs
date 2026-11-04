@@ -91,9 +91,9 @@ mod tests {
 
     #[test]
     fn test_no_status_defaults_to_transient() {
-        // a JSON parse failure carries no status at all - connection-level trouble, not
-        // a rejection of the request itself, so it defaults to the transient
-        // side
+        // a JSON parse failure carries no status at all - connection-level
+        // trouble, not a rejection of the request itself, so it defaults to the
+        // transient side
         let error =
             classify_completion_error(CompletionError::ResponseError("invalid json".to_string()));
         assert!(
