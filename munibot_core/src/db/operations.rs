@@ -568,26 +568,6 @@ pub async fn get_or_create_user_from_linked_account(
         .await
 }
 
-/// Finds the user linked to a provider account, without creating one -
-/// unlike `get_or_create_user_from_linked_account`, for a caller (resolving
-/// a configured operator) that only ever wants an existing user, never a
-/// newly created one.
-pub async fn find_user_by_linked_account(
-    pool: &DbPool,
-    provider: &str,
-    provider_user_id: &str,
-) -> QueryResult<Option<User>> {
-    let mut conn = pool.get().await.expect("couldn't get db connection");
-    users::table
-        .inner_join(linked_accounts::table)
-        .filter(linked_accounts::provider.eq(provider))
-        .filter(linked_accounts::provider_user_id.eq(provider_user_id))
-        .select(User::as_select())
-        .first(&mut conn)
-        .await
-        .optional()
-}
-
 /// Every provider account linked to a user, for an account settings page
 /// and for `unlink_linked_account`'s own "not the last one" check.
 pub async fn list_linked_accounts(pool: &DbPool, user_id: i64) -> QueryResult<Vec<LinkedAccount>> {
