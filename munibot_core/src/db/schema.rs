@@ -106,7 +106,6 @@ diesel::table! {
 
 diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
-diesel::joinable!(user_permissions -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     ai_attachments,
