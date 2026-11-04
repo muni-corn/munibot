@@ -39,28 +39,7 @@ fn to_rig_user_content(
         .iter()
         .map(|block| match block {
             ContentBlock::Text { text } => Ok(rig_message::UserContent::text(text.clone())),
-            ContentBlock::Image { image } => {
-                Ok(rig_message::UserContent::Image(to_rig_image(image)))
-            }
-            ContentBlock::ToolResult {
-                call_id,
-                content,
-                is_error,
-            } => {
-                let text = if *is_error {
-                    format!("Error: {content}")
-                } else {
-                    content.clone()
-                };
-                Ok(rig_message::UserContent::ToolResult(
-                    rig_message::ToolResult {
-                        id: call_id.clone(),
-                        call_id: Some(call_id.clone()),
-                        content: OneOrMany::one(rig_message::ToolResultContent::text(text)),
-                    },
-                ))
-            }
-            ContentBlock::ToolUse { .. } | ContentBlock::Thinking { .. } => {
+            ContentBlock::Thinking { .. } => {
                 Err(format!("{block:?} cannot appear in a user message"))
             }
         })
