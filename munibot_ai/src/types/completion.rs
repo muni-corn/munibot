@@ -23,7 +23,7 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    /// Builds a request with no system prompt, tools, or parameter overrides.
+    /// Builds a request with no system prompt or parameter overrides.
     pub fn new(model: ModelRef, history: History) -> Self {
         Self {
             model,
