@@ -128,7 +128,7 @@ fn render_tag(tag: &Tag<'_>, children: Vec<Element>) -> Element {
         },
         Tag::Heading(level, ..) => render_heading(*level, children),
         Tag::BlockQuote => rsx! {
-            blockquote { class: "text-slate-300 border-s-4 border-slate-700 ps-4 italic",
+            blockquote { class: "border-s-4 border-slate-700 ps-4 text-slate-300 italic",
                 for child in children {
                     {child}
                 }
