@@ -12,57 +12,6 @@ pub enum Role {
     User,
     /// munibot's own output.
     Assistant,
-    /// Results handed back to the model after it called a tool.
-    Tool,
-}
-
-impl Role {
-    /// The stable string this role is stored as in the database.
-    ///
-    /// Deliberately a method rather than leaning on the serde representation:
-    /// a rename in the serde attribute would silently change what is already
-    /// persisted, whereas changing this is an obvious, greppable edit that
-    /// needs a migration. Mirrors `RiskTier::shorthand`.
-    pub fn as_key(&self) -> &'static str {
-        match self {
-            Self::System => "system",
-            Self::User => "user",
-            Self::Assistant => "assistant",
-            Self::Tool => "tool",
-        }
-    }
-
-    /// Parses a role back from its stored string.
-    pub fn from_key(text: &str) -> Option<Self> {
-        match text {
-            "system" => Some(Self::System),
-            "user" => Some(Self::User),
-            "assistant" => Some(Self::Assistant),
-            "tool" => Some(Self::Tool),
-            _ => None,
-        }
-    }
-}
-
-/// Where an image's bytes come from.
-///
-/// Providers disagree on which forms they accept, so both are represented and
-/// the provider adapter converts or rejects as needed.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ImageSource {
-    /// Base64-encoded image bytes.
-    Base64 { data: String },
-    /// A URL the provider is expected to fetch.
-    Url { url: String },
-}
-
-/// An image attached to a message.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct Image {
-    /// An IANA media type such as `image/png`.
-    pub media_type: String,
-    pub source: ImageSource,
 }
 
 /// One piece of a message.
