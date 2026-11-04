@@ -40,8 +40,6 @@ tracing = { workspace = true, optional = true }
 default = []
 desktop = ["dep:dioxus-desktop", "dioxus/desktop"]
 server = [
-  "dep:munibot_vcs",
-  "dep:munibot_github",
   "dep:anyhow",
   "dep:async-trait",
   "dep:axum",
