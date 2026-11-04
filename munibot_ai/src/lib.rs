@@ -8,13 +8,8 @@
 //! `types` holds the provider-neutral domain types everything else speaks, and
 //! `provider` is the only module allowed to depend on `rig-core`.
 
-pub mod audit;
-pub mod crisis;
-pub mod harness;
-pub mod limits;
-pub mod memory;
-pub mod persona;
-pub mod pipeline;
+pub mod config;
+pub mod conversation;
 pub mod provider;
 pub mod sandbox;
 pub mod service;
