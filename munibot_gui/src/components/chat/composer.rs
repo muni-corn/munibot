@@ -16,36 +16,8 @@ pub fn Composer(disabled: bool, on_send: EventHandler<String>) -> Element {
         if disabled || text.is_empty() {
             return;
         }
-        let text = drafts
-            .0
-            .read()
-            .get(&conversation_id)
-            .cloned()
-            .unwrap_or_default();
-        let attachment_ids: Vec<i64> = attachments
-            .read()
-            .iter()
-            .filter_map(|attachment| match attachment.status {
-                AttachmentStatus::Uploaded { id } => Some(id),
-                _ => None,
-            })
-            .collect();
-        if text.trim().is_empty() && attachment_ids.is_empty() {
-            return;
-        }
-
-        sending.set(true);
-        spawn(async move {
-            // the draft is left in place on failure, so nothing typed is ever
-            // lost -- structural, ChatError-aware retry handling arrives in a
-            // later commit
-            if let Ok(message_id) = send_message(conversation_id, text, attachment_ids).await {
-                drafts.0.write().remove(&conversation_id);
-                attachments.write().clear();
-                on_sent.call(message_id);
-            }
-            sending.set(false);
-        });
+        draft.set(String::new());
+        on_send.call(text);
     };
 
     let is_disabled = disabled || *sending.read() || has_pending_upload;
