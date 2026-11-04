@@ -16,8 +16,8 @@ pub mod model;
 pub mod stream;
 pub mod usage;
 
-pub use completion::{CompletionRequest, CompletionResponse, StopReason, ToolChoice};
-pub use content::{ContentBlock, Image, ImageSource, Role};
+pub use completion::{CompletionRequest, CompletionResponse, StopReason};
+pub use content::{ContentBlock, Role};
 pub use error::AiError;
 pub use message::{History, Message, rough_token_estimate};
 pub use model::{ModelParams, ModelRef, ModelRefError};
