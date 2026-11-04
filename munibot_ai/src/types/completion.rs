@@ -7,21 +7,6 @@ use crate::types::{
     usage::Usage,
 };
 
-/// How strongly the model should be pushed toward calling a tool.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
-#[serde(tag = "mode", rename_all = "snake_case")]
-pub enum ToolChoice {
-    /// The model decides. The right answer almost always.
-    #[default]
-    Auto,
-    /// Tools are advertised but must not be called.
-    None,
-    /// The model must call some tool before answering.
-    Required,
-    /// The model must call one of these specific tools.
-    Specific { names: Vec<String> },
-}
-
 /// Everything needed to ask a model for one response.
 ///
 /// This is a single round trip, not a whole turn. The agent loop in
