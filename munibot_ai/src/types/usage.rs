@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 /// Tokens consumed by one or more requests.
 ///
-/// Implements [`Add`] and [`Sum`] so a multi-iteration agent loop can total
-/// itself without the caller tracking four counters by hand.
+/// Implements [`Add`] and [`Sum`] so several requests can be totalled without
+/// the caller tracking the counters by hand.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Usage {
     /// Tokens in the prompt, excluding anything served from cache.
