@@ -144,15 +144,8 @@ where
                 }
             }
 
-            // the underlying stream has drained; rig has now populated `choice` and `response`
-            // with the fully accumulated content and the raw provider response
-            let final_content: Vec<ContentBlock> = inner
-                .choice
-                .iter()
-                .cloned()
-                .map(convert::from_assistant_content)
-                .collect();
-            let stop_reason = infer_stop_reason(&final_content);
+            // the underlying stream has drained; rig has now populated `response` with the raw
+            // provider response
             let usage = inner
                 .response
                 .as_ref()
