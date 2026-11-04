@@ -160,7 +160,12 @@ has `MANAGE_GUILD` on (`DiscordGuild::is_administered_by_user`).
 
 ### Known gaps
 
-- **Twitch sign-in isn't implemented yet** (github and email both are, as of milestone 6), though the
+- **No token refresh.** Discord access tokens are used as-is until they expire (~7 days); there's no
+  refresh-token rotation yet. When a token expires, `get_guilds` will error and the dashboard falls
+  back to a sign-in prompt -- signing in again fixes it.
+  Tracking: bump `linked_accounts.access_token`/`refresh_token` using `token_expires_at` and the
+  stored `refresh_token` when it's close to expiring.
+- **Twitch sign-in isn't implemented yet** (discord, github, and email all are), though the
   `linked_accounts` schema and the `oauth` module structure are meant to make adding it mostly
   additive: a new `oauth/twitch.rs` client, new routes added to `oauth/routes.rs`, and reusing
   `get_or_create_user_from_linked_account` with `provider = "twitch"`.
