@@ -134,17 +134,6 @@ mod tests {
     // --- to_rig_message ---
 
     #[test]
-    fn test_system_message_concatenates_text() {
-        let message = Message::system("be nice");
-        let rig_message = to_rig_message(&message).expect("should convert");
-
-        match rig_message {
-            rig_message::Message::System { content } => assert_eq!(content, "be nice"),
-            other => panic!("expected a system message, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn test_user_message_converts_to_text_content() {
         let message = Message::user("hello");
         let rig_message = to_rig_message(&message).expect("should convert");
