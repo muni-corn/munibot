@@ -28,8 +28,9 @@ pub fn classify_completion_error(error: CompletionError) -> AiError {
         Some(status) if status.as_u16() == 429 => AiError::RateLimited { retry_after: None },
         Some(status) if status.is_server_error() => AiError::Provider(message),
         Some(status) if status.is_client_error() => AiError::Rejected(message),
-        // no status at all (a connection error, a timeout, a malformed JSON body): treat as
-        // transient, since these are exactly the class of failure a retry is likely to outlive
+        // no status at all (a connection error, a timeout, a malformed JSON
+        // body): treat as transient, since these are exactly the class of
+        // failure a retry is likely to outlive
         _ => AiError::Provider(message),
     }
 }
