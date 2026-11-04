@@ -81,7 +81,7 @@ mod tests {
         assert_eq!(
             roundtrip(&block),
             block,
-            "image block should survive a roundtrip"
+            "thinking block should survive a roundtrip"
         );
     }
 
