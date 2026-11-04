@@ -60,13 +60,6 @@ pub enum StopReason {
     Refusal,
 }
 
-impl StopReason {
-    /// Returns `true` when the agent loop must run another iteration.
-    pub fn wants_another_iteration(&self) -> bool {
-        matches!(self, Self::ToolUse)
-    }
-}
-
 /// One response from a model.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct CompletionResponse {
