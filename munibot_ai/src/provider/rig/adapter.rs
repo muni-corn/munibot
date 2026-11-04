@@ -63,8 +63,9 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
         // this adapter is already bound to one model at construction time; no
         // per-request override
         model: None,
-        // the system prompt goes into chat_history as a leading Message::System instead of the
-        // legacy preamble field, which rig itself documents as the preferred representation
+        // the system prompt goes into chat_history as a leading Message::System
+        // instead of the legacy preamble field, which rig itself documents as
+        // the preferred representation
         preamble: None,
         chat_history,
         documents: vec![],
