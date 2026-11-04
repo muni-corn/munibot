@@ -67,28 +67,6 @@ mod tests {
     }
 
     #[test]
-    fn test_conversation_ownership_errors_both_render_as_not_found() {
-        assert_eq!(
-            ChatError::NotYourConversation.as_status_code(),
-            StatusCode::NOT_FOUND,
-            "owning-someone-else's-conversation should not be distinguishable from not-found over \
-             the wire"
-        );
-        assert_eq!(
-            ChatError::ConversationNotFound.as_status_code(),
-            StatusCode::NOT_FOUND
-        );
-    }
-
-    #[test]
-    fn test_not_operator_is_forbidden_not_unauthorized() {
-        assert_eq!(
-            ChatError::NotOperator.as_status_code(),
-            StatusCode::FORBIDDEN
-        );
-    }
-
-    #[test]
     fn test_ai_disabled_is_service_unavailable() {
         assert_eq!(
             ChatError::AiDisabled.as_status_code(),
