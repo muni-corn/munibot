@@ -14,11 +14,7 @@ use crate::components::chat::markdown::render_markdown;
 /// The scroll container is `flex-col-reverse`, which keeps the view pinned to
 /// the newest message as the reply grows without any scripting.
 #[component]
-pub fn MessageList(
-    messages: Vec<ChatMessage>,
-    live_reply: Option<String>,
-    tool_activity: Vec<ToolActivityEntry>,
-) -> Element {
+pub fn MessageList(messages: Vec<ChatMessage>, live_reply: Option<String>) -> Element {
     rsx! {
         div { class: "flex flex-col gap-1 p-4",
             for message in messages {
