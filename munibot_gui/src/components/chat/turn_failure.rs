@@ -33,13 +33,6 @@ impl TurnFailure {
             other => Self::Failed(other.to_string()),
         }
     }
-
-    /// Maps a transport-level failure reading the stream itself (a dropped
-    /// connection, a deserialization error) - always worth a retry, the
-    /// same as a transient provider outage.
-    pub fn from_transport_error(message: String) -> Self {
-        Self::Transient(message)
-    }
 }
 
 /// An inline banner for a failed turn, matched structurally rather than
