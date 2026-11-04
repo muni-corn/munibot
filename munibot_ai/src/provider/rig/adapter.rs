@@ -272,22 +272,6 @@ mod tests {
                     raw_response: (),
                     message_id: None,
                 }),
-                FakeModel::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                } => Ok(rig_core::completion::CompletionResponse {
-                    choice: OneOrMany::one(
-                        rig_core::completion::message::AssistantContent::tool_call(
-                            id.clone(),
-                            name.clone(),
-                            arguments.clone(),
-                        ),
-                    ),
-                    usage: rig_core::completion::Usage::new(),
-                    raw_response: (),
-                    message_id: None,
-                }),
                 FakeModel::Error => Err(CompletionError::ResponseError("boom".to_string())),
             }
         }
