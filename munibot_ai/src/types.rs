@@ -19,7 +19,7 @@ pub mod usage;
 pub use completion::{CompletionRequest, CompletionResponse, StopReason};
 pub use content::{ContentBlock, Role};
 pub use error::AiError;
-pub use message::{History, Message, rough_token_estimate};
+pub use message::{History, Message};
 pub use model::{ModelParams, ModelRef, ModelRefError};
 pub use stream::StreamEvent;
 pub use tool::ToolSchema;
