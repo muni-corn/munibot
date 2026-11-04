@@ -56,8 +56,7 @@ munibot_gui/src/
   app.rs            Route enum, App root
   layouts.rs        + layouts/home.rs -- shared route layouts
   components.rs     route-aware glue (AccountStatus, nav)
-  components/chat/  composer, message list, markdown, persona picker, tool activity,
-                     delegation, turn failure
+  components/chat/  composer, message list, markdown, turn failure
   components/settings.rs
   pages/            route targets: home, dashboard, account, chat (+ sidebar, conversation),
                      memory, personas, usage, transcript, pipelines,
