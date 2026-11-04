@@ -6,8 +6,6 @@ use thiserror::Error;
 pub mod guild;
 pub mod linked_account;
 #[cfg(feature = "server")]
-pub mod operator;
-#[cfg(feature = "server")]
 pub mod server;
 
 pub use linked_account::LinkedAccountSummary;
