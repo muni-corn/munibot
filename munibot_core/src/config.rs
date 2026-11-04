@@ -121,7 +121,7 @@ fn default_twitch_user() -> String {
 mod tests {
     use std::fs;
 
-    use super::{Config, OperatorConfig};
+    use super::Config;
 
     #[test]
     fn test_default_config_discord_invite_link_is_none() {
