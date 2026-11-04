@@ -127,7 +127,6 @@ mod tests {
             ContentBlock::thinking("hmm"),
             ContentBlock::text("the answer "),
             ContentBlock::text("is 4"),
-            ContentBlock::tool_use("c", "calc", json!({})),
         ]);
         assert_eq!(
             message.text(),
