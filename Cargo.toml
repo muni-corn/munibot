@@ -4,8 +4,8 @@ members = ["munibot", "munibot_core", "munibot_discord", "munibot_twitch"]
 
 [workspace.package]
 version = "0.3.3"
-edition = "2024"
 authors = ["municorn <municorn@musicaloft.com>"]
+edition = "2024"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
@@ -15,17 +15,11 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.4", features = ["derive"] }
 decancer = "3.2.4"
 diesel = { version = "2.3.6", features = ["chrono", "mysql", "uuid"] }
-diesel-async = { version = "0.9", features = ["mysql", "bb8"] }
+diesel-async = { version = "0.9", features = ["bb8", "mysql"] }
 diesel_migrations = "2.3.1"
 dotenvy = "0.15"
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = [
-  "env-filter",
-  "fmt",
-  "tracing-log",
-] }
 num-format = "0.4"
 once_cell = "1.18"
 poise = { version = "0.6", features = ["cache"] }
@@ -38,13 +32,19 @@ strum = { version = "0.28", features = ["derive"] }
 thiserror = "2.0"
 tokio = { version = "1.22", features = ["full"] }
 toml = "1.1"
-twitch-irc = { version = "6.0", features = ["refreshing-token-native-tls"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "tracing-log",
+] }
 twitch_api = { version = "0.7", features = [
   "client",
-  "helix",
   "eventsub",
+  "helix",
   "hmac",
   "reqwest",
 ] }
+twitch-irc = { version = "6.0", features = ["refreshing-token-native-tls"] }
 twitch_oauth2 = "0.15"
 url = "2.4"

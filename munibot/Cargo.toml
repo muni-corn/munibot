@@ -1,22 +1,21 @@
 [package]
 name = "munibot"
-description = "the universe's most lovable bot, personality included"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
+description = "the universe's most lovable bot, personality included"
 license.workspace = true
 
+[dependencies]
+clap.workspace = true
+dotenvy.workspace = true
+munibot_core = { path = "../munibot_core" }
+munibot_discord = { path = "../munibot_discord" }
+munibot_twitch = { path = "../munibot_twitch" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 rand_chacha = "0.3"
 tempfile = "3.27.0"
-
-[dependencies]
-munibot_core = { path = "../munibot_core" }
-munibot_discord = { path = "../munibot_discord" }
-munibot_twitch = { path = "../munibot_twitch" }
-clap.workspace = true
-dotenvy.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
