@@ -18,9 +18,6 @@ pub struct CompletionRequest {
     pub system: Option<String>,
     /// The conversation so far.
     pub history: History,
-    /// Tools the model may call. Empty means none are offered.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<ToolSchema>,
     #[serde(default)]
     pub params: ModelParams,
     #[serde(default)]
