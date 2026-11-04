@@ -155,15 +155,8 @@ Sessions are backed by redis (`axum_session` + `axum_session_auth`, keyed by an 
 access (loading the current user, fetching a linked account's stored token).
 
 The dashboard (`munibot_gui/src/pages/dashboard.rs`) calls the `get_guilds` server function, which loads the caller's
-stored discord access token (refreshing it first if it's expired, see below), calls
-`GET /users/@me/guilds` (through a short-lived per-user cache, see
-`docs/notes/discord-rate-limits.md`), and filters to guilds the user owns or has `MANAGE_GUILD` on
-(`DiscordGuild::is_administered_by_user`).
-
-Discord access tokens are refreshed automatically, close to but before their real expiry
-(`munibot_api/src/oauth/discord/token.rs::access_token_for`), using the stored `refresh_token` and
-`token_expires_at`. Both `get_guilds` and `require_guild_admin` go through this before reading a
-linked account's access token.
+stored discord access token, calls `GET /users/@me/guilds`, and filters to guilds the user owns or
+has `MANAGE_GUILD` on (`DiscordGuild::is_administered_by_user`).
 
 ### Known gaps
 
