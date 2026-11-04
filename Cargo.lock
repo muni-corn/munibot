@@ -4448,24 +4448,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "munibot_toolagent"
-version = "0.3.3"
-dependencies = [
- "async-trait",
- "clap",
- "globset",
- "grep-regex",
- "grep-searcher",
- "ignore",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "munibot_twitch"
 version = "0.3.3"
 dependencies = [
