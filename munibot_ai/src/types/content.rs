@@ -102,8 +102,8 @@ mod tests {
 
         assert_eq!(text.as_text(), Some("hi"), "text should expose its text");
         assert!(
-            !text.is_tool_use(),
-            "text should not report itself as a tool call"
+            thinking.as_text().is_none(),
+            "reasoning should not expose text"
         );
     }
 
