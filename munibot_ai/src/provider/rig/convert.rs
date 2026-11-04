@@ -72,17 +72,12 @@ fn empty_message_error(_: EmptyListError) -> String {
 /// `None` for anything a conversation has no use for (a tool call, an image).
 pub fn from_assistant_content(content: rig_message::AssistantContent) -> Option<ContentBlock> {
     match content {
-        rig_message::AssistantContent::Text(text) => ContentBlock::text(text.text),
-        rig_message::AssistantContent::ToolCall(tool_call) => {
-            let call_id = tool_call_correlation_id(&tool_call);
-            ContentBlock::tool_use(
-                call_id,
-                tool_call.function.name,
-                tool_call.function.arguments,
-            )
-        }
-        rig_message::AssistantContent::Reasoning(reasoning) => {
-            ContentBlock::thinking(reasoning.first_text().unwrap_or_default())
+        rig_message::AssistantContent::Text(text) => Some(ContentBlock::text(text.text)),
+        rig_message::AssistantContent::Reasoning(reasoning) => Some(ContentBlock::thinking(
+            reasoning.first_text().unwrap_or_default(),
+        )),
+        rig_message::AssistantContent::ToolCall(_) | rig_message::AssistantContent::Image(_) => {
+            None
         }
         rig_message::AssistantContent::Image(image) => from_rig_image(image),
     }
