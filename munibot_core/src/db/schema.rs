@@ -94,16 +94,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_permissions (id) {
-        id -> Bigint,
-        user_id -> Bigint,
-        #[max_length = 64]
-        permission -> Varchar,
-        created_at -> Datetime,
-    }
-}
-
-diesel::table! {
     users (id) {
         id -> Bigint,
         #[max_length = 255]
