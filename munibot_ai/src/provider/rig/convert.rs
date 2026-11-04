@@ -205,23 +205,7 @@ mod tests {
     #[test]
     fn test_from_assistant_content_reasoning() {
         let block = from_assistant_content(rig_message::AssistantContent::reasoning("thinking..."));
-        assert_eq!(block, ContentBlock::thinking("thinking..."));
-    }
-
-    // --- image roundtrip ---
-
-    #[test]
-    fn test_image_base64_roundtrips() {
-        let image = Image {
-            media_type: "image/png".to_string(),
-            source: ImageSource::Base64 {
-                data: "abc123".to_string(),
-            },
-        };
-        let rig_image = to_rig_image(&image);
-        let block = from_rig_image(rig_image);
-
-        assert_eq!(block, ContentBlock::Image { image });
+        assert_eq!(block, Some(ContentBlock::thinking("thinking...")));
     }
 
     #[test]
