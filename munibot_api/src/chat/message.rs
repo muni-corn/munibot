@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 /// be something a person or the model could legitimately have said.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ChatRole {
-    System,
     User,
     Assistant,
     Tool,
