@@ -9,8 +9,7 @@
 //! dropped rather than failing the whole turn.
 
 use rig_core::{
-    EmptyListError, OneOrMany,
-    completion::{ToolDefinition, message as rig_message},
+    EmptyListError, OneOrMany, completion::message as rig_message,
     streaming::StreamedAssistantContent,
 };
 
