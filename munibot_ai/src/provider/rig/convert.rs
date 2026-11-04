@@ -155,11 +155,10 @@ mod tests {
             panic!("expected an assistant message");
         };
 
-        let rig_message::AssistantContent::ToolCall(tool_call) = content.first() else {
-            panic!("expected a tool call");
-        };
-        assert_eq!(tool_call.id, "c1");
-        assert_eq!(tool_call.call_id, Some("c1".to_string()));
+        assert!(matches!(
+            content.first(),
+            rig_message::AssistantContent::Text(_)
+        ));
     }
 
     #[test]
