@@ -4361,7 +4361,6 @@ dependencies = [
  "dioxus",
  "futures",
  "lettre",
- "moka",
  "munibot_ai",
  "munibot_core",
  "rand 0.10.3",
