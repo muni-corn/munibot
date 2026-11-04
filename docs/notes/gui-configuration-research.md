@@ -38,7 +38,7 @@ precedent a GUI equivalent must mirror.
 
 **Since then**, logging settings gained a GUI surface under
 `/dashboard/:guild_id` (`munibot_gui/src/pages/guild_settings/`), and the
-prediction above held: they mirror the slash-command gate through
+prediction above held: it mirrors the slash-command gate through
 `munibot_api/src/auth/guild.rs::require_guild_admin` rather than reusing
 `is_administered_by_user`, which remains a display filter and not an
 authorization check. Autodelete is still slash-command only, and the two
