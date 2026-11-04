@@ -26,29 +26,8 @@ pub enum AiError {
         retry_after: Option<Duration>,
     },
 
-    /// A configured budget (iterations, tokens, wall clock, cost) was
-    /// exhausted.
-    #[error("hit a budget limit :< {limit}")]
-    BudgetExceeded {
-        /// A human-readable description of which limit was hit, since a persona
-        /// can carry several.
-        limit: String,
-    },
-
-    /// A tool failed in a way the model cannot recover from by retrying.
-    #[error("a tool failed :< {0}")]
-    Tool(String),
-
-    /// A handoff or tool call did not match its expected schema, even after
-    /// retries.
-    #[error("that didn't match the expected shape :< {0}")]
-    SchemaViolation(String),
-
-    /// The turn was cancelled before it finished.
-    #[error("cancelled before finishing :<")]
-    Cancelled,
-
-    /// A persona, provider, or tool was misconfigured.
+    /// A provider was misconfigured, such as an unknown provider name or a
+    /// missing api key.
     #[error("something's misconfigured :< {0}")]
     Config(String),
 
