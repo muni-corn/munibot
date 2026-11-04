@@ -19,28 +19,13 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
-    /// Builds a `ChatMessage` from a stored row, its already-parsed content
-    /// blocks, and whatever attachments were linked to it.
-    ///
-    /// Takes the parsed blocks rather than the row's raw JSON `content`
-    /// column directly, since parsing can fail and this constructor has no
-    /// error path of its own -- the caller decides how a corrupt row is
-    /// handled.
-    pub fn from_row(
-        row: munibot_core::db::models::AiMessage,
-        blocks: &[munibot_ai::types::ContentBlock],
-        attachments: Vec<AttachmentSummary>,
-    ) -> Self {
-        use chrono::DateTime;
-
-        let content = blocks
-            .iter()
-            .filter_map(|block| match block {
-                munibot_ai::types::ContentBlock::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("");
+    /// A message from the person chatting.
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: ChatRole::User,
+            content: content.into(),
+        }
+    }
 
         Self {
             id: row.id,
