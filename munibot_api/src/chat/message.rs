@@ -16,12 +16,6 @@ pub enum ChatRole {
 pub struct ChatMessage {
     pub role: ChatRole,
     pub content: String,
-    pub created_at: String,
-    /// Every image attached to this message, if any - references only,
-    /// fetched directly by the browser from `/attachments/{id}` rather than
-    /// carried in `content` itself. Never any for a message stored before
-    /// attachments existed at all, the same as any other message with none.
-    pub attachments: Vec<AttachmentSummary>,
 }
 
 #[cfg(feature = "server")]
