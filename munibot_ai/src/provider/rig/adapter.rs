@@ -114,7 +114,6 @@ where
             .filter_map(convert::from_assistant_content)
             .collect();
         let usage = convert::from_rig_usage(response.usage);
-        let stop_reason = infer_stop_reason(&content);
 
         Ok(CompletionResponse::new(content, stop_reason, usage))
     }
