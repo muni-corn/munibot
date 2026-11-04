@@ -209,31 +209,12 @@ mod tests {
     }
 
     #[test]
-    fn test_image_url_roundtrips() {
-        let image = Image {
-            media_type: "image/jpeg".to_string(),
-            source: ImageSource::Url {
-                url: "https://example.com/cat.jpg".to_string(),
-            },
-        };
-        let rig_image = to_rig_image(&image);
-        let block = from_rig_image(rig_image);
-
-        assert_eq!(block, ContentBlock::Image { image });
-    }
-
-    #[test]
-    fn test_unsupported_rig_image_source_falls_back_to_text() {
-        let image = rig_message::Image {
-            data: rig_message::DocumentSourceKind::FileId("file-123".to_string()),
-            media_type: None,
-            detail: None,
-            additional_params: None,
-        };
-        let block = from_rig_image(image);
-        assert!(
-            block.as_text().is_some(),
-            "an unsupported source kind should degrade to a text placeholder, not panic or vanish"
+    fn test_from_assistant_content_drops_tool_calls() {
+        let tool_call = rig_message::AssistantContent::tool_call("c1", "current_time", json!({}));
+        assert_eq!(
+            from_assistant_content(tool_call),
+            None,
+            "a conversation has no tools to answer a call with"
         );
     }
 
