@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
-use munibot_api::chat::{ChatError, ChatFailureKind};
+use dioxus::{fullstack::RequestError, prelude::*};
+use munibot_api::chat::ChatError;
 
 /// Enough structure about a failed turn to react appropriately in the
 /// chat page, unifying the two places a failure can come from:
