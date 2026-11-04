@@ -76,7 +76,7 @@ munibot_api/src/
   oauth/discord.rs  (server only) discord oauth2 client (token exchange, identity, guilds)
   oauth/discord/bot.rs (server only) bot-token REST calls -- channel listing, which the user's
                      own `identify guilds` scope cannot do
-  oauth/github.rs   (server only) github oauth2 client (sign-in, not the github App)
+  oauth/github.rs   (server only) github oauth2 client (sign-in only)
   oauth/email.rs    (server only) email sign-in tokens
   oauth/routes.rs   (server only) plain axum routes for every oauth dance + logout
   server_fns.rs     + server_fns/ -- auth, guilds, chat/*, settings/*, pipeline
