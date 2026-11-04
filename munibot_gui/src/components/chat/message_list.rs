@@ -16,13 +16,14 @@ use crate::components::chat::markdown::render_markdown;
 #[component]
 pub fn MessageList(messages: Vec<ChatMessage>, live_reply: Option<String>) -> Element {
     rsx! {
-        div { class: "flex flex-col gap-1 p-4",
-            for message in messages {
-                MessageBubble { key: "{message.id}", message }
-            }
-            if let Some(text) = live_reply {
-                ToolActivityStrip { entries: tool_activity }
-                LiveReplyBubble { text }
+        div { class: "flex grow flex-col-reverse overflow-y-auto",
+            div { class: "flex flex-col gap-1 p-4",
+                for (index, message) in messages.into_iter().enumerate() {
+                    MessageBubble { key: "{index}", message }
+                }
+                if let Some(text) = live_reply {
+                    LiveReplyBubble { text }
+                }
             }
         }
     }
