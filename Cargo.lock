@@ -4426,30 +4426,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "munibot_github"
-version = "0.3.3"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "hmac 0.13.0",
- "http",
- "jsonwebtoken",
- "munibot_vcs",
- "octocrab",
- "secrecy 0.10.3",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "subtle",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "url",
- "wiremock",
-]
-
-[[package]]
 name = "munibot_gui"
 version = "0.3.3"
 dependencies = [
