@@ -101,20 +101,10 @@ pub fn from_rig_usage(usage: rig_core::completion::Usage) -> Usage {
 /// Converts one chunk of a rig stream into zero or more of our stream events.
 ///
 /// Deliberately does not handle [`StreamedAssistantContent::Final`]: that
-/// variant carries the whole stream's aggregated response, and deciding our
-/// [`crate::types::StopReason`] from it needs the full accumulated content (a
-/// tool call anywhere in it means [`crate::types::StopReason::ToolUse`]), which
-/// is a stream-level concern for the adapter driving this conversion, not a
-/// per-chunk one. [`StreamedAssistantContent::Unknown`] (a provider-native item
-/// rig does not model) produces no event, for the same reason municode's own
-/// notes flagged provider-specific passthrough as out of scope for a first
-/// pass.
-///
-/// Also does not synthesize [`StreamEvent::ToolUseEnd`] for the incremental
-/// delta path: rig tells us a tool call has *started* (a name or id arrives)
-/// and gives us argument fragments, but nothing in a single chunk says a call
-/// has *finished*. The caller must decide that from stream-level context
-/// (the next differently-identified event, or the stream ending).
+/// variant carries the whole stream's aggregated response, which is a
+/// stream-level concern for the adapter driving this conversion, not a
+/// per-chunk one. Tool calls and [`StreamedAssistantContent::Unknown`] (a
+/// provider-native item rig does not model) produce no event.
 pub fn from_streamed_content<R>(content: StreamedAssistantContent<R>) -> Vec<StreamEvent> {
     match content {
         StreamedAssistantContent::Text(text) => vec![StreamEvent::TextDelta { text: text.text }],
