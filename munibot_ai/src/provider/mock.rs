@@ -11,8 +11,8 @@ use crate::{
 ///
 /// Push expected responses in the order the code under test should receive
 /// them, then run the code. Every request is recorded, so a test can assert on
-/// what the harness actually sent — the system prompt it built, the tools it
-/// offered, the history it assembled. Running out of scripted responses is a
+/// what the code under test actually sent — the system prompt it built and
+/// the history it assembled. Running out of scripted responses is a
 /// test bug, not a runtime condition, so it panics with a message naming which
 /// request went unanswered rather than returning an error a caller might
 /// quietly paper over.
