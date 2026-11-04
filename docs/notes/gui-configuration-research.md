@@ -47,13 +47,13 @@ fixed.
 
 ## Storage bugs found by this research
 
-Two of the four this research originally found are fixed:
-`upsert_guild_config` now uses `on_conflict(DuplicatedKeys).do_update()`
-(`operations.rs:47`) instead of a nulling `REPLACE INTO`, and `/admin
-stop-logging` now calls `set_guild_logging_channel(db, guild_id, None)`
-(`admin.rs:107-114`) instead of deleting the whole row via
-`delete_guild_config` (which still exists but has no caller outside its own
-test). Two are still live:
+Two of the four this research originally found no longer apply. `guild_configs`
+only holds the logging channel, so `upsert_guild_config`'s `REPLACE INTO` and
+`/admin stop-logging`'s whole-row delete both behave exactly like a
+single-column write. If another setting is ever added to that row, both
+become hazards again: a `REPLACE INTO` nulls every column the caller didn't
+populate, and a row delete wipes every setting at once, so writes would need
+to read the existing row first and merge. Two are still live:
 
 - `AutoDeleteHandler` loads every timer into a `HashMap` once at boot
   (`autodelete.rs:30-53`) and never re-reads. A GUI (or any external) write
