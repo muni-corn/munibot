@@ -40,10 +40,7 @@ pub trait Provider: Send + Sync {
     ///
     /// The default wraps [`Self::complete`] and replays its result as a stream,
     /// so a provider that only implements `complete` is still usable
-    /// everywhere a streaming one would be. This is more than the minimal
-    /// "one text delta plus done": it converts every content block, including
-    /// tool calls, because a non-streaming provider that later gets a
-    /// tool-using persona would otherwise silently drop them.
+    /// everywhere a streaming one would be.
     async fn stream(
         &self,
         request: CompletionRequest,
