@@ -84,20 +84,10 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
 /// rig's generic `CompletionResponse<T>` and `StreamingCompletionResponse<T>`
 /// expose no normalized finish/stop reason - only the provider-specific raw
 /// response does, which would defeat the point of a provider-agnostic type.
-/// `MaxTokens`, `StopSequence`, and `Refusal` are therefore not
-/// currently derivable through this adapter. This is a third rig API gap
-/// alongside the two recorded in `docs/notes/ai-preflight-findings.md`, and is
-/// an honest limitation rather than a bug: the harness only ever branches on
-/// `ToolUse` versus everything else, so loop correctness is unaffected, though
-/// diagnostic precision for a truncated response is lost until a per-provider
-/// raw-response inspection is worth the genericity cost.
-fn infer_stop_reason(content: &[ContentBlock]) -> StopReason {
-    if content.iter().any(ContentBlock::is_tool_use) {
-        StopReason::ToolUse
-    } else {
-        StopReason::EndTurn
-    }
-}
+/// `MaxTokens`, `StopSequence`, and `Refusal` are therefore not derivable
+/// through this adapter, which is an honest limitation rather than a bug: see
+/// `docs/notes/rig-provider-findings.md`.
+const STOP_REASON: StopReason = StopReason::EndTurn;
 
 #[async_trait]
 impl<M> Provider for RigProvider<M>
