@@ -18,11 +18,6 @@ impl Message {
         Self { role, content }
     }
 
-    /// Builds a system message.
-    pub fn system(text: impl Into<String>) -> Self {
-        Self::new(Role::System, vec![ContentBlock::text(text)])
-    }
-
     /// Builds a message from the human talking to munibot.
     pub fn user(text: impl Into<String>) -> Self {
         Self::new(Role::User, vec![ContentBlock::text(text)])
