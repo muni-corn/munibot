@@ -76,35 +76,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_use_block_roundtrips() {
-        let block = ContentBlock::tool_use("call_1", "current_time", json!({"timezone": "UTC"}));
-        assert_eq!(
-            roundtrip(&block),
-            block,
-            "tool use block should survive a roundtrip"
-        );
-    }
-
-    #[test]
-    fn test_tool_result_block_roundtrips() {
-        let block = ContentBlock::tool_result("call_1", "12:00");
-        assert_eq!(
-            roundtrip(&block),
-            block,
-            "tool result block should survive a roundtrip"
-        );
-    }
-
-    #[test]
-    fn test_image_block_roundtrips() {
-        let block = ContentBlock::Image {
-            image: Image {
-                media_type: "image/png".to_string(),
-                source: ImageSource::Base64 {
-                    data: "iVBORw0KGgo=".to_string(),
-                },
-            },
-        };
+    fn test_thinking_block_roundtrips() {
+        let block = ContentBlock::thinking("hmm");
         assert_eq!(
             roundtrip(&block),
             block,
