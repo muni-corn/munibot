@@ -85,8 +85,8 @@ fn build_provider(provider: &str, model: &str) -> Result<Arc<dyn Provider>, AiEr
                 client.completion_model(model),
             )))
         }
-        // ollama needs no key; from_env() defaults to a local unauthenticated server and never
-        // fails on a missing OLLAMA_API_KEY
+        // ollama needs no key; from_env() defaults to a local unauthenticated
+        // server and never fails on a missing OLLAMA_API_KEY
         "ollama" => {
             let client =
                 ollama::Client::from_env().map_err(|error| config_error(provider, error))?;
