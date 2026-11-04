@@ -52,8 +52,6 @@ impl CompletionRequest {
 pub enum StopReason {
     /// The model finished its answer.
     EndTurn,
-    /// The model wants to call one or more tools. The loop must continue.
-    ToolUse,
     /// The response hit the token ceiling and is truncated.
     MaxTokens,
     /// A configured stop sequence was produced.
