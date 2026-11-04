@@ -10,20 +10,7 @@ use crate::components::chat::{
     turn_failure::{TurnFailure, TurnFailureBanner},
 };
 
-/// A conversation's unsent draft text, keyed by conversation id, shared
-/// across every `/chat/*` route via context.
-///
-/// Lives here rather than as a plain `use_signal` inside `ChatConversation`
-/// itself: navigating between two conversations remounts that component
-/// fresh (same route variant, different `conversation_id` prop, the same
-/// way `LoggingSettingsPage` remounts per `guild_id`), which would reset a
-/// signal local to it. `ChatLayout` only unmounts when leaving `/chat`
-/// entirely, so a context it provides survives switching conversations.
-#[derive(Clone, Copy)]
-pub struct ChatDrafts(pub Signal<HashMap<i64, String>>);
-
-/// Layout for every `/chat/*` route: the conversation sidebar beside
-/// whichever `Chat`/`ChatConversation` route matched, in the outlet.
+/// A temporary conversation with munibot.
 ///
 /// Not nested under `Dashboard`: that layout's sidebar is guild-scoped and
 /// irrelevant to a person's own chat history, and this is munibot's own
