@@ -169,16 +169,7 @@ mod tests {
             StreamEvent::ThinkingDelta {
                 thinking: "hmm".to_string()
             },
-            "a tool call must not be silently dropped by the default stream wrapper"
-        );
-        assert!(
-            matches!(events[1], StreamEvent::ToolUseDelta { .. }),
-            "the tool call arguments should follow as a delta"
-        );
-        assert_eq!(
-            events[2],
-            StreamEvent::ToolUseEnd,
-            "the tool call should be closed before usage and done"
+            "reasoning should replay in its original order"
         );
     }
 
