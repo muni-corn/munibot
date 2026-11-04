@@ -325,7 +325,7 @@ fn CopyButton(text: String) -> Element {
 
     if *copied.read() {
         rsx! {
-            button { class: "btn btn-ghost btn-xs gap-1", disabled: true,
+            button { class: "btn gap-1 btn-ghost btn-xs", disabled: true,
                 i { class: "ph-duotone ph-check" }
                 "copied!"
             }
