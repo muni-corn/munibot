@@ -10,7 +10,7 @@ The gui is split across three crates, each compiling to two very different targe
 feature:
 
 - **`munibot_api`** -- the rpc boundary between the gui and its data: wire dtos (`UserData`,
-  `GuildSummary`, and the `chat`/`settings`/`pipeline` dto modules), dioxus server functions, and
+  `GuildSummary`, and the `chat`/`settings` dto modules), dioxus server functions, and
   (server-only) the oauth2 clients, the plain axum oauth routes, the session/auth glue (`User`,
   `AuthSession`), and the authorization gates (`require_operator`, `require_guild_admin`). Depends
   on `munibot_core` under its `server` feature to translate `munibot_core`'s db models into these
