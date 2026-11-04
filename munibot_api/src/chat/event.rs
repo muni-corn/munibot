@@ -1,35 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-/// Tokens consumed by one iteration or a whole turn.
-///
-/// Less granular than `munibot_ai::types::Usage`: nothing in the chat page
-/// shows a cache/reasoning token breakdown, so they're collapsed into
-/// `total_tokens` rather than carried across the wire unused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
-pub struct ChatUsage {
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub total_tokens: u64,
-}
-
-#[cfg(feature = "server")]
-impl From<munibot_ai::types::Usage> for ChatUsage {
-    fn from(usage: munibot_ai::types::Usage) -> Self {
-        Self {
-            input_tokens: usage.input_tokens,
-            output_tokens: usage.output_tokens,
-            total_tokens: usage.total_tokens(),
-        }
-    }
-}
-
-/// One step of progress through a turn, streamed to the chat page over SSE.
-///
-/// The serializable mirror of `munibot_ai::harness::HarnessEvent`, which
-/// derives only `Debug` and carries an `AiError` and a `serde_json::Value`
-/// that must not travel to the client as anything richer than plain text.
-/// The `From` impl below is the one genuinely testable part of this mapping.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+/// One step of progress through a reply, streamed to the chat page over SSE.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ChatEvent {
     /// The turn has begun.
     TurnStarted { persona: String },
