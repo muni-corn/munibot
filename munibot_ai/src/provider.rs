@@ -171,6 +171,9 @@ mod tests {
             },
             "reasoning should replay in its original order"
         );
+        assert_eq!(events[1], StreamEvent::TextDelta {
+            text: "hi".to_string()
+        });
     }
 
     #[tokio::test]
