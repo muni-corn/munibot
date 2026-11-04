@@ -12,8 +12,8 @@ feature:
 - **`munibot_api`** -- the rpc boundary between the gui and its data: wire dtos (`UserData`,
   `GuildSummary`, and the `chat`/`settings` dto modules), dioxus server functions, and
   (server-only) the oauth2 clients, the plain axum oauth routes, the session/auth glue (`User`,
-  `AuthSession`), and the authorization gates (`require_operator`, `require_guild_admin`). Depends
-  on `munibot_core` under its `server` feature to translate `munibot_core`'s db models into these
+  `AuthSession`), and the guild authorization gate (`require_guild_admin`). Depends on
+  `munibot_core` under its `server` feature to translate `munibot_core`'s db models into these
   wire types.
 - **`munibot_gui`** -- `App`/`Route`/`components`/`layouts`/`pages`, plus the two entry points:
   `launch_web()` (wasm client) and (server-only) `server::run()`, which builds and serves the whole
