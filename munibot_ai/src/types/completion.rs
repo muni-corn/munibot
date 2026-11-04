@@ -20,8 +20,6 @@ pub struct CompletionRequest {
     pub history: History,
     #[serde(default)]
     pub params: ModelParams,
-    #[serde(default)]
-    pub tool_choice: ToolChoice,
 }
 
 impl CompletionRequest {
