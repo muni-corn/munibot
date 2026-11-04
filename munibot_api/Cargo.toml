@@ -27,6 +27,7 @@ futures = { workspace = true, optional = true }
 lettre = { workspace = true, optional = true }
 munibot_ai = { path = "../munibot_ai", optional = true }
 munibot_core = { path = "../munibot_core", optional = true }
+rand = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing.workspace = true
