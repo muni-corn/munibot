@@ -14,7 +14,6 @@ pub enum ChatRole {
 /// One message in a conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChatMessage {
-    pub id: i64,
     pub role: ChatRole,
     pub content: String,
     pub created_at: String,
