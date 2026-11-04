@@ -32,17 +32,6 @@ pub fn to_rig_message(message: &Message) -> Result<rig_message::Message, String>
     }
 }
 
-/// Joins every text block in a message, ignoring anything else. Used for the
-/// system role, which rig represents as a bare string rather than structured
-/// content.
-fn concatenate_text(content: &[ContentBlock]) -> String {
-    content
-        .iter()
-        .filter_map(ContentBlock::as_text)
-        .collect::<Vec<_>>()
-        .join("")
-}
-
 fn to_rig_user_content(
     content: &[ContentBlock],
 ) -> Result<OneOrMany<rig_message::UserContent>, String> {
