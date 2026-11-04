@@ -111,7 +111,7 @@ where
         let content: Vec<ContentBlock> = response
             .choice
             .into_iter()
-            .map(convert::from_assistant_content)
+            .filter_map(convert::from_assistant_content)
             .collect();
         let usage = convert::from_rig_usage(response.usage);
         let stop_reason = infer_stop_reason(&content);
