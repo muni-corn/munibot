@@ -22,14 +22,7 @@ pub enum ChatError {
     /// act on. Carries the specific reason rather than folding into
     /// `ServerFnError`, since the chat page shows it verbatim.
     #[error("{0}")]
-    AttachmentRejected(String),
-
-    /// The referenced attachment doesn't exist, or exists but isn't owned
-    /// by the signed-in user's own conversation. Kept distinct from
-    /// [`Self::AttachmentRejected`]: this is "you can't do that", not "here's
-    /// how to fix your upload".
-    #[error("that attachment doesn't exist")]
-    AttachmentNotFound,
+    InvalidConversation(String),
 
     /// Wraps a generic server function error so `ChatResult` propagates
     /// cleanly.
