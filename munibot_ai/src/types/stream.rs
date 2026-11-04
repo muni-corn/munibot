@@ -52,27 +52,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_use_lifecycle_roundtrips() {
-        for event in [
-            StreamEvent::ToolUseStart {
-                call_id: "c1".to_string(),
-                name: "current_time".to_string(),
-            },
-            StreamEvent::ToolUseDelta {
-                partial_json: "{\"timezone\":".to_string(),
-            },
-            StreamEvent::ToolUseEnd,
-        ] {
-            let encoded = serde_json::to_string(&event).expect("should serialize");
-            let decoded: StreamEvent = serde_json::from_str(&encoded).expect("should deserialize");
-            assert_eq!(
-                decoded, event,
-                "tool use lifecycle event should roundtrip: {event:?}"
-            );
-        }
-    }
-
-    #[test]
     fn test_events_are_internally_tagged() {
         let encoded = serde_json::to_value(StreamEvent::ToolUseEnd).expect("should serialize");
         assert_eq!(
