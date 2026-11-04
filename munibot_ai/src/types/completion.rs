@@ -29,7 +29,6 @@ impl CompletionRequest {
             model,
             system: None,
             history,
-            tools: Vec::new(),
             params: ModelParams::default(),
             tool_choice: ToolChoice::default(),
         }
