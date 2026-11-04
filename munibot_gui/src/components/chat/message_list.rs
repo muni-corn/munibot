@@ -11,10 +11,8 @@ use crate::components::chat::markdown::render_markdown;
 /// separate from `messages` since it isn't part of the conversation until it
 /// finishes.
 ///
-/// `tool_activity` is shown as a strip directly above the live reply, and
-/// only while `live_reply` is `Some` -- both clear together once the turn
-/// ends and the transcript reloads with the persisted reply, rather than
-/// leaving the strip stranded below a bubble that has since disappeared.
+/// The scroll container is `flex-col-reverse`, which keeps the view pinned to
+/// the newest message as the reply grows without any scripting.
 #[component]
 pub fn MessageList(
     messages: Vec<ChatMessage>,
