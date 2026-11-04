@@ -2275,7 +2275,7 @@ dependencies = [
  "bit-set",
  "cssparser",
  "foldhash",
- "html5ever 0.39.0",
+ "html5ever",
  "precomputed-hash",
  "selectors",
  "tendril",
