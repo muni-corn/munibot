@@ -59,12 +59,6 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
         )
     })?;
 
-    let tools = request
-        .tools
-        .iter()
-        .map(convert::to_tool_definition)
-        .collect();
-
     Ok(RigCompletionRequest {
         // this adapter is already bound to one model at construction time; no per-request override
         model: None,
