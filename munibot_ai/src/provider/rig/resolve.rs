@@ -18,7 +18,7 @@ use crate::{
 ///
 /// One match arm per supported provider - adding one is a one-arm change. This
 /// is necessary rather than a runtime lookup because rig's `CompletionModel`
-/// cannot be boxed generically; see `docs/notes/ai-preflight-findings.md`.
+/// cannot be boxed generically; see `docs/notes/rig-provider-findings.md`.
 ///
 /// Cached by the **full** `provider:model` string, not just the provider name.
 /// A cache keyed on provider name alone would return the wrong model's provider
