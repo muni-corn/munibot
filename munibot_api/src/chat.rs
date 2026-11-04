@@ -8,7 +8,6 @@
 
 mod error;
 mod event;
-mod memory;
 mod message;
 mod persona;
 mod transcript;
