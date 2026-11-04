@@ -45,15 +45,10 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_turn_started_maps_the_persona_name() {
-        let event: ChatEvent = HarnessEvent::TurnStarted {
-            persona: "companion".to_string(),
-        }
-        .into();
-        assert_eq!(event, ChatEvent::TurnStarted {
-            persona: "companion".to_string()
-        });
+    async fn events(chunks: Vec<Result<String, AiError>>) -> Vec<ChatEvent> {
+        ChatEvent::stream_from_reply(stream::iter(chunks).boxed())
+            .collect()
+            .await
     }
 
     #[test]
