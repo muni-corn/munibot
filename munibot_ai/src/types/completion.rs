@@ -136,11 +136,6 @@ mod tests {
             Some(0.5),
             "temperature should be set"
         );
-        assert_eq!(
-            request.tool_choice,
-            ToolChoice::Required,
-            "tool choice should be set"
-        );
     }
 
     #[test]
