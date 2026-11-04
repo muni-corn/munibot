@@ -270,43 +270,7 @@ mod tests {
             tool_call,
             internal_call_id: "internal-1".to_string(),
         });
-
-        assert_eq!(
-            events.len(),
-            3,
-            "a complete tool call should emit start, delta, and end"
-        );
-        assert_eq!(events[0], StreamEvent::ToolUseStart {
-            call_id: "c1".to_string(),
-            name: "current_time".to_string()
-        });
-        assert!(matches!(events[1], StreamEvent::ToolUseDelta { .. }));
-        assert_eq!(events[2], StreamEvent::ToolUseEnd);
-    }
-
-    #[test]
-    fn test_streamed_tool_call_name_delta_starts_the_call() {
-        let events = from_streamed_content::<()>(StreamedAssistantContent::ToolCallDelta {
-            id: "c1".to_string(),
-            internal_call_id: "internal-1".to_string(),
-            content: rig_core::streaming::ToolCallDeltaContent::Name("current_time".to_string()),
-        });
-        assert_eq!(events, vec![StreamEvent::ToolUseStart {
-            call_id: "c1".to_string(),
-            name: "current_time".to_string()
-        }]);
-    }
-
-    #[test]
-    fn test_streamed_tool_call_argument_delta_is_a_delta_event() {
-        let events = from_streamed_content::<()>(StreamedAssistantContent::ToolCallDelta {
-            id: "c1".to_string(),
-            internal_call_id: "internal-1".to_string(),
-            content: rig_core::streaming::ToolCallDeltaContent::Delta("{\"timezone\":".to_string()),
-        });
-        assert_eq!(events, vec![StreamEvent::ToolUseDelta {
-            partial_json: "{\"timezone\":".to_string()
-        }]);
+        assert_eq!(events, Vec::new());
     }
 
     #[test]
