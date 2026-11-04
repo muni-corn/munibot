@@ -1,4 +1,4 @@
-//! Provider-agnostic model access for munibot's ai harness.
+//! Provider-agnostic model access for munibot's conversation interface.
 //!
 //! `rig-core` is a dependency of this module and no other. Every other module
 //! in this crate speaks [`crate::types`] and the `Provider` trait defined here,
