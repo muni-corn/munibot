@@ -49,7 +49,7 @@ impl ContentBlock {
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text { text } => Some(text),
-            _ => None,
+            Self::Thinking { .. } => None,
         }
     }
 
