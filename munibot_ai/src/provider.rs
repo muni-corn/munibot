@@ -8,7 +8,7 @@
 //! associated types, a `Clone` supertrait, and `impl Future` return positions),
 //! and 0.41 has no runtime provider-selection helper to lean on. This module's
 //! job is to hide both of those facts behind an object-safe trait, so the rest
-//! of the harness never has to care. See `docs/notes/ai-preflight-findings.md`
+//! of the crate never has to care. See `docs/notes/rig-provider-findings.md`
 //! for how that was verified.
 
 use async_trait::async_trait;
