@@ -30,8 +30,10 @@ munibot_core = { path = "../munibot_core", optional = true }
 rand = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
-lettre = { workspace = true, optional = true }
-rand = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio.workspace = true
 
 [features]
 default = []
