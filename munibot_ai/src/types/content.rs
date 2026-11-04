@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn test_as_text_only_matches_text_blocks() {
         let text = ContentBlock::text("hi");
-        let call = ContentBlock::tool_use("c", "t", json!({}));
+        let thinking = ContentBlock::thinking("hmm");
 
         assert_eq!(text.as_text(), Some("hi"), "text should expose its text");
         assert!(call.as_text().is_none(), "tool call should not expose text");
