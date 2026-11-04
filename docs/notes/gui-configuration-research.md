@@ -36,7 +36,7 @@ At the fork point, all guild settings were Discord-slash-command only, gated
 on `required_permissions = "MANAGE_GUILD"` (`admin.rs:28`). That gate is the
 precedent a GUI equivalent must mirror.
 
-**Since then**, logging and AI settings both gained a GUI surface under
+**Since then**, logging settings gained a GUI surface under
 `/dashboard/:guild_id` (`munibot_gui/src/pages/guild_settings/`), and the
 prediction above held: they mirror the slash-command gate through
 `munibot_api/src/auth/guild.rs::require_guild_admin` rather than reusing
