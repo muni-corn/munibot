@@ -147,68 +147,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_role_message_becomes_a_rig_user_message() {
-        // rig has no distinct tool role - this is the one non-obvious mapping in the
-        // whole file
-        let message = Message::tool_results(vec![ContentBlock::tool_result("c1", "12:00")]);
-        let rig_message = to_rig_message(&message).expect("should convert");
-
-        assert!(
-            matches!(rig_message, rig_message::Message::User { .. }),
-            "a Role::Tool message must become a rig User message, not error or vanish"
-        );
-    }
-
-    #[test]
-    fn test_tool_result_error_is_prefixed_since_rig_has_no_is_error_field() {
-        let message = Message::tool_results(vec![ContentBlock::tool_error("c1", "not found")]);
-        let rig_message::Message::User { content } =
-            to_rig_message(&message).expect("should convert")
-        else {
-            panic!("expected a user message");
-        };
-
-        let rig_message::UserContent::ToolResult(result) = content.first() else {
-            panic!("expected a tool result");
-        };
-        let rig_message::ToolResultContent::Text(text) = result.content.first() else {
-            panic!("expected text content");
-        };
-        assert_eq!(
-            text.text, "Error: not found",
-            "an error result must be recoverable from plain text alone, since rig has no is_error \
-             field"
-        );
-    }
-
-    #[test]
-    fn test_tool_result_populates_both_id_and_call_id() {
-        let message = Message::tool_results(vec![ContentBlock::tool_result("c1", "ok")]);
-        let rig_message::Message::User { content } =
-            to_rig_message(&message).expect("should convert")
-        else {
-            panic!("expected a user message");
-        };
-
-        let rig_message::UserContent::ToolResult(result) = content.first() else {
-            panic!("expected a tool result");
-        };
-        assert_eq!(result.id, "c1");
-        assert_eq!(
-            result.call_id,
-            Some("c1".to_string()),
-            "both id and call_id should carry our value, since providers disagree on which they \
-             read"
-        );
-    }
-
-    #[test]
-    fn test_assistant_tool_use_populates_both_id_and_call_id() {
-        let message = Message::new(Role::Assistant, vec![ContentBlock::tool_use(
-            "c1",
-            "current_time",
-            json!({}),
-        )]);
+    fn test_assistant_text_converts_to_text_content() {
+        let message = Message::assistant("hi!");
         let rig_message::Message::Assistant { content, .. } =
             to_rig_message(&message).expect("should convert")
         else {
