@@ -68,8 +68,7 @@ to read the existing row first and merge. Two are still live:
   settings columns from sweep-state columns (or at minimum, not re-writing
   sweep state on a settings-only change) fixes this.
 
-Both are planned as commits 249 and 250 in
-`docs/plans/ai/milestone-7-projects.md`.
+Both are still open.
 
 ## Authorization gap
 
