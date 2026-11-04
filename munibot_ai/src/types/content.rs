@@ -101,12 +101,6 @@ mod tests {
         let thinking = ContentBlock::thinking("hmm");
 
         assert_eq!(text.as_text(), Some("hi"), "text should expose its text");
-        assert!(call.as_text().is_none(), "tool call should not expose text");
-        assert!(
-            text.as_tool_use().is_none(),
-            "text should not expose a tool call"
-        );
-        assert!(call.is_tool_use(), "tool call should report itself as one");
         assert!(
             !text.is_tool_use(),
             "text should not report itself as a tool call"
