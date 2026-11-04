@@ -116,6 +116,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     guild_wallets,
     linked_accounts,
     quotes,
-    user_permissions,
     users,
 );
