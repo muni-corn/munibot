@@ -107,8 +107,6 @@ impl Provider for MockProvider {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     fn request() -> CompletionRequest {
