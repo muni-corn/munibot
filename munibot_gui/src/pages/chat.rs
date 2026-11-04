@@ -89,8 +89,30 @@ pub fn Chat() -> Element {
     let is_replying = live_reply.read().is_some();
 
     rsx! {
-        div { class: "flex h-full flex-col place-content-center items-center p-4 text-slate-300 gap-2",
-            p { "pick a conversation from the sidebar, or start a new one." }
+        document::Title { "chat ~ munibot" }
+        div { class: "flex h-full flex-col",
+            div { class: "flex items-center justify-between p-2",
+                span { class: "px-2 text-sm text-slate-400",
+                    "this conversation isn't saved -- it ends when you leave the page"
+                }
+                button {
+                    class: "btn btn-ghost btn-sm",
+                    disabled: is_replying || messages.read().is_empty(),
+                    onclick: move |_| {
+                        messages.write().clear();
+                        failure.set(None);
+                    },
+                    "new conversation"
+                }
+            }
+            MessageList {
+                messages: messages.read().clone(),
+                live_reply: live_reply.read().clone(),
+            }
+            if let Some(failure) = failure.read().clone() {
+                TurnFailureBanner { failure, on_retry: retry }
+            }
+            Composer { disabled: is_replying, on_send }
         }
     }
 }
