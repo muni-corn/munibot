@@ -1,9 +1,8 @@
 //! Pure conversions between our provider-neutral types and rig's.
 //!
-//! This file is where rig's pre-1.0 churn is absorbed, per the risk noted in
-//! `docs/plans/ai/overview.md`. Every function here is pure and synchronous -
-//! no client, no network, so this whole file is unit-testable without a
-//! provider key.
+//! This file is where rig's pre-1.0 churn is absorbed. Every function here is
+//! pure and synchronous - no client, no network, so this whole file is
+//! unit-testable without a provider key.
 //!
 //! Two rig quirks shape everything below:
 //!
