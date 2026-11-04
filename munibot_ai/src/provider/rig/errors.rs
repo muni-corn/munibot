@@ -112,8 +112,9 @@ mod tests {
             http::StatusCode::OK,
             "{\"error\": \"actually failed\"}",
         );
-        // a 2xx is neither a 4xx nor a 5xx, so this falls through to the transient
-        // default - there is no HTTP-level signal here to say otherwise
+        // a 2xx is neither a 4xx nor a 5xx, so this falls through to the
+        // transient default - there is no HTTP-level signal here to say
+        // otherwise
         assert!(matches!(
             classify_completion_error(error),
             AiError::Provider(_)
