@@ -115,7 +115,7 @@ where
             .collect();
         let usage = convert::from_rig_usage(response.usage);
 
-        Ok(CompletionResponse::new(content, stop_reason, usage))
+        Ok(CompletionResponse::new(content, STOP_REASON, usage))
     }
 
     async fn stream(
