@@ -5,65 +5,12 @@ use serde::{Deserialize, Serialize};
 pub enum ChatEvent {
     /// A chunk of the reply's text.
     TextDelta(String),
-    /// A tool call has begun.
-    ToolStarted { name: String },
-    /// A tool call has finished.
-    ToolFinished {
-        name: String,
-        duration_ms: u64,
-        ok: bool,
-        /// The tool's own success text, recoverable error, or fatal error
-        /// message, for the tool activity display's "inspect" affordance.
-        /// Not truncated here the way an audit record is: showing it in
-        /// full is the entire point of a person explicitly inspecting it.
-        result: String,
-    },
-    /// One provider round trip has finished.
-    IterationComplete { iteration: usize, usage: ChatUsage },
-    /// The model produced a structured handoff payload.
-    Handoff(serde_json::Value),
-    /// The turn is over.
-    TurnFinished { usage: ChatUsage, cost_micros: i64 },
-    /// The turn failed. `message` is the error's own friendly, lowercase
-    /// text (`AiError`'s `Display` impl) rather than the error type itself,
-    /// which isn't `Serialize` and shouldn't cross the wire as anything
-    /// richer than the same text a person is already meant to read.
-    /// `kind` is just enough structure for the chat page to react
-    /// differently - a budget refusal explains itself kindly, a transient
-    /// provider outage offers a retry - without needing the whole error
-    /// type for that.
-    Failed {
-        message: String,
-        kind: ChatFailureKind,
-    },
-}
-
-/// Just enough of an `AiError`'s shape to render a failed turn
-/// appropriately, without exposing the whole (non-`Serialize`) error type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-pub enum ChatFailureKind {
-    /// A configured budget (iterations, tokens, wall clock, cost) was hit.
-    /// Retrying the same message immediately would just hit it again.
-    BudgetExceeded,
-    /// A transient, provider-side problem - worth offering a retry for.
-    Transient,
-    /// Anything else: a tool failure, a schema violation, a cancelled
-    /// turn, a misconfiguration. Not obviously worth a blind retry, but
-    /// also not explainable as a budget message.
-    Other,
-}
-
-#[cfg(feature = "server")]
-impl From<&munibot_ai::types::AiError> for ChatFailureKind {
-    fn from(error: &munibot_ai::types::AiError) -> Self {
-        use munibot_ai::types::AiError;
-
-        match error {
-            AiError::BudgetExceeded { .. } => Self::BudgetExceeded,
-            _ if error.is_transient() => Self::Transient,
-            _ => Self::Other,
-        }
-    }
+    /// The reply is complete. Without this, a dropped connection would look
+    /// exactly like a reply that simply ended.
+    Finished,
+    /// The reply failed partway through. The text is the error's own
+    /// friendly, lowercase message, safe to show as is.
+    Failed(String),
 }
 
 #[cfg(feature = "server")]
