@@ -5,12 +5,11 @@ use crate::components::chat::markdown::render_markdown;
 
 /// Renders a conversation's messages as chat bubbles, oldest first.
 ///
-/// `live_reply` is the in-flight assistant turn's text so far, appended
-/// after the loaded history: `Some("")` while waiting for the first token,
-/// `Some(text)` as deltas arrive, and `None` when no turn is running. Kept
-/// separate from `messages` itself rather than folded into it, since it has
-/// no database row (and so no id) until the turn finishes and the
-/// transcript is reloaded.
+/// `live_reply` is the in-flight assistant reply's text so far, appended
+/// after the finished messages: `Some("")` while waiting for the first token,
+/// `Some(text)` as deltas arrive, and `None` when no reply is running. Kept
+/// separate from `messages` since it isn't part of the conversation until it
+/// finishes.
 ///
 /// `tool_activity` is shown as a strip directly above the live reply, and
 /// only while `live_reply` is `Some` -- both clear together once the turn
