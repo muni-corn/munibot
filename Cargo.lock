@@ -4430,7 +4430,6 @@ name = "munibot_gui"
 version = "0.3.3"
 dependencies = [
  "anyhow",
- "async-trait",
  "axum",
  "axum_session",
  "axum_session_auth",
