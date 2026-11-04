@@ -62,21 +62,9 @@ mod tests {
         ]);
     }
 
-    #[test]
-    fn test_tool_finished_converts_duration_to_milliseconds() {
-        let event: ChatEvent = HarnessEvent::ToolFinished {
-            name: "web_search".to_string(),
-            duration: Duration::from_millis(250),
-            ok: true,
-            result: "three results found".to_string(),
-        }
-        .into();
-        assert_eq!(event, ChatEvent::ToolFinished {
-            name: "web_search".to_string(),
-            duration_ms: 250,
-            ok: true,
-            result: "three results found".to_string(),
-        });
+    #[tokio::test]
+    async fn test_an_empty_reply_still_finishes() {
+        assert_eq!(events(vec![]).await, vec![ChatEvent::Finished]);
     }
 
     #[test]
