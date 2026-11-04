@@ -34,10 +34,6 @@ impl AsStatusCode for ChatError {
     fn as_status_code(&self) -> StatusCode {
         match self {
             Self::NotSignedIn => StatusCode::UNAUTHORIZED,
-            Self::NotOperator => StatusCode::FORBIDDEN,
-            // both render as a plain 404: existence of a conversation id
-            // owned by someone else is not confirmed to the caller
-            Self::NotYourConversation | Self::ConversationNotFound => StatusCode::NOT_FOUND,
             Self::AiDisabled => StatusCode::SERVICE_UNAVAILABLE,
             Self::AttachmentRejected(_) => StatusCode::BAD_REQUEST,
             Self::AttachmentNotFound => StatusCode::NOT_FOUND,
