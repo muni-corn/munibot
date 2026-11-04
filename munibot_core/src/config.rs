@@ -109,7 +109,6 @@ impl Default for Config {
                 twitch_user: default_twitch_user(),
                 initial_channels: Vec::new(),
             },
-            operators: Vec::new(),
         }
     }
 }
