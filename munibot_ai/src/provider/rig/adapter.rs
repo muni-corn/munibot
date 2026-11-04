@@ -216,24 +216,10 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_choice_required_maps_across() {
-        let request = request().with_tool_choice(ToolChoice::Required);
-        let rig_request = build_completion_request(request).expect("should build");
-        assert_eq!(rig_request.tool_choice, Some(RigToolChoice::Required));
-    }
-
-    #[test]
-    fn test_tool_choice_specific_maps_names() {
-        let request = request().with_tool_choice(ToolChoice::Specific {
-            names: vec!["handoff".to_string()],
-        });
-        let rig_request = build_completion_request(request).expect("should build");
-        assert_eq!(
-            rig_request.tool_choice,
-            Some(RigToolChoice::Specific {
-                function_names: vec!["handoff".to_string()]
-            })
-        );
+    fn test_no_tools_are_offered() {
+        let rig_request = build_completion_request(request()).expect("should build");
+        assert!(rig_request.tools.is_empty(), "a conversation has no tools");
+        assert_eq!(rig_request.tool_choice, None);
     }
 
     #[test]
