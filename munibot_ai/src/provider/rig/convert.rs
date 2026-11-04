@@ -181,7 +181,7 @@ mod tests {
         let message = Message::new(Role::User, vec![ContentBlock::thinking("hmm")]);
         assert!(
             to_rig_message(&message).is_err(),
-            "a tool call can only ever come from the assistant"
+            "reasoning can only ever come from the assistant"
         );
     }
 
