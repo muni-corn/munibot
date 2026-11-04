@@ -28,16 +28,7 @@ impl Message {
         Self::new(Role::Assistant, vec![ContentBlock::text(text)])
     }
 
-    /// Builds the tool-role message that answers one or more tool calls.
-    ///
-    /// Providers expect every result for a batch of parallel calls in a single
-    /// message, so this takes all of them at once.
-    pub fn tool_results(results: Vec<ContentBlock>) -> Self {
-        Self::new(Role::Tool, results)
-    }
-
-    /// Concatenates every text block, ignoring reasoning, images, and tool
-    /// traffic.
+    /// Concatenates every text block, ignoring reasoning.
     pub fn text(&self) -> String {
         self.content
             .iter()
