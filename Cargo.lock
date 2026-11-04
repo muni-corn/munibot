@@ -4334,7 +4334,6 @@ dependencies = [
 name = "munibot_ai"
 version = "0.3.2"
 dependencies = [
- "anyhow",
  "async-stream",
  "async-trait",
  "backon",
