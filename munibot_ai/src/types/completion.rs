@@ -44,12 +44,6 @@ impl CompletionRequest {
         self.params = params;
         self
     }
-
-    /// Constrains which tools may be called.
-    pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.tool_choice = tool_choice;
-        self
-    }
 }
 
 /// Why the model stopped generating.
