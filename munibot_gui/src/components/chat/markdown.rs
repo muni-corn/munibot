@@ -53,7 +53,7 @@ pub fn render_markdown(source: &str) -> Element {
             }
             Event::Text(text) => push_text(&mut stack, &mut code_accum, &text),
             Event::Code(text) => top(&mut stack).push(rsx! {
-                code { class: "bg-slate-800 rounded px-1 py-0.5 text-sm", {text.into_string()} }
+                code { class: "rounded bg-slate-800 px-1 py-0.5 text-sm", {text.into_string()} }
             }),
             Event::SoftBreak => top(&mut stack).push(rsx! { " " }),
             Event::HardBreak => top(&mut stack).push(rsx! {
