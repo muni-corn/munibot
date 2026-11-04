@@ -69,10 +69,8 @@ munibot_api/src/
   auth/guild.rs     (server only) require_guild_admin, the gate every guild settings page uses
   auth/linked_account.rs (server only) linking/unlinking, refusing to remove the last provider
   guilds.rs         shared type: GuildSummary
-  chat.rs           + chat/ -- shared chat dtos: conversation, message, event, persona, memory,
-                     attachment, transcript, usage (+ usage/breakdown)
-  settings.rs       + settings/ -- shared settings dtos: logging, ai, channel, error
-  pipeline.rs       shared pipeline monitor dtos
+  chat.rs           + chat/ -- shared chat dtos: message, event, error, conversation validation
+  settings.rs       + settings/ -- shared settings dtos: logging, channel, error
   mailer.rs         (server only) smtp, behind email sign-in
   oauth.rs          (server only) module declaration
   oauth/discord.rs  (server only) discord oauth2 client (token exchange, identity, guilds)
