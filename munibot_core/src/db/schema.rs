@@ -108,17 +108,6 @@ diesel::joinable!(linked_accounts -> users (user_id));
 diesel::joinable!(quotes -> community_links (community_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    ai_attachments,
-    ai_conversations,
-    ai_memories,
-    ai_messages,
-    ai_pipeline_events,
-    ai_pipelines,
-    ai_rate_limits,
-    ai_spend_caps,
-    ai_tool_calls,
-    ai_usage,
-    ai_user_settings,
     autodelete_timers,
     community_links,
     email_signin_tokens,
