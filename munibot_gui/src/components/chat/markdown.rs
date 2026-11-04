@@ -332,7 +332,7 @@ fn CopyButton(text: String) -> Element {
         }
     } else {
         rsx! {
-            button { class: "btn btn-ghost btn-xs gap-1", onclick: on_click,
+            button { class: "btn gap-1 btn-ghost btn-xs", onclick: on_click,
                 i { class: "ph-duotone ph-copy" }
                 "copy"
             }
