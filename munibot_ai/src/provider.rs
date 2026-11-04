@@ -166,9 +166,8 @@ mod tests {
 
         assert_eq!(
             events[0],
-            StreamEvent::ToolUseStart {
-                call_id: "c1".to_string(),
-                name: "current_time".to_string()
+            StreamEvent::ThinkingDelta {
+                thinking: "hmm".to_string()
             },
             "a tool call must not be silently dropped by the default stream wrapper"
         );
