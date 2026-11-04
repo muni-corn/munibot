@@ -30,17 +30,8 @@ impl ChatMessage {
     /// A message from munibot.
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
-            id: row.id,
-            role: munibot_ai::types::Role::from_key(&row.role)
-                .map(ChatRole::from)
-                .unwrap_or(ChatRole::Assistant),
-            content,
-            created_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                row.created_at,
-                chrono::Utc,
-            )
-            .to_rfc3339(),
-            attachments,
+            role: ChatRole::Assistant,
+            content: content.into(),
         }
     }
 }
