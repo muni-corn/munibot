@@ -14,9 +14,12 @@ pub enum TurnFailure {
 }
 
 impl TurnFailure {
-    /// Maps a failure from starting the stream itself (before a turn ever
-    /// began), as opposed to [`Self::from_event`], which maps a failure the
-    /// turn reported after starting.
+    /// Maps a failure from starting the reply stream itself, before any
+    /// reply began.
+    ///
+    /// A refusal arrives either as a typed [`ChatError`] or, because the
+    /// stream's status is checked before its body could carry one, as a bare
+    /// http status -- both mean the same thing here.
     pub fn from_chat_error(error: &ChatError) -> Self {
         match error {
             ChatError::NotSignedIn => Self::NotSignedIn,
