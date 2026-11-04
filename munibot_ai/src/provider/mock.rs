@@ -1,7 +1,6 @@
 use std::{collections::VecDeque, sync::Mutex};
 
 use async_trait::async_trait;
-use serde_json::Value;
 
 use crate::{
     provider::Provider,
