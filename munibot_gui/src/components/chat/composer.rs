@@ -37,27 +37,12 @@ pub fn Composer(disabled: bool, on_send: EventHandler<String>) -> Element {
                         }
                     },
                 }
-            textarea {
-                class: "textarea w-full resize-none",
-                style: "field-sizing: content; max-height: 16rem;",
-                placeholder: "message munibot...",
-                disabled: is_disabled,
-                value: draft,
-                oninput: move |event| {
-                    drafts.0.write().insert(conversation_id, event.value());
-                },
-                onkeydown: move |event| {
-                    if event.key() == Key::Named(NamedKey::Enter) && !event.modifiers().shift() {
-                        event.prevent_default();
-                        submit();
-                    }
-                },
-            }
-            button {
-                class: "btn btn-primary",
-                disabled: is_disabled || is_empty,
-                onclick: move |_| submit(),
-                i { class: "ph-duotone ph-paper-plane-right" }
+                button {
+                    class: "btn btn-primary",
+                    title: "send",
+                    disabled: disabled || is_empty,
+                    onclick: move |_| submit(),
+                    i { class: "ph-duotone ph-paper-plane-right" }
                 }
             }
         }
