@@ -23,11 +23,6 @@ pub enum AuthError {
     #[error("no auth session available")]
     NoAuthSession,
 
-    /// Discord is rate limiting munibot's requests. `retry_after_secs` is a
-    /// hint for how long the caller should wait before trying again.
-    #[error("discord is rate limiting us; try again in a bit :<")]
-    RateLimited { retry_after_secs: u64 },
-
     /// Attempted to link a provider account already linked to a
     /// *different* munibot user.
     #[error("that account is already linked to a different munibot user")]
