@@ -20,9 +20,6 @@ pub mod mock;
 pub mod rig;
 
 pub use mock::MockProvider;
-pub use pricing::{Pricing, estimate_cost};
-pub use registry::ProviderRegistry;
-pub use retry::{RetryPolicy, RetryingProvider};
 pub use rig::{ProviderResolver, RigProvider};
 
 /// A source of model completions.
