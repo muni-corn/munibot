@@ -4,8 +4,8 @@ use crate::types::content::{ContentBlock, Role};
 
 /// One turn in a conversation.
 ///
-/// A message holds several blocks because a single assistant turn commonly
-/// mixes reasoning, text, and one or more tool calls.
+/// A message holds several blocks because a single assistant turn can mix
+/// reasoning and text.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Message {
     pub role: Role,
