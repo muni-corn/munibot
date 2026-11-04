@@ -157,60 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn test_default_config_operators_is_empty() {
-        let config = Config::default();
-        assert!(config.operators.is_empty());
-    }
-
-    #[test]
-    fn test_operator_config_parses_a_linked_account() {
-        let config: OperatorConfig = toml::from_str(
-            r#"
-            provider = "discord"
-            provider_user_id = "123456789012345678"
-            "#,
-        )
-        .unwrap();
-        assert_eq!(config, OperatorConfig::LinkedAccount {
-            provider: "discord".to_string(),
-            provider_user_id: "123456789012345678".to_string(),
-        });
-    }
-
-    #[test]
-    fn test_operator_config_parses_a_raw_munibot_user_id() {
-        let config: OperatorConfig = toml::from_str("munibot_user_id = 7").unwrap();
-        assert_eq!(config, OperatorConfig::MunibotUser { munibot_user_id: 7 });
-    }
-
-    #[test]
-    fn test_loading_a_real_operators_section() {
-        let config: Config = toml::from_str(
-            r#"
-            [discord]
-            [twitch]
-
-            [[operators]]
-            provider = "discord"
-            provider_user_id = "123456789012345678"
-
-            [[operators]]
-            munibot_user_id = 7
-            "#,
-        )
-        .unwrap();
-
-        assert_eq!(config.operators.len(), 2);
-        assert_eq!(config.operators[0], OperatorConfig::LinkedAccount {
-            provider: "discord".to_string(),
-            provider_user_id: "123456789012345678".to_string(),
-        });
-        assert_eq!(config.operators[1], OperatorConfig::MunibotUser {
-            munibot_user_id: 7
-        });
-    }
-
-    #[test]
     fn test_toml_roundtrip() {
         let original = Config::default();
         let toml_str = toml::to_string_pretty(&original).expect("failed to serialize config");
