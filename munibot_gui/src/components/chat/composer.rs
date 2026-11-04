@@ -12,7 +12,8 @@ pub fn Composer(disabled: bool, on_send: EventHandler<String>) -> Element {
     let is_empty = draft.read().trim().is_empty();
 
     let mut submit = move || {
-        if *sending.read() {
+        let text = draft.read().trim().to_string();
+        if disabled || text.is_empty() {
             return;
         }
         let text = drafts
