@@ -25,7 +25,7 @@ pub use rig::{ProviderResolver, RigProvider};
 /// A source of model completions.
 ///
 /// Every concrete provider (rig-backed or otherwise) and the test double both
-/// implement this. It is the only thing the rest of the harness ever sees — no
+/// implement this. It is the only thing the rest of the crate ever sees — no
 /// rig type, and no HTTP client, crosses this boundary.
 #[async_trait]
 pub trait Provider: Send + Sync {
