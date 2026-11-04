@@ -53,7 +53,10 @@ mod tests {
 
     #[test]
     fn test_events_are_internally_tagged() {
-        let encoded = serde_json::to_value(StreamEvent::ToolUseEnd).expect("should serialize");
+        let encoded = serde_json::to_value(StreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+        })
+        .expect("should serialize");
         assert_eq!(
             encoded,
             serde_json::json!({"type": "tool_use_end"}),
