@@ -22,8 +22,7 @@ even once the bug is gone -- except the two storage bugs in the section
 immediately below, which are gone outright now that they're fixed: a stale
 note costs more than no note. What is still outstanding: the two autodelete
 storage bugs, the missing `ON DELETE CASCADE` on `linked_accounts`, and the
-quote timestamp timezone. All four are scheduled in
-`docs/plans/ai/milestone-7-projects.md` phase 28.
+quote timestamp timezone.
 
 ## Existing settings surfaces (as of the fork point)
 
