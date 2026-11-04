@@ -3,11 +3,7 @@ use serde::{Deserialize, Serialize};
 /// One step of progress through a reply, streamed to the chat page over SSE.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ChatEvent {
-    /// The turn has begun.
-    TurnStarted { persona: String },
-    /// A chunk of the model's reasoning, where the provider exposes it.
-    Thinking(String),
-    /// A chunk of assistant-visible text.
+    /// A chunk of the reply's text.
     TextDelta(String),
     /// A tool call has begun.
     ToolStarted { name: String },
