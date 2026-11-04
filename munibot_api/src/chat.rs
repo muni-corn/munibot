@@ -1,4 +1,4 @@
-//! Wire types for munibot's own chat page.
+//! Wire types for munibot's chat page.
 //!
 //! Everything here has to compile for both `web` and `server`: the wasm
 //! client only ever deserializes these, but the types themselves have no
