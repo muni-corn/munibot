@@ -73,7 +73,7 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
         temperature: request.params.temperature.map(f64::from),
         max_tokens: request.params.max_tokens.map(u64::from),
         additional_params: None,
-        tool_choice: Some(to_rig_tool_choice(&request.tool_choice)),
+        tool_choice: None,
         output_schema: None,
         record_telemetry_content: false,
     })
