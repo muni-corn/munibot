@@ -72,7 +72,6 @@ fn content_to_stream_events(content: Vec<ContentBlock>) -> Vec<StreamEvent> {
 #[cfg(test)]
 mod tests {
     use futures::StreamExt;
-    use serde_json::json;
 
     use super::*;
     use crate::types::{Message, ModelRef, StopReason, Usage};
