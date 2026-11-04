@@ -5,8 +5,8 @@ use thiserror::Error;
 /// Error returned by chat server functions.
 ///
 /// Kept distinct from one generic failure, the same reasoning as
-/// `crate::settings::SettingsError`: a chat page needs to show a different
-/// message (or redirect) for each of these, not just print a string.
+/// `crate::settings::SettingsError`: the chat page needs to show a different
+/// message for each of these, not just print a string.
 #[derive(Clone, Debug, Error, Serialize, Deserialize)]
 pub enum ChatError {
     #[error("you need to sign in first")]
