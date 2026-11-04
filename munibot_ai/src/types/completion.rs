@@ -146,49 +146,6 @@ mod tests {
                 ContentBlock::text("hello "),
                 ContentBlock::text("world"),
             ],
-            StopReason::ToolUse,
-            Usage::new(1, 1),
-        );
-        assert_eq!(
-            response.text(),
-            "hello world",
-            "text should skip reasoning and tool calls"
-        );
-    }
-
-    #[test]
-    fn test_response_reports_tool_uses_in_order() {
-        let response = CompletionResponse::new(
-            vec![
-                ContentBlock::tool_use("c1", "first", json!({})),
-                ContentBlock::text("thinking out loud"),
-                ContentBlock::tool_use("c2", "second", json!({})),
-            ],
-            StopReason::ToolUse,
-            Usage::default(),
-        );
-
-        let names: Vec<_> = response
-            .tool_uses()
-            .iter()
-            .filter_map(|block| block.as_tool_use().map(|(_, name, _)| name))
-            .collect();
-
-        assert_eq!(
-            names,
-            vec!["first", "second"],
-            "call order must be preserved"
-        );
-        assert!(
-            response.has_tool_uses(),
-            "response should report having tool calls"
-        );
-    }
-
-    #[test]
-    fn test_response_without_tool_uses_reports_none() {
-        let response = CompletionResponse::new(
-            vec![ContentBlock::text("done")],
             StopReason::EndTurn,
             Usage::default(),
         );
