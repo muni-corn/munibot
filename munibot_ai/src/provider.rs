@@ -59,9 +59,6 @@ pub trait Provider: Send + Sync {
 
 /// Converts a completion's content blocks into the stream events that would
 /// have produced them.
-///
-/// Tool results and images never occur in a fresh assistant completion, so they
-/// are dropped rather than mapped to anything.
 fn content_to_stream_events(content: Vec<ContentBlock>) -> Vec<StreamEvent> {
     content
         .into_iter()
