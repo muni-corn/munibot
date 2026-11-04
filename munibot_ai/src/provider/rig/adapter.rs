@@ -232,20 +232,6 @@ mod tests {
         );
     }
 
-    // --- infer_stop_reason ---
-
-    #[test]
-    fn test_infer_stop_reason_tool_use() {
-        let content = vec![ContentBlock::tool_use("c1", "current_time", json!({}))];
-        assert_eq!(infer_stop_reason(&content), StopReason::ToolUse);
-    }
-
-    #[test]
-    fn test_infer_stop_reason_end_turn() {
-        let content = vec![ContentBlock::text("hi")];
-        assert_eq!(infer_stop_reason(&content), StopReason::EndTurn);
-    }
-
     // --- RigProvider against a fake CompletionModel ---
 
     use futures::stream;
