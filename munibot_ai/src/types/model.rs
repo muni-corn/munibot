@@ -100,7 +100,7 @@ impl From<ModelRef> for String {
 
 /// Sampling and length knobs for one request.
 ///
-/// Every field is optional so that a persona only states what it cares about
+/// Every field is optional so that a caller only states what it cares about
 /// and the provider's own default covers the rest.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct ModelParams {
