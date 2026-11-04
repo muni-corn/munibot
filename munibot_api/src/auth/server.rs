@@ -28,7 +28,6 @@ impl From<db::models::User> for User {
                 display_name: row.display_name,
                 avatar_url: row.avatar_url,
             },
-            permissions: HashSet::new(),
         }
     }
 }
