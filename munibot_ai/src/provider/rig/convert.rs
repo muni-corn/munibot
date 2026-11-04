@@ -87,8 +87,7 @@ pub fn from_assistant_content(content: rig_message::AssistantContent) -> Option<
 /// `total_tokens` is dropped, since we compute our own total from the parts.
 /// `tool_use_prompt_tokens` is also dropped: rig does not document whether it
 /// is already included in `input_tokens` or additional to it, and folding it
-/// into `input_tokens` risks double-counting on providers where it
-/// is not. Undercounting a niche field is safer than an inflated bill.
+/// into `input_tokens` risks double-counting on providers where it is not.
 pub fn from_rig_usage(usage: rig_core::completion::Usage) -> Usage {
     Usage {
         input_tokens: usage.input_tokens,
