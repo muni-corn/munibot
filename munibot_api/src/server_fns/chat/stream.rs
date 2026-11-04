@@ -10,12 +10,10 @@ use crate::chat::{ChatEvent, ChatMessage, ChatResult};
 /// exactly one request per reply, so duplex buys nothing, while SSE is
 /// readable in devtools.
 ///
-/// `#[server]` hard-codes `POST`, so this is a `#[get]` route instead - the
-/// `name: Type` extractor syntax parses identically on it. SSE rather than a
-/// websocket: the client sends exactly one message per turn, so duplex buys
-/// nothing, while SSE reconnects trivially and is readable in devtools.
-#[get(
-    "/api/ai/chat/stream?message_id",
+/// A conversation must end in a message from the person chatting; see
+/// `validate_conversation` for the limits it has to stay within.
+#[post(
+    "/api/ai/chat/stream",
     auth: crate::auth::server::AuthSession,
     pool: axum::extract::Extension<munibot_core::db::DbPool>,
     ai: axum::extract::Extension<Option<std::sync::Arc<munibot_ai::Ai>>>,
