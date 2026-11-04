@@ -20,8 +20,6 @@ pub fn Composer(disabled: bool, on_send: EventHandler<String>) -> Element {
         on_send.call(text);
     };
 
-    let is_disabled = disabled || *sending.read() || has_pending_upload;
-
     rsx! {
         div {
             id: DROP_ZONE_ID,
