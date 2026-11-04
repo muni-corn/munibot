@@ -17,9 +17,8 @@ feature:
   wire types.
 - **`munibot_gui`** -- `App`/`Route`/`components`/`layouts`/`pages`, plus the two entry points:
   `launch_web()` (wasm client) and (server-only) `server::run()`, which builds and serves the whole
-  axum app (the dioxus fullstack app, the oauth routes from `munibot_api`, the attachment and github
-  webhook routes, the redis-backed session layers, and the `Extension`s carrying the db pool,
-  `Option<Arc<Ai>>`, webhook config, and pipeline registry).
+  axum app (the dioxus fullstack app, the oauth routes from `munibot_api`, the redis-backed session
+  layers, and the `Extension`s carrying the db pool, the discord config, and `Option<Arc<Chat>>`).
 - **`munibot`** -- the thin binary. `main.rs` just picks an entry point: `munibot_gui::launch_web()`
   for the wasm client, or (server-only) tracing setup, config, migrations, operator permission sync,
   `ai::build`, `bot::start` (discord/twitch), then `munibot_gui::server::run()`.
