@@ -4464,24 +4464,6 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "strum",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "twitch-irc",
- "twitch_api",
- "twitch_oauth2",
- "url",
-]
-
-[[package]]
-name = "munibot_vcs"
-version = "0.3.3"
-dependencies = [
- "async-trait",
- "chrono",
- "serde",
- "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "url",
