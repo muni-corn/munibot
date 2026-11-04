@@ -40,10 +40,6 @@ pub enum Route {
         #[route("/")]
         Home,
         #[layout(HomeLayout)]
-            #[route("/account")]
-            Account {},
-            #[route("/transcript/:conversation_id", TranscriptViewer)]
-            Transcript { conversation_id: i64 },
             #[layout(Dashboard)]
                 #[route("/dashboard")]
                 DashboardIndex {},
