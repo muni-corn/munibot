@@ -6,7 +6,7 @@
 //! [`CompletionError`]), but never the response headers - so a `Retry-After`
 //! value can never be extracted here. This is a fourth rig API gap
 //! alongside the three already recorded in
-//! `docs/notes/ai-preflight-findings.md`: no `DynClientBuilder`, a
+//! `docs/notes/rig-provider-findings.md`: no `DynClientBuilder`, a
 //! non-object-safe `CompletionModel`, and no normalized stop reason. A missing
 //! `retry_after` is not a bug in this function; the retry policy simply falls
 //! back to its own computed backoff whenever the provider gives no better
