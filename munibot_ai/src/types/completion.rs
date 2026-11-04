@@ -114,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn test_request_omits_empty_optional_fields() {
+    fn test_request_omits_an_absent_system_prompt() {
         let request = CompletionRequest::new(model(), History::new());
         let encoded = serde_json::to_value(&request).expect("should serialize");
 
