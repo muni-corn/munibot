@@ -14,7 +14,6 @@ pub mod error;
 pub mod message;
 pub mod model;
 pub mod stream;
-pub mod tool;
 pub mod usage;
 
 pub use completion::{CompletionRequest, CompletionResponse, StopReason, ToolChoice};
