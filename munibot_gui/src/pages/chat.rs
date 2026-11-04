@@ -88,10 +88,6 @@ pub fn Chat() -> Element {
 
     let is_replying = live_reply.read().is_some();
 
-/// Content shown in `ChatLayout`'s outlet at the bare `/chat` path, before a
-/// conversation has been picked from the sidebar or started.
-#[component]
-pub fn Chat() -> Element {
     rsx! {
         div { class: "flex h-full flex-col place-content-center items-center p-4 text-slate-300 gap-2",
             p { "pick a conversation from the sidebar, or start a new one." }
