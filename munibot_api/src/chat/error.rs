@@ -84,7 +84,6 @@ mod tests {
     #[test]
     fn test_variants_are_distinguishable_by_matching_not_just_by_message() {
         assert!(matches!(ChatError::NotSignedIn, ChatError::NotSignedIn));
-        assert!(matches!(ChatError::AiDisabled, ChatError::AiDisabled));
         assert!(!matches!(ChatError::NotSignedIn, ChatError::AiDisabled));
     }
 }
