@@ -1,6 +1,5 @@
 [package]
 name = "munibot_ai"
-description = "munibot's ai agent harness: chat, tools, and multi-persona orchestration"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
