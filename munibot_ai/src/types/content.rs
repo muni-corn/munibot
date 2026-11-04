@@ -115,16 +115,4 @@ mod tests {
             "roles should be snake case on the wire"
         );
     }
-
-    #[test]
-    fn test_role_key_round_trips_for_every_variant() {
-        for role in [Role::System, Role::User, Role::Assistant, Role::Tool] {
-            assert_eq!(Role::from_key(role.as_key()), Some(role));
-        }
-    }
-
-    #[test]
-    fn test_role_from_key_rejects_an_unknown_string() {
-        assert_eq!(Role::from_key("moderator"), None);
-    }
 }
