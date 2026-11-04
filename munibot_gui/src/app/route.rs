@@ -17,7 +17,6 @@ use crate::{
         dashboard::{Dashboard, DashboardIndex},
         guild_settings::{GuildSettings, logging::LoggingSettingsPage},
         home::Home,
-        transcript::TranscriptViewer,
     },
 };
 
