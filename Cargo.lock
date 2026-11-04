@@ -4444,7 +4444,6 @@ dependencies = [
  "redis",
  "redis_pool",
  "tokio",
- "tower 0.5.3",
  "tracing",
 ]
 
