@@ -22,5 +22,4 @@ pub use error::AiError;
 pub use message::{History, Message};
 pub use model::{ModelParams, ModelRef, ModelRefError};
 pub use stream::StreamEvent;
-pub use tool::ToolSchema;
-pub use usage::{Cost, Usage};
+pub use usage::Usage;
