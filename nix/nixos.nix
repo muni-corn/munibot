@@ -72,19 +72,6 @@ in
       description = "Group account under which munibot runs.";
       default = "munibot";
     };
-
-    enableAiSandbox = mkOption {
-      type = types.bool;
-      description = ''
-        Whether to enable rootless podman for the ai agent harness's container sandbox (see `docs/plans/ai/milestone-4-sandbox.md`). Required for any persona with a `sandbox` policy other than `forbidden` to actually work; harmless to enable otherwise, since nothing provisions a container unless a persona's own configuration asks for one.
-
-        Also allocates a subuid/subgid range for the munibot user and enables systemd lingering for it, both required for rootless podman to run reliably from a system service rather than an interactive login session.
-
-        One manual, one-time step this module does not automate: the munibot user's own `podman.socket` unit needs enabling once after first deploy, since NixOS's `virtualisation.podman` module ships the unit but does not enable it per-user on its own:
-        `sudo -u munibot XDG_RUNTIME_DIR=/run/user/$(id -u munibot) systemctl --user enable --now podman.socket`
-      '';
-      default = true;
-    };
   };
 
   config =
