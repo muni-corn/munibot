@@ -25,7 +25,6 @@ dioxus-desktop = { workspace = true, optional = true }
 # renders the gui, serves server functions, and backs login sessions. none
 # of this can compile for wasm32
 anyhow = { workspace = true, optional = true }
-async-trait = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 axum_session = { workspace = true, optional = true }
 axum_session_auth = { workspace = true, optional = true }
