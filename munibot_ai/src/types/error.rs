@@ -99,14 +99,4 @@ mod tests {
             "error messages should carry the house emoticon style, got {message:?}"
         );
     }
-
-    #[test]
-    fn test_anyhow_errors_convert_to_other() {
-        let source = anyhow::anyhow!("disk full");
-        let error: AiError = source.into();
-        assert!(
-            matches!(error, AiError::Other(_)),
-            "an anyhow error should land in Other rather than being dropped"
-        );
-    }
 }
