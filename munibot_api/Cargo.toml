@@ -11,7 +11,6 @@ license.workspace = true
 # dtos it serializes -- these must build for both wasm and native targets
 dioxus.workspace = true
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 thiserror.workspace = true
 
 # server-only deps, enabled by the `server` feature: db access, the oauth
