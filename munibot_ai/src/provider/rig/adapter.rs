@@ -16,7 +16,6 @@ use crate::{
     },
     types::{
         AiError, CompletionRequest, CompletionResponse, ContentBlock, StopReason, StreamEvent,
-        ToolChoice,
     },
 };
 
