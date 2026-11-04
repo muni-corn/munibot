@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_error_messages_are_lowercase_and_friendly() {
-        let message = AiError::Tool("timed out".to_string()).to_string();
+        let message = AiError::Other("timed out".to_string()).to_string();
         assert!(
             message.chars().next().is_some_and(|c| !c.is_uppercase()),
             "error messages should start lowercase, got {message:?}"
