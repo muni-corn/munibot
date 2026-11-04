@@ -3,22 +3,9 @@ use dioxus::{html::keyboard_types::Key, prelude::*};
 /// The growing textarea a conversation is driven from: enter sends,
 /// shift+enter inserts a newline.
 ///
-/// `disabled` is meant to cover a whole turn, not just this component's own
-/// brief `send_message` round trip -- the parent sets it once streaming (a
-/// later commit) is actually in flight. Until then, this component's own
-/// internal `sending` is the only thing disabling it, covering the moment
-/// between clicking send and the message finishing its persist, so a
-/// double click can't submit the same draft twice.
-///
-/// Pasting a screenshot has to be a non-event, so it gets a listener of its
-/// own rather than relying on dioxus's own paste event: `ClipboardData`
-/// exposes nothing dioxus can hand back as a `FileData` (unlike a file
-/// input's `FormData` or drag-and-drop's `DragData`), so image extraction
-/// happens in real JavaScript through `document::eval`'s two-way channel,
-/// the same escape hatch this file's own `CopyButton` neighbour already
-/// uses. The listener is attached to the drop zone element itself (not
-/// `document`), so it is torn down for free with that element on every
-/// remount rather than needing to be manually removed.
+/// `disabled` should cover a whole reply, not just the instant of sending, so
+/// a second message can't be sent while munibot is still answering the first.
+/// The draft is cleared as soon as it is handed to `on_send`.
 #[component]
 pub fn Composer(conversation_id: i64, disabled: bool, on_sent: EventHandler<i64>) -> Element {
     let mut drafts = use_context::<ChatDrafts>();
