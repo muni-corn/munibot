@@ -27,8 +27,8 @@ pub struct Usage {
     pub cache_write_tokens: u64,
     /// Tokens spent on internal reasoning by thinking-capable models (Anthropic
     /// extended thinking, OpenAI's o-series, Gemini thinking). Billed as
-    /// output on every provider we target, but kept separate so a persona's
-    /// thinking budget can be audited on its own.
+    /// output on every provider we target, but kept separate so thinking can be
+    /// audited on its own.
     #[serde(default)]
     pub reasoning_tokens: u64,
 }
