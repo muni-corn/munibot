@@ -44,36 +44,6 @@ impl ContentBlock {
         }
     }
 
-    /// Builds a tool call block.
-    pub fn tool_use(call_id: impl Into<String>, name: impl Into<String>, arguments: Value) -> Self {
-        Self::ToolUse {
-            call_id: call_id.into(),
-            name: name.into(),
-            arguments,
-        }
-    }
-
-    /// Builds a successful tool result block.
-    pub fn tool_result(call_id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self::ToolResult {
-            call_id: call_id.into(),
-            content: content.into(),
-            is_error: false,
-        }
-    }
-
-    /// Builds a failed tool result block.
-    ///
-    /// The message is shown to the model so that it can correct itself and
-    /// retry.
-    pub fn tool_error(call_id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self::ToolResult {
-            call_id: call_id.into(),
-            content: content.into(),
-            is_error: true,
-        }
-    }
-
     /// Returns the text of a [`ContentBlock::Text`], or `None` for any other
     /// block.
     pub fn as_text(&self) -> Option<&str> {
