@@ -2175,7 +2175,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "generational-box",
- "gloo-timers 0.4.0",
+ "gloo-timers",
  "js-sys",
  "lazy-js-bundle",
  "rustc-hash 2.1.3",
