@@ -1,14 +1,9 @@
 //! GitHub OAuth2 client: authorization-code exchange, and the REST calls
 //! made with the resulting user access token.
 //!
-//! A **separate** OAuth App from `munibot_github`'s own GitHub App
-//! (`GITHUB_APP_ID`/`GITHUB_APP_PRIVATE_KEY`, used only to mint
-//! installation tokens for the autonomous pipeline): that App authenticates
-//! *as itself* against repositories it's installed into, while this
-//! authenticates a human signing in, the same distinction
-//! `oauth::discord` already draws against `munibot_discord`'s own bot
-//! token. `GITHUB_OAUTH_CLIENT_ID`/`GITHUB_OAUTH_CLIENT_SECRET` are its own,
-//! separate credentials.
+//! Authenticates a human signing in, the same way `oauth::discord` does for
+//! discord. Configured through `GITHUB_OAUTH_CLIENT_ID` and
+//! `GITHUB_OAUTH_CLIENT_SECRET`.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
