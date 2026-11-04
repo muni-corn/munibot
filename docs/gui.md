@@ -23,10 +23,10 @@ feature:
   for the wasm client, or (server-only) tracing setup, config, migrations, `ai::build`,
   `bot::start` (discord/twitch), then `munibot_gui::server::run()`.
 
-`Arc<Ai>` is built in `main.rs` **unconditionally and outside the `MUNIBOT_DISABLE_BOTS` guard**, and
-handed to both the bots and the gui server. That ordering is deliberate: the chat page needs the ai
-service too, and disabling the bots is the documented local gui workflow (below), so gating the ai
-service on the same guard would leave the chat page with nothing behind it.
+`Arc<Chat>` is built in `main.rs` **outside the `MUNIBOT_DISABLE_BOTS` guard** and handed to the gui
+server. That ordering is deliberate: disabling the bots is the documented local gui workflow
+(below), so gating the chat service on the same guard would leave the chat page with nothing behind
+it. See `docs/chat.md` for what the chat page does and how it is configured.
 
 Each of the three defines the same two features:
 
