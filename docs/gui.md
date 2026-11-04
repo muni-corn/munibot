@@ -79,7 +79,7 @@ munibot_api/src/
   oauth/github.rs   (server only) github oauth2 client (sign-in only)
   oauth/email.rs    (server only) email sign-in tokens
   oauth/routes.rs   (server only) plain axum routes for every oauth dance + logout
-  server_fns.rs     + server_fns/ -- auth, guilds, chat/*, settings/*, pipeline
+  server_fns.rs     + server_fns/ -- auth, guilds, chat/stream, settings/*
 ```
 
 `munibot_core` gained a `users` + `linked_accounts` migration and matching models/operations (see
