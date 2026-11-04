@@ -69,7 +69,7 @@ fn build_completion_request(request: CompletionRequest) -> Result<RigCompletionR
         preamble: None,
         chat_history,
         documents: vec![],
-        tools,
+        tools: vec![],
         temperature: request.params.temperature.map(f64::from),
         max_tokens: request.params.max_tokens.map(u64::from),
         additional_params: None,
