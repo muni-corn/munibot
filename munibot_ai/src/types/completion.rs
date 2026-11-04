@@ -128,8 +128,7 @@ mod tests {
     fn test_request_builders_accumulate() {
         let request = CompletionRequest::new(model(), History::new())
             .with_system("s")
-            .with_params(ModelParams::new().with_temperature(0.5))
-            .with_tool_choice(ToolChoice::Required);
+            .with_params(ModelParams::new().with_temperature(0.5));
 
         assert_eq!(request.system.as_deref(), Some("s"), "system should be set");
         assert_eq!(
