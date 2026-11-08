@@ -2,8 +2,8 @@
 
 This plan covers fixes that aren't part of the AI plan in `docs/plans/ai/`. It has two parts:
 
-1. **Work the strip commit reverted.** `9b4a38e1` ("chore: strip ai chat features down to temporary
-   chat only") was meant to remove AI features. It also rewrote many non-AI files back to versions
+1. **Work the strip commit reverted.** The commit "chore: strip ai chat features down to temporary
+   chat only" was meant to remove AI features. It also rewrote many non-AI files back to versions
    older than its own parent, `03107863`, undoing a long run of main-branch commits. Part 1 brings
    that work back.
 2. **Outstanding non-AI bugs and gaps.** These are real, documented problems that were tracked in
@@ -18,7 +18,9 @@ files part 1 restores.
 
 ### What happened
 
-`9b4a38e1` is a single squashed commit whose parent is `03107863`. Between its parent and itself,
+The strip commit is a single squashed commit built on `03107863`. It's due to be split into smaller
+commits, so this plan names it by its subject rather than a hash that will change. When it's split,
+the restorations below can go into the split itself rather than landing as fixes afterwards. Between its parent and itself,
 several non-AI files went _backwards_. The commit appears to have been produced from a branch cut
 from an older main and then laid over current main. It also added genuinely new work that must be
 **kept**:
@@ -35,7 +37,9 @@ Each check below asks whether a main commit's diff still applies in reverse to `
 the change is present. If its forward diff applies instead, the change was reverted outright:
 
 ```bash
-for c in $(git rev-list --no-merges 9b4a38e1^ --max-count=70); do
+# before the split, the strip commit's parent; after it, the commit before its first piece
+base=$(git log --format=%H -1 --grep='^chore: strip ai chat features')^
+for c in $(git rev-list --no-merges "$base" --max-count=70); do
   s=$(git log -1 --format=%s "$c")
   if git show --format= "$c" | git apply --check -R 2>/dev/null; then p=present
   elif git show --format= "$c" | git apply --check 2>/dev/null; then p=REVERTED
