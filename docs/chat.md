@@ -26,18 +26,27 @@ Chat is off unless the `[ai]` section of the config file turns it on:
 ```toml
 [ai]
 enabled = true
-model = "anthropic:claude-opus-5"
+model = "anthropic/claude-opus-5"
 ```
 
-`model` is `provider:model`. Supported providers are `anthropic`, `openai`, `openrouter`, and
-`ollama`; each reads its credentials from the environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-`OPENROUTER_API_KEY`, or a local ollama server). Startup fails with a message naming what's missing
-if chat is enabled but the model or its key isn't set.
+`model` is a [rig](https://github.com/0xPlaygrounds/rig) catalog reference, written `vendor/model`.
+rig decides whether it names a real model when munibot starts, and reads the vendor's api key from
+the environment: `ANTHROPIC_API_KEY` for `anthropic/`, `OPENAI_API_KEY` for `openai/`,
+`OPENROUTER_API_KEY` for `openrouter/`, and so on. `ollama/` needs no key, but always talks to
+`http://localhost:11434`. Startup fails with a message naming what's missing if chat is enabled
+but the model, or its key, isn't set.
+
+Earlier versions wrote `model` as `provider:model` (and accepted `default_model`). Neither form is
+read anymore: change the first `:` to `/`.
 
 ## Layout
 
-- `munibot_ai` -- `Chat`, which streams a reply to a history, over a provider-agnostic `Provider`
-  trait (see `docs/notes/rig-provider-findings.md` for why that trait exists).
+- `munibot_ai` -- `Chat`, which streams a reply to a history through rig's type-erased model, plus
+  the `[ai]` config. rig itself is re-exported as `munibot_ai::rig`, and every model, message,
+  stream, and error type in the chat is rig's own (see `docs/notes/rig-findings.md`).
 - `munibot_api` -- the `chat_stream` server function (`POST /api/ai/chat/stream`, answered as
-  server-sent events) and its wire types.
+  server-sent events) and its wire types. The wire types are deliberately narrower than rig's: the
+  browser may only send plain user and assistant text. A failed reply is shown as a friendly
+  sentence chosen from rig's classification of the error, and the provider's own text goes to the
+  server log.
 - `munibot_gui` -- the chat page and its components.
