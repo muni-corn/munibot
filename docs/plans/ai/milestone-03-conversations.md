@@ -19,14 +19,15 @@ milestone builds on.
 
 This milestone assumes milestones 01 and 02 are done:
 
-- `Chat::reply(history, ctx)` runs a harness turn over a history the browser sends in full.
-- `TurnOutcome.transcript` holds every message a turn appended, including tool calls and their
-  results, and that transcript is thrown away.
+- `Chat::reply(history, invoker)` runs a rig-agent turn over a history the browser sends in full.
+- rig's `PromptResponse.messages` holds every message a turn appended, including tool calls and
+  their results, and that transcript is thrown away.
+- Every message in play is a rig `Message`.
 - `chat_stream(messages)` validates the browser's history against `validate_conversation`: 200
   messages and 100,000 characters (`munibot_api/src/chat/validate.rs`).
 - `munibot_ai` does not depend on `munibot_core`.
 
-From the code at `9b4a38e1`:
+From the code as it stands:
 
 - Migrations are embedded and applied at boot (`munibot/src/main.rs:53`). The newest migration is
   `2026-09-01-110000-0000_add_email_signin_tokens`.
@@ -46,13 +47,34 @@ From the code at `9b4a38e1`:
 including tool calls and results, lives in `ai_messages`, so munibot can refer back to a page he read
 three turns ago.
 
+**Rows hold rig's own message JSON.** `ai_messages.content` is a rig `Message`, serialized by rig's
+serde. There's no munibot copy of the message type to keep in sync. The catch is that rig's
+serialized form has changed between releases: 0.45 can't read tool-call turns that 0.41 stored. So
+every row records the rig version that wrote it (`rig_format`), and a fixture test loads a
+committed sample of stored messages, so a rig upgrade that breaks old rows fails the test suite
+instead of breaking conversations.
+
+**What rig-memory provides, and what it doesn't.** `rig-memory` is built for a single local agent:
+an append-only log per conversation, no owners, no listing, and whole-history loads. That doesn't
+fit a multi-user server on MySQL, so storage, ownership, and listing stay munibot's own. Its
+history-shaping pieces work on plain `&[Arc<Message>]` and are reused directly:
+
+| Need                                          | Reused from rig                                               |
+| --------------------------------------------- | ------------------------------------------------------------- |
+| Keeping the newest messages within a budget   | `rig_memory::recent::{view, TokenBudget}`                     |
+| Never splitting a tool call from its result   | `view` applies `rig_core::conversation::pairing::safe_start`  |
+| Estimating tokens                             | `rig_memory::HeuristicTokenCounter`                           |
+| Choosing where to cut for a summary           | `rig_memory::compaction::CompactionPolicy::cut`               |
+| Building the summary request                  | `CompactionPolicy::plan`, with munibot's own `SummaryPrompts` |
+| Rejecting a truncated or tool-calling summary | `Summarizer::summary_text`                                    |
+
 **Conversations are created lazily.** Opening `/chat` doesn't create anything. The first message
 does, and the stream's first event carries the new conversation's id so the page can move to
 `/chat/:id`. A sidebar full of empty conversations is never possible.
 
 **Compaction summarizes and keeps the messages.** Once a conversation's history exceeds its context
-budget, the oldest messages are summarized into `ai_conversations.summary`, and
-`summary_through_seq` records where the summary ends. Context assembly skips anything at or before
+budget, the oldest messages are summarized, and rig-memory's `SummaryState` is stored in
+`ai_conversations.summary_state`. `summary_through_seq` records where the summary ends. Context assembly skips anything at or before
 that point and prepends the summary instead. The messages themselves stay, so the conversation view
 still shows everything that was said.
 
@@ -85,19 +107,19 @@ its conversation, since it's an audit of content the user chose to delete.
 
 ```
 ai_conversations (id BIGINT PK, owner_user_id BIGINT NOT NULL -> users ON DELETE CASCADE,
-                  title VARCHAR(200) NULL, summary TEXT NULL, summary_through_seq INT NULL,
+                  title VARCHAR(200) NULL, summary_state JSON NULL, summary_through_seq INT NULL,
                   created_at, last_active_at, archived_at NULL,
                   INDEX (owner_user_id, archived_at, last_active_at))
 
 ai_messages      (id BIGINT PK, conversation_id -> ai_conversations ON DELETE CASCADE,
-                  seq INT NOT NULL, role VARCHAR(16), content JSON, created_at,
+                  seq INT NOT NULL, role VARCHAR(16), content JSON, rig_format VARCHAR(16),
+                  created_at,
                   UNIQUE (conversation_id, seq))
 
 ai_usage         (id BIGINT PK, user_id NULL -> users ON DELETE SET NULL,
                   conversation_id NULL -> ai_conversations ON DELETE SET NULL,
                   provider VARCHAR(32), model VARCHAR(128),
-                  input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                  reasoning_tokens, model_cost_micros, tool_cost_micros, outcome VARCHAR(16),
+                  usage JSON, model_cost_micros, tool_cost_micros, outcome VARCHAR(16),
                   created_at, INDEX (user_id, created_at), INDEX (created_at))
 
 ai_tool_calls    (id BIGINT PK, conversation_id NULL -> ai_conversations ON DELETE CASCADE,
@@ -106,7 +128,11 @@ ai_tool_calls    (id BIGINT PK, conversation_id NULL -> ai_conversations ON DELE
                   INDEX (conversation_id, created_at))
 ```
 
-`ai_tool_calls.input` and `output` are truncated to 16 KB before they're written.
+`ai_usage.usage` is rig's `Usage`, stored whole, so new counters rig adds are kept without a
+migration. The two cost columns are integers, converted from rig's dollar figures at the boundary,
+because spend caps sum them in SQL. `role` duplicates what's inside `content`, so the conversation
+list can be queried without parsing JSON. `ai_tool_calls.input` and `output` are truncated to
+16 KB before they're written.
 
 ---
 
@@ -199,15 +225,18 @@ will need, done in sql rather than by loading rows into memory.
 
 ### Memory module
 
-#### 3.6 Depend on munibot_core from the ai crate
+#### 3.6 Depend on munibot_core and rig-memory
 
-`cargo add -p munibot_ai munibot_core --path munibot_core`, plus the dev-dependency with `test-util`.
+`cargo add -p munibot_ai munibot_core --path munibot_core`, the dev-dependency with `test-util`, and
+`cargo add -p munibot_ai rig-memory`.
 
 ```gitcommit
-build(ai): depend on munibot_core
+build(ai): depend on munibot_core and rig-memory
 
-the ai crate's stores persist through munibot_core's database layer.
-munibot_core knows nothing about ai, so this adds no cycle.
+the ai crate's stores persist through munibot_core's database layer,
+and rig-memory supplies the context windowing, token estimates, and
+compaction planning those stores feed. munibot_core knows nothing
+about ai, so this adds no cycle.
 ```
 
 #### 3.7 Add conversation types
@@ -215,18 +244,21 @@ munibot_core knows nothing about ai, so this adds no cycle.
 `munibot_ai/src/memory.rs`, with `memory/` and `memory/types.rs`:
 
 - `ConversationId(i64)`.
-- `Conversation { id, owner: UserId, title, summary, summary_through_seq, last_active_at }`.
+- `Conversation { id, owner, title, summary: Option<rig_memory::compaction::SummaryState>,
+summary_through_seq, last_active_at }`.
 - `ConversationSummary` for listings.
-- `StoredMessage { seq, message: Message }`.
-- `AiError::NotFound` and `AiError::Busy`, which the stores and the chat service return.
+- `StoredMessage { seq, message: rig_core::message::Message }`.
+- `TurnError`: `NotFound`, `Busy`, `Store(String)`, or `Provider(ProviderError)`. The chat service
+  returns it once turns touch storage. rig has no error for "not yours" or "already answering".
+- `TurnEvent::Started { conversation }`, which the chat service sends first.
 
 ```gitcommit
 feat(memory): add conversation types
 
-the vocabulary every store and the chat service share. kept separate
+the vocabulary every store and the chat service share. messages are
+rig's own; only what rig has no notion of is added here: who owns a
+conversation, its title, and where its summary ends. kept separate
 from the database models so nothing above the store depends on diesel.
-not found and busy join the error type here, before anything returns
-them.
 ```
 
 #### 3.8 Add the session store
@@ -267,23 +299,29 @@ would force every store to implement both.
 
 #### 3.10 Add diesel stores
 
-`memory/diesel.rs`: `DieselSessionStore` and `DieselConversationDirectory` over `DbPool`, converting
-between `ContentBlock` JSON and rows. Integration tests use the shared `TestDb`.
+`memory/diesel.rs`: `DieselSessionStore` and `DieselConversationDirectory` over `DbPool`. Rows hold
+rig's own serialization of each `Message`, stamped with `rig_format`. Integration tests use the
+shared `TestDb`.
+
+Add `memory/fixtures/stored_messages.json`, a committed sample of rig-serialized messages covering
+text, a tool call, a tool result, and reasoning, plus a test that deserializes it. That test is what
+fails when a rig upgrade can no longer read rows already in the database.
 
 ```gitcommit
 feat(memory): add diesel-backed conversation stores
 
-the production implementations of both traits, over munibot_core's
-operations.
+the production implementations of both traits, storing rig's own
+message json. rig's serialized form has changed between releases, so a
+committed fixture of stored messages turns an incompatible rig upgrade
+into a failing test rather than unreadable conversations.
 ```
 
 #### 3.11 Add context assembly
 
-- `memory/context.rs`: `assemble_context(&Conversation, Vec<StoredMessage>, max_tokens) -> History`.
-- Tokens are estimated at four characters each, behind a `TokenEstimator` so a real tokenizer can
-  replace it later.
-- It skips messages at or before `summary_through_seq`, walks newest first, keeps whole messages,
-  and never separates a tool call from its result.
+- `memory/context.rs`: `assemble_context(&Conversation, Vec<StoredMessage>, max_tokens) -> Vec<Message>`.
+- It skips messages at or before `summary_through_seq`, then keeps the newest messages that fit
+  through `rig_memory::recent::view` with a `TokenBudget` of `HeuristicTokenCounter`. `view` already
+  moves the start past any tool result whose call was cut off.
 - The summary is prepended as a user-role message. The newest message always survives, even with a
   zero budget.
 
@@ -291,8 +329,9 @@ operations.
 feat(memory): assemble context within a token budget
 
 decides which part of a long conversation the model actually sees.
-whole messages only, and a tool call never loses its result, because
-providers reject a dangling call outright.
+rig-memory already windows a history by token budget without ever
+separating a tool call from its result, so this only adds what it
+can't know: where munibot's stored summary ends.
 ```
 
 ### Accounting
@@ -301,7 +340,8 @@ providers reject a dangling call outright.
 
 `munibot_ai/src/accounting.rs`:
 
-- `UsageRecord`, and a `UsageRecorder` trait.
+- `UsageRecord { user, conversation, provider, model, usage: rig_core::completion::Usage, tool_cost, outcome }`,
+  and a `UsageRecorder` trait. Dollar figures become micro-dollar columns here, and nowhere else.
 - `ToolCallRecord`, and a `ToolAuditor` trait.
 - Diesel implementations, plus in-memory fakes that capture records for tests.
 
@@ -313,24 +353,26 @@ the chat service testable, and the rows are what spend caps and
 transcripts will read.
 ```
 
-#### 3.13 Carry tool arguments on start events
+#### 3.13 Audit every tool call
 
-`HarnessEvent::ToolStarted` gains `arguments: Value`. Server-side consumers use it to write audit
-rows. `ChatEvent` deliberately doesn't carry it.
+`turn/audit_hook.rs`: an `AgentHook` that takes each call's arguments from `on_dispatch` and its
+result from `on_outcome`, and writes a `ToolCallRecord` through the `ToolAuditor`.
 
 ```gitcommit
-feat(harness): carry tool arguments on tool started events
+feat(turn): audit every tool call
 
-the audit trail needs what each tool was asked to do, and the event
-stream is the one place that sees every call as it happens.
+the audit trail needs what each tool was asked to do and what it
+returned. rig's dispatch and outcome hooks see both for every call,
+so auditing is one more hook rather than a change to the events the
+page receives.
 ```
 
 ### Configuration
 
 #### 3.14 Add context and utility model settings
 
-`AiConfig.context_tokens` (default 100,000), `AiConfig.utility_model: Option<ModelRef>`, and
-`AiConfig.max_message_chars` (default 32,000).
+`AiConfig.context_tokens` (default 100,000), `AiConfig.utility_model: Option<String>` (a rig catalog
+reference, connected at startup like `model`), and `AiConfig.max_message_chars` (default 32,000).
 
 ```gitcommit
 feat(config): add context, utility model, and message length settings
@@ -344,19 +386,18 @@ the whole history is no longer sent from the browser.
 
 #### 3.15 Run turns against saved conversations
 
-`Chat::turn(conversation: Option<ConversationId>, text, ctx) -> BoxStream<'static, Result<TurnEvent, AiError>>`:
+`Chat::turn(conversation: Option<ConversationId>, text, invoker) -> BoxStream<'static, Result<TurnEvent, TurnError>>`:
 
 1. Take the per-conversation lock.
 2. Create the conversation if needed, or load it with an ownership check.
-3. Append the user message, then assemble context and run the harness.
-4. Persist according to the "what gets saved" table above.
-5. Write usage and audit rows, then touch the conversation.
+3. Append the user message, then assemble context and run the agent with the audit hook.
+4. Persist `PromptResponse.messages` according to the "what gets saved" table above.
+5. Write a usage row from the response's `Usage`, then touch the conversation.
 
-The stream yields `TurnEvent::Started { conversation_id }` first, then `TurnEvent::Harness(event)`
-for each harness event. The harness itself knows nothing about conversations. A busy conversation
-fails with a friendly `AiError::Busy`.
+The stream yields `TurnEvent::Started { conversation }` first. A busy conversation fails with
+`TurnError::Busy`.
 
-`Chat::new` now takes the stores and recorders. `munibot/src/ai.rs::build` builds the diesel ones
+`Chat::connect` now also takes the stores and recorders. `munibot/src/ai.rs::build` builds the diesel ones
 from the pool, and `main.rs` passes the pool in. `Chat::reply` stays as it is for now.
 
 ```gitcommit
@@ -370,16 +411,25 @@ loses what was already on screen.
 
 #### 3.16 Compact long conversations
 
-`memory/compaction.rs`: `Summariser` over the utility model. Before assembling context, if the
-unsummarized history is over budget, it summarizes the oldest messages up to a whole-message boundary
-and calls `set_summary`. Tested with `MockProvider` and the in-memory store.
+`memory/compaction.rs`, before assembling context:
+
+1. If the unsummarized history is over budget, ask `CompactionPolicy::cut` where to cut. It only cuts
+   before a message that can start a context, so no tool call loses its result.
+2. Build the request with `CompactionPolicy::plan`, using munibot's own `SummaryPrompts` (rig's
+   defaults are written for a coding agent's checkpoints, not a conversation).
+3. Send it to the utility model, check the reply with `Summarizer::summary_text`, and store the
+   resulting `SummaryState` with `set_summary`.
+
+Tested with `MockCompletionModel` and the in-memory store.
 
 ```gitcommit
 feat(memory): compact long conversations
 
 a conversation that outgrows the context window is summarized from
-the oldest end instead of failing. messages are kept for display;
-only what the model sees is condensed.
+the oldest end instead of failing. rig-memory already picks safe cut
+points, builds incremental summary requests, and rejects truncated
+summaries; munibot supplies the prompts and keeps every message for
+display.
 ```
 
 #### 3.17 Generate conversation titles
