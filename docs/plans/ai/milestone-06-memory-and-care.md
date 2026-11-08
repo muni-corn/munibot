@@ -18,7 +18,7 @@ see [before going public](overview.md#before-going-public).
 After milestone 05:
 
 - Personas exist, defined in config. `companion.md` is the default prompt.
-- Templates render `{{display_name}}` and `{{today}}`.
+- System prompts are rig `SystemPrompt`s with `person` and `today` sections.
 - Conversations are saved per user. Nothing carries over between conversations.
 - There's a utility model for cheap single calls.
 - Nothing in the chat path recognizes distress.
@@ -36,7 +36,8 @@ wrapped. `wipe` is exempt: it's never offered to a model, and someone who opted 
 right to delete what's left.
 
 **Retrieval is the host's job.** There's no recall tool. Before a turn, the host loads the person's
-memories and renders them into `{{memories}}`, wrapped as user-provided data. That's predictable,
+memories and adds them as a `memories` section of rig's `SystemPrompt`, wrapped as user-provided
+data. That's predictable,
 costs one query, and needs no model round trip. Only personas with `memory = "user"` get them.
 
 **Memories are keyed by `users.id`.** They survive linking a second sign-in method. Remember the
@@ -46,12 +47,13 @@ internal one.
 
 **The care path never lets a model improvise a crisis response.** Every inbound chat message gets a
 small classifier call on the utility model, or on `[ai.care].classifier_model`, which returns a
-severity:
+severity. The call is rig-agent's `Extractor`, asked for a `CareAssessment { severity, reason }` that
+derives `JsonSchema`, so the reply is typed and retried if malformed, with no parsing of free text:
 
 | Severity  | Response                                                                                                                                                                                           |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `None`    | A normal turn.                                                                                                                                                                                     |
-| `Concern` | A normal turn, with a care addendum in the system prompt: don't diagnose, don't counsel, gently mention support.                                                                                   |
+| `Concern` | A normal turn, with a `care` section added to the system prompt: don't diagnose, don't counsel, gently mention support.                                                                            |
 | `Acute`   | **No model turn.** The reply is a reviewed template, `prompts/care/crisis.md`, plus the configured resources. It's stored as an assistant message flagged `care`, and shown with distinct styling. |
 
 The classifier is tuned to over-trigger, because the costs of a miss and a false alarm are nowhere
@@ -60,7 +62,7 @@ logged.
 
 ```toml
 [ai.care]
-classifier_model = "anthropic:claude-haiku-5" # optional; utility model otherwise
+classifier_model = "anthropic/claude-haiku-5" # optional; utility model otherwise
 
 [[ai.care.resources]]
 name = "988 Suicide and Crisis Lifeline"
@@ -78,24 +80,24 @@ and it is charged to the turn like any other usage.
 
 ## Commits
 
-| #    | Commit                                            | Summary                                                                                                                                             |
-| ---- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 6.1  | `feat(db): add memory and user settings tables`   | `ai_memories (user_id, key, value, …, UNIQUE (user_id, key))` and `ai_user_settings (user_id PK, memory_opt_in)`, both cascading from `users`.      |
-| 6.2  | `feat(db): add memory operations`                 | List, upsert with `on_conflict`, forget, wipe, a per-user count, and opt-in get and set.                                                            |
-| 6.3  | `feat(persona): add the memory policy`            | `MemoryPolicy` is `None` or `User`. It defaults to `None`, while the synthesized `munibot` persona gets `User`.                                     |
-| 6.4  | `feat(memory): add the memory store`              | A `MemoryStore` trait with in-memory and diesel implementations, and a per-user cap.                                                                |
-| 6.5  | `feat(memory): gate memory on opt-in`             | The `GatedMemoryStore` decorator. `wipe` is exempt, and the reason is documented on it.                                                             |
-| 6.6  | `feat(tools): add remember and forget tools`      | Tier `Safe`. They refuse without opt-in, telling the model to point at the memory panel. Labels: "remembered {key}" and "forgot {key}".             |
-| 6.7  | `feat(ai): render memories into prompts`          | Fills `{{memories}}` for `memory = "user"` personas, through the untrusted wrapper.                                                                 |
-| 6.8  | `feat(persona): teach the companion about memory` | What he remembers, that remembering is the person's choice, and to say so plainly.                                                                  |
-| 6.9  | `feat(api): add memory server functions`          | Get and set opt-in, list, edit, forget, and wipe. All are the caller's own.                                                                         |
-| 6.10 | `feat(gui): add the memory panel`                 | `/memory`: the opt-in toggle, every memory editable and deletable, and a confirmed wipe.                                                            |
-| 6.11 | `feat(config): add care settings`                 | `[ai.care]`: the classifier model and resources. Startup warns if no resources are configured.                                                      |
-| 6.12 | `feat(ai): add the care classifier`               | `CareSeverity`, and a classifier call that over-triggers and fails toward `Concern`.                                                                |
-| 6.13 | `feat(ai): add the reviewed crisis response`      | `Acute` bypasses the model and answers from `prompts/care/crisis.md` plus the resources. `Concern` adds the care addendum. Both are recorded.       |
-| 6.14 | `feat(chat): show care responses distinctly`      | A wire flag, plus styling that makes the resources easy to read and copy.                                                                           |
-| 6.15 | `test(ai): add the care path suite`               | Fixture messages at each severity. Asserts that an `Acute` reply never comes from a provider call, and that a classifier failure still yields care. |
-| 6.16 | `docs: document memory and the care path`         | The runbook covers how to review and change resources, and what is and isn't stored. `docs/chat.md` covers memory and its controls.                 |
+| #    | Commit                                            | Summary                                                                                                                                                    |
+| ---- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6.1  | `feat(db): add memory and user settings tables`   | `ai_memories (user_id, key, value, …, UNIQUE (user_id, key))` and `ai_user_settings (user_id PK, memory_opt_in)`, both cascading from `users`.             |
+| 6.2  | `feat(db): add memory operations`                 | List, upsert with `on_conflict`, forget, wipe, a per-user count, and opt-in get and set.                                                                   |
+| 6.3  | `feat(persona): add the memory policy`            | `MemoryPolicy` is `None` or `User`. It defaults to `None`, while the synthesized `munibot` persona gets `User`.                                            |
+| 6.4  | `feat(memory): add the memory store`              | A `MemoryStore` trait with in-memory and diesel implementations, and a per-user cap.                                                                       |
+| 6.5  | `feat(memory): gate memory on opt-in`             | The `GatedMemoryStore` decorator. `wipe` is exempt, and the reason is documented on it.                                                                    |
+| 6.6  | `feat(tools): add remember and forget tools`      | rig `Tool`s, shelved at `Safe`. They refuse without opt-in, telling the model to point at the memory panel. Labels: "remembered {key}" and "forgot {key}". |
+| 6.7  | `feat(ai): render memories into prompts`          | Adds a `memories` prompt section for `memory = "user"` personas, through the untrusted wrapper.                                                            |
+| 6.8  | `feat(persona): teach the companion about memory` | What he remembers, that remembering is the person's choice, and to say so plainly.                                                                         |
+| 6.9  | `feat(api): add memory server functions`          | Get and set opt-in, list, edit, forget, and wipe. All are the caller's own.                                                                                |
+| 6.10 | `feat(gui): add the memory panel`                 | `/memory`: the opt-in toggle, every memory editable and deletable, and a confirmed wipe.                                                                   |
+| 6.11 | `feat(config): add care settings`                 | `[ai.care]`: the classifier model and resources. Startup warns if no resources are configured.                                                             |
+| 6.12 | `feat(ai): add the care classifier`               | `CareSeverity` and `CareAssessment`, classified through rig-agent's `Extractor`. Over-triggers, and fails toward `Concern`.                                |
+| 6.13 | `feat(ai): add the reviewed crisis response`      | `Acute` bypasses the model and answers from `prompts/care/crisis.md` plus the resources. `Concern` adds the `care` prompt section. Both are recorded.      |
+| 6.14 | `feat(chat): show care responses distinctly`      | A wire flag, plus styling that makes the resources easy to read and copy.                                                                                  |
+| 6.15 | `test(ai): add the care path suite`               | Fixture messages at each severity. Asserts that an `Acute` reply never comes from a provider call, and that a classifier failure still yields care.        |
+| 6.16 | `docs: document memory and the care path`         | The runbook covers how to review and change resources, and what is and isn't stored. `docs/chat.md` covers memory and its controls.                        |
 
 ## Definition of done
 
