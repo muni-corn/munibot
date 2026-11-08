@@ -17,7 +17,7 @@ the web: the same personas, tools, limits, care path, and `start_work`.
 
 After milestone 11, everything munibot can do exists, and is reachable from the web chat.
 
-From the code at `9b4a38e1`:
+From the code as it stands:
 
 - `munibot_discord` has no AI handler, and doesn't depend on `munibot_ai`.
 - `munibot/src/bot.rs::start_discord(config)` builds a fixed handler collection. Handlers are
@@ -73,9 +73,11 @@ reply, and a gentle offer to continue in DMs.
   paragraph boundaries.
 - Tool activity shows as one italic status line above the partial reply, and is replaced by the final
   text.
-- Every chunk passes through `filter_output`: strip `@everyone`, `@here`, and role mentions, collapse
-  mass user mentions, run `decancer`, then cap the length. Decancer runs **before** the length cap,
-  since it can expand characters.
+- Every message munibot sends or edits carries serenity's `CreateAllowedMentions` with nothing
+  allowed, so Discord itself refuses to ping anyone, `@everyone` and roles included, whatever the
+  text says. That's Discord's own mechanism, and it can't be fooled by a clever spelling the way
+  stripping text can. The text is left as written, so `decancer` isn't run on replies either: it
+  would mangle legitimate non-Latin writing.
 
 **Turns never block the handler.** Handlers sit behind a mutex, so the AI handler only does the
 trigger check, then spawns the turn with `.instrument(span)` and returns at once.
@@ -125,7 +127,7 @@ default_guild_daily_usd = 2.00
 | 12.5  | `feat(config): add discord chat settings`               | `[ai.discord]` as above.                                                                                                               |
 | 12.6  | `feat(ai): add per-guild and unlinked-user limits`      | New admission scopes, with refusals worded for Discord.                                                                                |
 | 12.7  | `feat(ai): run turns for scoped conversations`          | `Chat::turn` accepts a scope and an author. Memory and memory tools only in owned conversations. Author names prefixed in shared ones. |
-| 12.8  | `feat(discord): add the output filter`                  | `filter_output(text, limits)`: decancer first, length cap last. Tested independently.                                                  |
+| 12.8  | `feat(discord): send replies without pings`             | Every send and edit sets an empty `CreateAllowedMentions`, through one helper the renderer uses. Tested on the builder it produces.    |
 | 12.9  | `feat(discord): add the streaming renderer`             | Placeholder, throttled edits, a final edit, paragraph-boundary splitting, and the status line.                                         |
 | 12.10 | `feat(discord): add the ai chat handler`                | Trigger checks in memory, author resolution, guild and channel gating, the unlinked-DM reply, and a spawned turn.                      |
 | 12.11 | `feat(discord): open threads for started work`          | Opens the thread when a turn's `start_work` succeeds, and binds the run to it.                                                         |
