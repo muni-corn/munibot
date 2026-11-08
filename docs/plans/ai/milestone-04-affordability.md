@@ -21,9 +21,9 @@ This milestone assumes milestone 03 is done:
 - `ai_usage` gets a row for every turn, with `model_cost_micros` and `tool_cost_micros`, indexed on
   `(user_id, created_at)` and `(created_at)`.
 - `sum_cost_since(user_id, since)` exists.
-- `Chat::turn` takes a per-conversation lock and runs a budgeted harness turn.
+- `Chat::turn` takes a per-conversation lock and runs a budgeted rig-agent turn.
 
-From the code at `9b4a38e1`:
+From the code as it stands:
 
 - There's no permission system at all. `HasPermission`, `require_operator`, a `Permission` enum, and
   `docs/notes/permission-system.md` are all cited by the old plans, and none of them exist.
@@ -42,8 +42,8 @@ single indexed aggregates over that table. A second copy of the same facts would
 gap is turns that are still running, which haven't written a row yet. An in-memory tracker covers
 them.
 
-**Admission reserves a turn's worst case.** A turn's budget has a `max_cost`. Admission checks
-`spent + reserved + this turn's max_cost <= cap`, and holds that reservation until the turn ends. So
+**Admission reserves a turn's worst case.** A turn's budget has a `max_cost_usd`. Admission checks
+`spent + reserved + this turn's max_cost_usd <= cap`, and holds that reservation until the turn ends. So
 several concurrent turns can never jointly overshoot a cap, which a "check what's spent so far"
 design allows. It's conservative on purpose: someone very close to their cap is refused a turn that
 might have been cheap, and the message says why.
@@ -98,7 +98,7 @@ global_daily_usd = 20.00
 ```
 
 Every field is optional and has the default shown. Limits require the turn budget to have a
-`max_cost`. If `[ai.budget].max_cost_usd` is removed while limits are on, startup fails with a message
+`max_cost_usd`. If `[ai.budget].max_cost_usd` is removed while limits are on, startup fails with a message
 that says so.
 
 ---
@@ -223,7 +223,7 @@ could be undone by accident, so it lives in the database.
 #### 4.9 Add the limits section
 
 `AiConfig.limits: LimitsConfig`, with the defaults above, plus a validation function that requires a
-budget `max_cost` whenever limits apply.
+budget `max_cost_usd` whenever limits apply.
 
 ```gitcommit
 feat(config): add per-user and global spend limits
@@ -244,7 +244,7 @@ public deployment fails safe.
   produces the friendly sentence.
 - A `UsageSource` trait with `turns_since`, `cost_since`, and `paused`, plus a diesel implementation
   over `ai_usage` and `ai_runtime_settings`.
-- `AiError::Limited(LimitRefusal)`.
+- `TurnError::Limited(LimitRefusal)`.
 
 ```gitcommit
 feat(ai): add limit refusals and the usage source
@@ -256,7 +256,7 @@ not from a second set of counters that could drift.
 
 #### 4.11 Add admission control
 
-`limits/admission.rs`: `Admission::admit(user, is_operator, max_cost) -> Result<TurnPermit, LimitRefusal>`.
+`limits/admission.rs`: `Admission::admit(user, is_operator, max_cost_usd) -> Result<TurnPermit, LimitRefusal>`.
 
 - Check order: paused, global daily, then per-user concurrency, hourly turns, daily spend, and
   monthly spend. Operators skip the per-user checks.
@@ -275,8 +275,8 @@ it is the last line of defence.
 
 #### 4.12 Check limits before every turn
 
-`Chat::turn` takes `is_operator` on its context and admits before appending or calling anything. A
-refusal returns `AiError::Limited` and writes nothing. The permit lives as long as the turn's stream.
+`Invoker` gains `is_operator`, and `Chat::turn` admits before appending or calling anything. A
+refusal returns `TurnError::Limited` and writes nothing. The permit lives as long as the turn's stream.
 `chat_stream`, `send_message`, and `retry_reply` fill in `is_operator`.
 
 ```gitcommit
@@ -372,7 +372,7 @@ whoever develops it. later milestones add to it.
 - A user's sixty-first turn in an hour is refused with a message naming when the limit resets, and
   their message isn't saved.
 - Three turns started at once by a user with `max_concurrent_turns = 2` admit two and refuse one.
-- With `user_daily_usd` set just above one turn's `max_cost`, the second turn of the day is refused
+- With `user_daily_usd` set just above one turn's `max_cost_usd`, the second turn of the day is refused
   before any provider call.
 - Pausing chat refuses every new turn, including an operator's, and still does after a restart.
 - Removing someone from `[[operators]]` and restarting removes their operator access. A manual
