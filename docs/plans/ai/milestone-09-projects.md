@@ -28,7 +28,7 @@ After milestone 08:
 - Conversations get scratch workspaces.
 - `Permission::Developer` grants `Privileged`, but no `Privileged` tool exists yet.
 
-From the code at `9b4a38e1`, none of the project machinery exists: no `ai_projects`, no git plumbing,
+From the code as it stands, none of the project machinery exists: no `ai_projects`, no git plumbing,
 no image strategies.
 
 ## Architecture
@@ -79,6 +79,18 @@ tag already exists, so a pipeline run doesn't pay for a nix evaluation every tim
 Image **builds** have network access, and runtime containers keep `[ai.sandbox].network`. Dependency
 fetching belongs in the image.
 
+### What's reused, and what isn't
+
+| Need                              | Choice                                                                                                                                                                            |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clone, fetch, worktrees, refspecs | **The `git` command line.** `git2` needs libgit2, openssl, and libssh2 under nix, and `gix` can't yet remove or prune worktrees or write config back, which the refspec fix needs |
+| Slugs for branch and image names  | `slug`, which transliterates non-ASCII titles. The length cap and collision suffix stay munibot's                                                                                 |
+| Building images                   | `podman build` and `devenv container`, run as commands                                                                                                                            |
+| Image tags from a source hash     | `sha2`, already a workspace dependency                                                                                                                                            |
+
+Projects themselves are munibot's own concept. Nothing in rig, octocrab, or bollard describes a
+repository munibot keeps a checkout of, its worktrees, and how its image is built.
+
 ## Schema
 
 ```
@@ -125,7 +137,7 @@ Record the results in `docs/notes/projects-preflight.md` before writing code:
 | 9.5  | `feat(config): add the projects section`                        | `[ai.projects]`. The root is created on first use.                                                                                                                                                                |
 | 9.6  | `feat(project): add the project store`                          | A trait, diesel and in-memory implementations. Every later test in this milestone uses the in-memory one.                                                                                                         |
 | 9.7  | `feat(project): clone a project repository`                     | Bare clone, then the refspec fix. Idempotent: an existing clone is fetched instead. A `CloneCredentials` seam with only a no-credential implementation for now. Tested against a local bare repo with no network. |
-| 9.8  | `feat(project): name branches`                                  | `munibot/<scope>-<slug>`: lowercase, dash-separated, capped at 60 characters, with an attempt suffix on collision. A pure function.                                                                               |
+| 9.8  | `feat(project): name branches`                                  | `munibot/<scope>-<slug>`, with the slug from the `slug` crate, capped at 60 characters, and an attempt suffix on collision. A pure function.                                                                      |
 | 9.9  | `feat(project): manage worktrees`                               | Create, list, remove, and a `prune` that reconciles rows against disk after a crash.                                                                                                                              |
 | 9.10 | `feat(project): detect a project's image strategy`              | The ordering table above, with skip reasons written as user-facing sentences. Table tests over fixture directories.                                                                                               |
 | 9.11 | `feat(project): build images from a containerfile`              | Output streams into a tracing span. A failure records `image_error` and never leaves a tag marked built.                                                                                                          |
@@ -136,7 +148,7 @@ Record the results in `docs/notes/projects-preflight.md` before writing code:
 | 9.16 | `feat(project): collect unused workspaces`                      | Removes the worktree, then git's record of it, then the row, in that order, so `prune` can reconcile a crash midway.                                                                                              |
 | 9.17 | `feat(api): add project server functions`                       | List, get, register, remove, and rebuild, gated on a new `require_developer`. Removal refuses while a workspace is in use.                                                                                        |
 | 9.18 | `feat(gui): add the projects page`                              | `/projects` shows each project's strategy **with skip reasons as prose**, image status and age, workspace count, and network policy, plus rebuild and register actions.                                           |
-| 9.19 | `feat(tools): add the project management tool`                  | `manage_project`, tier `Privileged`: munibot can register and inspect projects when a developer asks. Goes through `ProjectManager::register` like everything else.                                               |
+| 9.19 | `feat(tools): add the project management tool`                  | `manage_project`, a rig tool shelved at `Privileged`: munibot can register and inspect projects when a developer asks. Goes through `ProjectManager::register` like everything else.                              |
 | 9.20 | `feat(api): bind a conversation to a project`                   | `set_conversation_project`, owner-checked, and only for developers.                                                                                                                                               |
 | 9.21 | `feat(ai): work in a project worktree when bound`               | A bound conversation's sandbox runs over a worktree on `munibot/chat-<id>`, from the project's image. Unbound conversations keep scratch workspaces.                                                              |
 | 9.22 | `feat(gui): add the project picker`                             | Beside the persona name: the bound project and its image status.                                                                                                                                                  |
