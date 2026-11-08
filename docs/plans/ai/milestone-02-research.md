@@ -15,38 +15,49 @@ them.
 
 ## Starting point
 
-This milestone assumes milestone 01 is done:
+After milestone 01:
 
-- `Harness`, `ToolRegistry`, `ToolCtx`, `RiskTier`, `Budget`, and `HarnessEvent` with tool
-  start/finish events all exist.
-- `current_time` is the only tool.
-- `chat_stream` grants signed-in users `RiskTier::Safe`.
-- The activity strip renders tool names and durations.
+- The chat runs rig-agent turns.
+- `ToolShelf` pairs rig tools with a `RiskTier`.
+- Hooks narrow tools to the invoker's tier, report activity live, validate arguments, and enforce a
+  `TurnBudget` from `[ai.budget]`.
+- `current_time` is the only tool, and signed-in users are granted `RiskTier::Safe`.
+- `TurnEvent::ToolStarted` carries a call id and a name, and `ToolFinished` carries `ok` and a
+  duration.
 
-What does **not** exist yet:
+Not there yet:
 
 - `EXA_API_KEY`. `secretspec.toml` declares only the three provider keys.
-- A tool allowlist. Every registered tool the tier allows is offered.
-- Any way for a tool to report its own cost. Exa bills per call, and the turn budget can't see that
-  spend.
-- `reqwest` as a dependency of `munibot_ai`. It's already a workspace dependency, used by
-  `munibot_api` and `munibot_discord`.
+- A tool allowlist. Every shelf tool the tier allows is offered.
+- Any way for a tool's own spending to count against the turn budget. Exa bills per call.
+- An HTTP client in `munibot_ai`. rig-core already compiles reqwest 0.13 through `rig-reqwest`. The
+  rest of the workspace uses reqwest 0.12.
+
+## What's reused
+
+| Need                                | Reused                                                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Search and page extraction          | `exa-async`: typed `search` and `contents`, inline highlights, `costDollars`, overridable api base                  |
+| Refusing private addresses          | `reqwest-ssrf-guard`: filters DNS answers, redirect targets, and URL literals, including CGNAT and IPv4-mapped IPv6 |
+| HTML to text                        | `html2text`                                                                                                         |
+| Reporting a tool's cost to the turn | rig's tool result facts: `ToolContext::insert_result`, read back by the budget hook's `on_outcome`                  |
+| Tool argument schemas               | `rig_core::tool::schema::args_schema`                                                                               |
+| Testing HTTP clients offline        | `wiremock`, pointed at by `exa-async`'s `with_api_base`                                                             |
+
+All three outbound libraries are built on reqwest 0.13, the version rig already compiles, so
+`munibot_ai` uses 0.13 as well and adds no third reqwest.
 
 ## Design notes
 
-**Tools can charge the turn.** Exa returns a `costDollars` breakdown with every response. A
-`CostMeter` on `ToolCtx` lets a tool add that to the turn's cost, so a search-heavy turn hits its
-budget honestly rather than looking free.
-
 **Labels make activity legible.** "web_search 1.2s" says little. "searched for 'bevy 0.18 release
-notes'" says what happened. Each tool renders a one-line label from its own input, and a finished
-tool offers a capped preview of its output, so you can expand an activity row and see the sources.
+notes'" says what happened. rig tools have no per-call description, so the shelf holds an optional
+labeller per tool, a function from the call's arguments to a sentence. A finished tool offers a
+capped preview of its output, so you can expand an activity row and see the sources.
 
-**The address guard is a pure function.** `web_fetch` must refuse private, loopback, link-local,
-carrier-grade NAT, and IPv4-mapped private addresses. Deciding whether an address is public is a pure
-function over `IpAddr`, tested by table. Resolving a hostname and then connecting are two separate
-lookups, so a DNS-rebinding window remains. It is documented rather than hidden. Redirects are off
-entirely, which closes the more common bypass.
+**DNS rebinding is closed, not documented.** `reqwest-ssrf-guard` installs a resolver that checks
+every address the client actually connects to, so the classic "resolve once to check, resolve again
+to connect" gap doesn't exist. Redirects are re-checked hop by hop. Literal-IP URLs never reach the
+resolver, so `web_fetch` also calls `Acl::validate_url` on every URL first, as the crate requires.
 
 **Every outside fetch is wrapped.** Search results and fetched pages pass through
 `wrap_untrusted(source, body)` before the model sees them. That wrapper is the first layer of
@@ -56,7 +67,7 @@ injection defence, not the last.
 
 ## Commits
 
-### Secrets and types
+### Secrets, dependencies, and types
 
 #### 2.1 Declare the Exa api key
 
@@ -70,33 +81,35 @@ web search runs on exa. the key is optional so a deployment without
 one still boots, just without search.
 ```
 
-#### 2.2 Let tools charge the turn
+#### 2.2 Let tools report what they cost
 
-- `tools/context.rs`: `CostMeter`, a cloneable `Arc<AtomicI64>` of micro-dollars, plus
-  `ToolCtx::charge(Cost)`.
-- `BudgetTracker` adds the meter's total to model cost on every check.
-- Test that a tool's charge alone can trip `max_cost`.
+`tools/cost.rs`: `ToolCost(rig_core::completion::Cost)`, deriving rig's `ContextValue`. A tool
+publishes it with `ToolContext::insert_result`. The budget hook's `on_outcome` reads it from the
+call's result context and adds it to the turn's spend. Test that a tool's charge alone can trip
+`max_cost_usd`.
 
 ```gitcommit
-feat(ai): let tools charge their own cost to the turn
+feat(tools): let tools report what they cost to the turn budget
 
-some tools cost money per call. without this, a turn that searched
-twenty times would look free to its own budget.
+some tools cost money per call. rig already lets a tool publish facts
+about its result to the host, so a tool's own charge travels the same
+way and the budget sees it, rather than a turn that searched twenty
+times looking free.
 ```
 
 #### 2.3 Add activity labels and output previews
 
-- `Tool::label(&self, input: &Value) -> String` defaults to the tool's name. `current_time`
-  overrides it to "checked the time in {timezone}".
-- `HarnessEvent::ToolStarted` gains a `label` field. `ToolFinished` gains `preview: Option<String>`,
-  the first 2 KB of output.
+- The shelf takes an optional labeller per tool. `current_time`'s is "checked the time in
+  {timezone}".
+- `TurnEvent::ToolStarted` gains `label`. `ToolFinished` gains `preview: Option<String>`: the first
+  2 KB of the result's output, taken from the outcome event's `ToolResult`.
 
 ```gitcommit
-feat(ai): add activity labels and previews to tool events
+feat(tools): add activity labels and previews to tool events
 
 a list of bare tool names doesn't tell anyone what munibot actually
-did. each tool now describes its own call in a sentence, and finished
-calls carry a short preview of what came back.
+did. each tool can now describe its own call in a sentence, and
+finished calls carry a short preview of what came back.
 ```
 
 #### 2.4 Add tool selection
@@ -104,7 +117,7 @@ calls carry a short preview of what came back.
 - `tools/selection.rs`: `ToolSelector` is `All`, `Tier(RiskTier)`, or `Named(String)`.
   `ToolSelection(Vec<ToolSelector>)` is a union. `"tier0"` through `"tier4"` and plain tool names
   parse from strings.
-- `ToolRegistry::schemas_for` takes `(&ToolSelection, granted: RiskTier)`, so both filters apply.
+- `ToolShelf::permitted` takes `(&ToolSelection, granted)`, so both filters apply.
 - Add table tests, including `["tier0", "web_search"]`.
 
 ```gitcommit
@@ -117,8 +130,8 @@ applies on top, so configuration can narrow access but never widen it.
 
 #### 2.5 Add the chat tool allowlist
 
-`AiConfig.tools: ToolSelection` defaults to `["tier0", "tier1"]`. Test that a config file without
-`tools` gets the default.
+`AiConfig.tools: ToolSelection` defaults to `["tier0", "tier1"]`. Test that a config without `tools`
+gets the default.
 
 ```toml
 [ai]
@@ -150,66 +163,65 @@ to close from inside, is the first layer of defence against prompt
 injection.
 ```
 
-#### 2.7 Add the outbound address guard
+#### 2.7 Add the guarded outbound client
 
-`tools/web/address.rs`: `is_public(IpAddr) -> bool` rejects:
-
-- loopback, private, and link-local addresses;
-- carrier-grade NAT (`100.64.0.0/10`);
-- unspecified, broadcast, and documentation ranges;
-- unique local IPv6 addresses;
-- IPv4-mapped and IPv4-compatible IPv6 addresses that wrap any of the above.
-
-It is a pure function with table tests.
+- `cargo add -p munibot_ai reqwest@0.13 -F json,rustls`, and `cargo add -p munibot_ai reqwest-ssrf-guard`.
+- `tools/web/client.rs`: `guarded_client()` builds a reqwest client with
+  `Acl::new().deny_local_network()` configured, `no_proxy()`, a timeout, and a response size cap.
+  `check_url` refuses anything that isn't `http` or `https`, then calls `Acl::validate_url`.
+- Table tests, all offline: `http://127.0.0.1`, `http://[::ffff:10.0.0.1]`, `http://100.64.0.1`,
+  `http://169.254.169.254`, and `file:///etc/passwd` are refused, and a public URL is accepted.
 
 ```gitcommit
-feat(tools): add the outbound address guard
+feat(tools): add the guarded outbound http client
 
 web_fetch requests urls a model chose, often from text an attacker
-wrote. refusing every non-public address stops it from being used to
-reach services on munibot's own network.
+wrote. reqwest-ssrf-guard checks every address the client actually
+connects to, redirects included, which also closes the dns rebinding
+gap a check-then-connect design leaves open.
 ```
 
 ### Exa
 
 #### 2.8 Add the Exa client
 
-- Add `reqwest` (`cargo add -p munibot_ai reqwest --features json`).
-- `tools/web/exa.rs`: an `ExaBackend` trait with `search` and `contents`. `ExaClient` implements it
-  over a `reqwest::Client` with a `User-Agent` built from `CARGO_PKG_VERSION`.
-- Typed request and response structs, including `costDollars`. Errors are a private type mapped to
-  friendly strings.
+- `cargo add -p munibot_ai exa-async`, and `cargo add -p munibot_ai --dev wiremock`.
+- `tools/web/exa.rs`: builds an `exa_async` client from `EXA_API_KEY`, and lets tests point it at a
+  local `wiremock` server through `with_api_base`.
 
 ```gitcommit
 feat(tools): add the exa client
 
 exa does neural search and content extraction in one api built for
-models. the backend trait is what lets the web tools be tested with a
-scripted fake, since unit tests never touch the network.
+models. exa-async already types both endpoints and their per-call cost,
+and its overridable api base lets tests run against a local mock
+server instead of the network.
 ```
 
 #### 2.9 Add an opt-in live Exa check
 
-An `#[ignore]` test that calls `search` and `contents` for real when `EXA_API_KEY` is set. Run it with
+An `#[ignore]` test calling `search` and `contents` for real when `EXA_API_KEY` is set. Run it with
 `cargo test -p munibot_ai -- --ignored exa_live`. Once it has been run against a real key, record what
-it found in a new `docs/notes/exa-findings.md`, in its own `docs(notes)` commit.
+it found in `docs/notes/exa-findings.md`, in its own `docs(notes)` commit.
 
 ```gitcommit
 test(exa): add an opt-in live exa check
 
-exa's request and response shapes so far come from its openapi spec,
-never a real call. this verifies them on demand without letting the
-normal suite touch the network.
+verifies on demand that exa-async's request and response shapes still
+match the real api, without letting the normal suite touch the
+network.
 ```
 
 #### 2.10 Add the web search tool
 
-- `tools/web/search.rs`: `web_search` takes `query` and an optional `num_results` (capped at 10).
-  It requests inline highlights so one round trip is enough.
-- It charges `costDollars` to the meter, returns results through `wrap_untrusted` with titles and
-  urls, and uses the label "searched for '{query}'". Tier `NetworkRead`.
-- An Exa outage becomes `ToolOutcome::Err`, so the model carries on without search.
-- Tested against a fake backend.
+`tools/web/search.rs`: a rig `Tool` named `web_search`:
+
+- It takes `query` and an optional `num_results` (capped at 10), and requests inline highlights so one
+  round trip is enough.
+- It publishes `ToolCost` from `costDollars`, returns titles, urls, and highlights through
+  `wrap_untrusted`, and is labelled "searched for '{query}'". Shelved at `RiskTier::NetworkRead`.
+- An Exa outage is a `ToolExecutionError` the model sees, so it carries on without search.
+- Tested against `wiremock`.
 
 ```gitcommit
 feat(tools): add the web search tool
@@ -221,34 +233,29 @@ answering without search rather than failing the turn.
 
 #### 2.11 Add the web fetch tool
 
-`tools/web/fetch.rs`: `web_fetch` takes a `url` and an optional `max_characters`.
+`tools/web/fetch.rs`: a rig `Tool` named `web_fetch`, taking a `url` and an optional `max_characters`.
 
-- It refuses anything that isn't `http` or `https`, resolves the host, and refuses if any resolved
-  address fails `is_public`.
-- It prefers Exa `contents` when a backend is present. Otherwise it falls back to `reqwest`, with
-  redirects disabled and a size cap, plus `html2text`.
-- The HTML-to-text step is a pure `extract_text` function, tested directly.
-- Output goes through `wrap_untrusted`, and the label is "read {host}". Tier `NetworkRead`.
-- A module doc states the DNS-rebinding gap.
+- Every url goes through `check_url` first.
+- It prefers Exa `contents` when a key is set. Otherwise it fetches with the guarded client and
+  extracts text with `html2text`, in a pure `extract_text` function tested directly.
+- Output goes through `wrap_untrusted`, labelled "read {host}". Shelved at `RiskTier::NetworkRead`.
 
 ```gitcommit
 feat(tools): add the web fetch tool
 
-lets munibot read a link someone pasted. it refuses non-public
-addresses and never follows redirects, and the remaining dns
-rebinding window is documented where the code lives rather than left
-for someone to rediscover.
+lets munibot read a link someone pasted. every url passes the address
+guard, both before the request and on every address it connects to.
 ```
 
 ### Wiring
 
-#### 2.12 Build the tool registry from the environment
+#### 2.12 Build the shelf from the environment
 
-`ToolRegistry::from_env()` registers `current_time` and `web_fetch` always, and `web_search` only when
+`ToolShelf::from_env()` shelves `current_time` and `web_fetch` always, and `web_search` only when
 `EXA_API_KEY` is set. It logs at startup which tools are available and why any are missing.
 
 ```gitcommit
-feat(tools): build the tool registry from the environment
+feat(tools): build the tool shelf from the environment
 
 which tools exist depends on which keys are configured. logging the
 decision at startup means a missing search tool is explained before
@@ -257,7 +264,7 @@ anyone wonders why munibot won't look things up.
 
 #### 2.13 Offer research to signed-in chat users
 
-- `Chat` takes its registry from `from_env` and its selection from `AiConfig.tools`.
+- `Chat` takes its shelf from `from_env` and its selection from `AiConfig.tools`.
 - `chat_stream` grants signed-in users `RiskTier::NetworkRead`.
 - `munibot/src/ai.rs::build` logs the effective tool list.
 
@@ -314,8 +321,8 @@ outside.
 
 #### 2.17 Document web research
 
-`docs/chat.md`: web search, web fetch, `EXA_API_KEY`, the `[ai] tools` allowlist, and the address
-guard and its limits.
+`docs/chat.md`: web search, web fetch, `EXA_API_KEY`, the `[ai] tools` allowlist, and what the
+address guard refuses.
 
 ```gitcommit
 docs(chat): document web research
@@ -333,7 +340,7 @@ what web_fetch will and won't reach.
 - Pasting a link and asking for a summary makes him fetch it, and the expanded activity row shows
   what he read.
 - `web_fetch` refuses `http://127.0.0.1`, `http://[::ffff:10.0.0.1]`, `http://100.64.0.1`, a
-  redirecting URL, and `file:///etc/passwd`, each with a friendly reason the model can relay.
+  redirect to any of them, and `file:///etc/passwd`, each with a friendly reason the model can relay.
 - With no `EXA_API_KEY`, munibot still reads links, and the startup log says search is off.
 - A turn's reported cost includes Exa's charges.
 - `devenv test` passes with no network. The live Exa check passes when run by hand.
@@ -345,5 +352,6 @@ what web_fetch will and won't reach.
   the public, which [the overview](overview.md#before-going-public) treats as a gate.
 - **Per-user spend limits.** Search makes a turn more expensive, but nothing yet bounds how many
   turns one person runs. That's milestone 04.
-- **Closing the DNS-rebinding gap.** That needs a connector that pins the resolved address. It's worth
-  doing if `web_fetch` ever runs somewhere with sensitive internal services.
+- **Provider-hosted search.** rig can attach a provider's own web search tool. Exa stays the default
+  because its cost and results are visible to munibot, but it's worth comparing once real usage
+  exists.
