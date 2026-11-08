@@ -8,12 +8,12 @@ license.workspace = true
 
 [dependencies]
 futures.workspace = true
-rig-core = { workspace = true, features = ["reqwest"] }
+rig = { workspace = true, features = ["reqwest"] }
 serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
-rig-core = { workspace = true, features = ["test-utils"] }
+rig = { workspace = true, features = ["test-utils"] }
 tempfile = "3.27.0"
 tokio.workspace = true

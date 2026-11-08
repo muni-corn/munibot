@@ -6,7 +6,7 @@
 //! caller's concern.
 
 use futures::{StreamExt, future, stream::BoxStream};
-use rig_core::{
+use rig::{
     DynModel, ProviderError,
     catalog::Catalog,
     completion::{CompletionRequest, Message},

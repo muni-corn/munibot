@@ -13,4 +13,4 @@ pub mod conversation;
 
 pub use config::{AiConfig, ConfigError};
 pub use conversation::Chat;
-pub use rig_core as rig;
+pub use rig;
