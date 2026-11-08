@@ -21,19 +21,23 @@ personas munibot can delegate to from conversation, long before the pipeline aut
 ## Where things stand
 
 The AI was once built out through what was then milestone 7, then deliberately **stripped back** to a
-temporary chat (`9b4a38e1`), so features can be rebuilt and tested one piece at a time. These plans
-build up from that baseline, not from the old code.
+temporary chat by the commit "chore: strip ai chat features down to temporary chat only", so features
+can be rebuilt and tested one piece at a time. That commit is due to be split into smaller ones, so
+these plans name it by its subject rather than its hash. They build up from that baseline, not from
+the old code.
+
+Since then, the chat has moved onto **rig 0.46** and dropped every type it used to wrap rig with.
 
 What exists today:
 
-| Area             | What's there                                                                                                                                                                                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `munibot_ai`     | `types` (text and thinking content only, with no tool or image blocks), `provider` (`Provider`, `MockProvider`, `RigProvider`, `ProviderResolver`), `config` (`AiConfig { enabled, model }`), and `conversation` (`Chat::reply`: one provider call, text stream) |
-| `munibot_api`    | `chat_stream` (`POST /api/ai/chat/stream`, server-sent events); `ChatEvent` is `TextDelta`, `Finished`, or `Failed`; `validate_conversation` caps the history the browser sends                                                                                  |
-| `munibot_gui`    | `/chat`: history kept in page state, markdown with highlight.js code blocks and copy buttons, a composer, retry                                                                                                                                                  |
-| `munibot` binary | builds `Arc<Chat>` outside the `MUNIBOT_DISABLE_BOTS` guard and hands it to the GUI server as an `Extension`                                                                                                                                                     |
-| Sign-in          | Discord, GitHub, and email, with account linking and unlinking and OAuth `state` checks                                                                                                                                                                          |
-| Infrastructure   | CI (`.github/workflows/build-and-test.yml`: build, clippy, treefmt, `cargo test`); `devenv test` runs `cargo nextest run`                                                                                                                                        |
+| Area             | What's there                                                                                                                                                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `munibot_ai`     | `config` (`AiConfig { enabled, model }`, where `model` is a rig catalog reference like `anthropic/claude-opus-5`) and `conversation` (`Chat`, holding rig's type-erased `DynModel`; `Chat::reply` streams the text of one model call). rig is re-exported as `munibot_ai::rig` |
+| `munibot_api`    | `chat_stream` (`POST /api/ai/chat/stream`, server-sent events); `ChatEvent` is `TextDelta`, `Finished`, or `Failed`; `validate_conversation` caps the history the browser sends; `chat/failure.rs` turns rig's errors into friendly sentences                                  |
+| `munibot_gui`    | `/chat`: history kept in page state, markdown with highlight.js code blocks and copy buttons, a composer, retry                                                                                                                                                                |
+| `munibot` binary | builds `Arc<Chat>` outside the `MUNIBOT_DISABLE_BOTS` guard and hands it to the GUI server as an `Extension`                                                                                                                                                                   |
+| Sign-in          | Discord, GitHub, and email, with account linking and unlinking and OAuth `state` checks                                                                                                                                                                                        |
+| Infrastructure   | CI (`.github/workflows/build-and-test.yml`: build, clippy, treefmt, `cargo test`); `devenv test` runs `cargo nextest run`                                                                                                                                                      |
 
 What doesn't exist: tools, the agent loop, persistence of any AI data, limits, personas, memory,
 delegation, a sandbox, projects, the pipeline, permissions, and any Discord AI. `docs/chat.md`
@@ -78,6 +82,54 @@ don't know, until all of these exist:
 
 ---
 
+## Reuse first
+
+**Use a library's type whenever one exists. Write a munibot type only for something no library
+models, and say why in the plan that adds it.** The pre-strip implementation wrapped nearly
+everything rig offered in a munibot copy: about 2,300 lines that existed only to translate between
+the two, then had to be maintained against every rig release. These plans reuse instead:
+
+| Area                   | Reused                                                                                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Models and providers   | rig-core: `DynModel`, `Catalog`, `Message`, `CompletionRequest`, `StreamEvent`, `Usage`, `Cost`, `ProviderError` |
+| Prompts                | rig-core: `SystemPrompt` and its sections                                                                        |
+| The agent loop         | rig-agent: `Agent`, tools, `ToolContext`, hooks, cancellation by drop, `PromptResponse.messages`                 |
+| Tool helpers           | rig-core: `tool::schema::args_schema`, `tool::validate`, `tool::feedback`                                        |
+| Structured output      | rig-agent: `Extractor` and output-tool mode                                                                      |
+| Context windowing      | rig-memory: `recent::view`, `TokenBudget`, `HeuristicTokenCounter`, and compaction planning                      |
+| Tests                  | rig-core: `MockCompletionModel`; `wiremock` for HTTP                                                             |
+| Web search             | `exa-async`                                                                                                      |
+| Outbound address guard | `reqwest-ssrf-guard`                                                                                             |
+| Coding tools           | `rig-tools`, served across the container boundary with `rmcp` and consumed with `rig-rmcp`                       |
+| Containers             | `bollard`, with `bytesize` for limits                                                                            |
+| GitHub                 | `octocrab`: app tokens, webhook verification, typed webhook payloads                                             |
+| Branch slugs           | `slug`                                                                                                           |
+| Discord pings          | serenity's `CreateAllowedMentions`                                                                               |
+
+### Types munibot owns, and why
+
+Everything else is munibot's own because no library models it. Each entry is a candidate to delete
+the moment a library does.
+
+| Type                                                          | Why it can't be a library type                                                                                                                                                                                                 |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AiConfig`, `ConfigError`, and later config sections          | munibot's own configuration file. rig has no configuration format.                                                                                                                                                             |
+| `Chat`                                                        | The service the API and GUI hold. It's where munibot's rules (tiers, budgets, storage, limits) meet rig.                                                                                                                       |
+| `ChatMessage`, `ChatRole`, `ChatEvent`, `ChatError`           | Wire types for an **untrusted** browser, compiled to wasm. A rig `Message` can carry system prompts, tool results, and images, which a browser must never be able to send, and rig shouldn't be compiled into the wasm bundle. |
+| `RiskTier`, `Invoker`, `ToolShelf`, `ToolSelection`           | Authorization. rig's `ToolAnnotations` is a fixed set of MCP hints, with no notion of who may call what.                                                                                                                       |
+| `TurnEvent`                                                   | rig-agent reports tool results only after a batch settles. Live start and finish events come from hooks, and the page needs both in one stream.                                                                                |
+| `TurnBudget`, `BudgetLimit`, and the hooks                    | rig-agent bounds only the number of model calls. Time and money limits, and a final tool-free answer, are munibot's.                                                                                                           |
+| `ToolCost`                                                    | A one-field wrapper of rig's `Cost`, so a tool's spend can travel as a rig result fact (which needs a `ContextValue` key).                                                                                                     |
+| `TurnError`                                                   | Failures rig can't express: a conversation that isn't yours, one that's already answering, a refused limit, a storage error.                                                                                                   |
+| Conversation storage: `SessionStore`, `ConversationDirectory` | rig-memory is built for one local agent: an append-only log, no owners, no listing, whole-history loads. munibot needs per-user conversations in MySQL.                                                                        |
+| Limits and permissions                                        | Spend caps over munibot's own usage table, and munibot's own operator and developer roles.                                                                                                                                     |
+| `Persona`                                                     | rig-agent's `AgentBuilder` builds an agent but isn't configuration data: it can't be read from TOML, listed in a picker, or recorded on a conversation.                                                                        |
+| Memory and care types                                         | munibot's own consent model and duty of care.                                                                                                                                                                                  |
+| Sandbox policy and container lifecycle                        | Which persona may provision what, and the security posture. bollard drives the container; nothing models the policy.                                                                                                           |
+| Projects and workspaces                                       | munibot's own idea of a repository it keeps a checkout of.                                                                                                                                                                     |
+| `munibot_vcs`                                                 | A bet that a second forge arrives. If it never does, use octocrab's types directly instead.                                                                                                                                    |
+| Pipeline states, roles, plans, handoff payloads               | munibot's development process.                                                                                                                                                                                                 |
+
 ## How these plans are written
 
 Plans are **commit recipes**: a sequence of atomic commits, each leaving the workspace compiling and
@@ -100,7 +152,7 @@ its tests passing.
 - **Dependencies are added with `cargo add`** in the commit that first uses them, never by editing a
   manifest by hand.
 - **Commit scopes follow the repository's rules.** A single file takes its base name (`event` for
-  `chat/event.rs`). Several files in one directory take that directory (`harness`, `tools`, `memory`).
+  `chat/event.rs`). Several files in one directory take that directory (`turn`, `tools`, `memory`).
   Several directories within one crate take the crate's short name (`ai`, `api`, `gui`, `core`,
   `discord`). Changes spanning crates omit the scope.
 - **When reality disagrees with a plan, the plan changes.** Record the deviation in the milestone file,
@@ -108,24 +160,24 @@ its tests passing.
 
 ## Guiding decisions
 
-| Decision              | Choice                                                                        | Rationale                                                                                                                                                                                                           |
-| --------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider abstraction  | Our own `Provider` trait over `rig-core`                                      | rig covers many providers, but its `CompletionModel` isn't object-safe, so our trait is what makes runtime provider choice possible, and it absorbs rig's pre-1.0 churn. See `docs/notes/rig-provider-findings.md`. |
-| Agent loop            | Hand-rolled, streaming-first                                                  | We need budgets, cancellation, tool events, and handoffs. rig's `Agent` gives none of that control.                                                                                                                 |
-| Service handle        | `Chat`, grown in place                                                        | It's already what the API and GUI hold. Rename only if it genuinely outgrows the name.                                                                                                                              |
-| Unit of configuration | The persona                                                                   | A model, a prompt, tools, and a budget, with fields added by the milestones that need them. Chat personas and pipeline roles are the same type.                                                                     |
-| Structure             | One `munibot_ai` crate with modules, plus three small crates                  | Module privacy gives the boundaries a crate split would. The tool agent and forge crates stay separate for reasons that have nothing to do with being "AI".                                                         |
-| Persistence           | MySQL through `diesel-async`                                                  | Matches the rest of munibot. Pipelines use an append-only event log.                                                                                                                                                |
-| Limits                | Computed from `ai_usage`, plus in-memory reservations                         | One source of truth for spend, and running turns reserve their worst case so concurrent turns can't overshoot.                                                                                                      |
-| Permissions           | `user_permissions` with a recorded source                                     | Config sync can revoke exactly what config granted, without touching manual grants.                                                                                                                                 |
-| Search                | Exa                                                                           | Neural search and extraction in one API built for models.                                                                                                                                                           |
-| Sandbox               | Rootless podman through `bollard`; a static tool agent mounted into any image | Strong isolation, and one mechanism for every project image.                                                                                                                                                        |
-| Forge integration     | A GitHub App                                                                  | Per-repository installation, scoped permissions, better rate limits, and a real bot identity.                                                                                                                       |
-| Persona selection     | A visible picker per conversation, never automatic routing                    | An invisible personality switch is wrong for a companion.                                                                                                                                                           |
-| Specialist access     | Delegation through a `delegate` tool                                          | munibot stays the conversational partner and reports back in his own voice, reusing the tool system's gating, accounting, and visibility.                                                                           |
-| Starting work         | A `start_work` tool used on munibot's own judgement, developers only          | The same path from web chat and Discord. Every run gets a public issue, a cost ceiling, and a human gate before merge.                                                                                              |
-| Memory                | Opt-in, per user, fully auditable                                             | `remember` and `forget`, plus a panel to see and wipe everything.                                                                                                                                                   |
-| Discord               | A plain chat surface, no slash commands, last                                 | The same munibot, reachable where people already are, once everything he can do exists.                                                                                                                             |
+| Decision              | Choice                                                                                                | Rationale                                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider abstraction  | rig-core 0.46 directly, re-exported as `munibot_ai::rig`                                              | rig's `DynModel` and catalog do runtime model choice, and every crate speaking rig's types through one re-export means one rig version. See `docs/notes/rig-findings.md`. |
+| Agent loop            | rig-agent, with munibot's rules added as hooks                                                        | rig-agent has the loop, tools, context, cancellation, and transcript. Tiers, live activity, validation, budgets, and retries are small hooks on top.                      |
+| Service handle        | `Chat`, grown in place                                                                                | It's already what the API and GUI hold. Rename only if it genuinely outgrows the name.                                                                                    |
+| Unit of configuration | The persona                                                                                           | A model, a prompt, tools, and a budget, with fields added by the milestones that need them. Chat personas and pipeline roles are the same type.                           |
+| Structure             | One `munibot_ai` crate with modules, plus three small crates                                          | Module privacy gives the boundaries a crate split would. The tool agent and forge crates stay separate for reasons that have nothing to do with being "AI".               |
+| Persistence           | MySQL through `diesel-async`                                                                          | Matches the rest of munibot. Pipelines use an append-only event log.                                                                                                      |
+| Limits                | Computed from `ai_usage`, plus in-memory reservations                                                 | One source of truth for spend, and running turns reserve their worst case so concurrent turns can't overshoot.                                                            |
+| Permissions           | `user_permissions` with a recorded source                                                             | Config sync can revoke exactly what config granted, without touching manual grants.                                                                                       |
+| Search                | Exa                                                                                                   | Neural search and extraction in one API built for models.                                                                                                                 |
+| Sandbox               | Rootless podman through `bollard`; rig-tools served over MCP by a static agent mounted into any image | Strong isolation, one mechanism for every project image, and no hand-written tools or protocol.                                                                           |
+| Forge integration     | A GitHub App                                                                                          | Per-repository installation, scoped permissions, better rate limits, and a real bot identity.                                                                             |
+| Persona selection     | A visible picker per conversation, never automatic routing                                            | An invisible personality switch is wrong for a companion.                                                                                                                 |
+| Specialist access     | Delegation through a `delegate` tool                                                                  | munibot stays the conversational partner and reports back in his own voice, reusing the tool system's gating, accounting, and visibility.                                 |
+| Starting work         | A `start_work` tool used on munibot's own judgement, developers only                                  | The same path from web chat and Discord. Every run gets a public issue, a cost ceiling, and a human gate before merge.                                                    |
+| Memory                | Opt-in, per user, fully auditable                                                                     | `remember` and `forget`, plus a panel to see and wipe everything.                                                                                                         |
+| Discord               | A plain chat surface, no slash commands, last                                                         | The same munibot, reachable where people already are, once everything he can do exists.                                                                                   |
 
 ## Crate architecture
 
@@ -133,41 +185,36 @@ The target, with when each part arrives:
 
 ```
 munibot_ai
-  types         provider-neutral domain types               exists; tool blocks 01, images 07
-  provider      Provider, mock, rig adapter, retry, pricing exists; retry and pricing 01
-  tools         Tool, registry, context, tiers, built-ins   01, web tools 02
-  harness       the agent loop, budgets, events, handoffs   01, handoffs 10
-  memory        conversations, context, compaction, memory  03, user memory 06
-  accounting    usage and tool-call recording               03
-  limits        admission control                           04
-  persona       templates, personas, registry               05
-  sandbox       lifecycle, sessions, sandboxed tools        08
-  project       projects, worktrees, images                 09
-  pipeline      the autonomous state machine and executor   10
-  config.rs     the [ai] section                            exists
-  conversation  Chat, the service handle                    exists
+  config.rs     the [ai] section                                   exists
+  conversation  Chat, the service handle                           exists
+  tools         tiers, invoker, shelf, selection, built-in tools   01, web tools 02
+  turn          turn events, budgets, and rig-agent hooks          01, handoff validation 10
+  memory        conversation storage, context, compaction, memory  03, user memory 06
+  accounting    usage and tool-call recording                      03
+  limits        admission control                                  04
+  persona       personas, prompt sections, registry                05
+  sandbox       lifecycle, sessions, proxy tools                   08
+  project       projects, worktrees, images                        09
+  pipeline      the autonomous state machine and executor          10
 
-munibot_toolagent   in-container rpc server, no munibot dependency   08
-munibot_vcs         forge-agnostic traits and events                 10
-munibot_github      GitHub App implementation                        10
+munibot_toolagent   an MCP server for rig-tools, no munibot dependency   08
+munibot_vcs         forge-agnostic traits and events                    10
+munibot_github      octocrab-backed implementation                      10
 ```
 
 ```
-munibot_ai
-  types ──> provider ──> rig-core
-  types ──> tools ──> harness ──> provider
-  harness ──> memory, accounting, limits ──> munibot_core
-  persona ──> all of the above
-  sandbox ──> bollard        project ──> sandbox
+munibot_ai ──> rig-core, rig-agent, rig-memory, munibot_core
+  sandbox ──> bollard, rig-rmcp, rig-tools (definitions)
   pipeline ──> project, munibot_vcs
 
 munibot_github ──> munibot_vcs, octocrab
-munibot_toolagent              (nothing from munibot, ever)
+munibot_toolagent ──> rig-core, rig-tools, rmcp   (nothing from munibot, ever)
 ```
 
-No `rig` type leaks past `provider`. `munibot_vcs` and `munibot_github` know nothing about AI.
-`munibot_toolagent` defines its own wire types rather than depend on anything that would drag
-`munibot_ai`'s dependency tree into an untrusted container.
+rig's types are used everywhere rather than kept behind a boundary, so a rig upgrade touches more
+code than a wrapper would. That's the trade for not maintaining a copy of rig. `munibot_vcs` and
+`munibot_github` know nothing about AI. `munibot_toolagent` speaks MCP, so it shares no wire types
+with munibot at all.
 
 Platform adapters live in the crates that own their platforms: `munibot_api/src/chat*` and
 `munibot_gui/src/{pages,components}/chat*` for the web, and `munibot_discord` for Discord in
@@ -175,16 +222,17 @@ milestone 12.
 
 ## Tool risk tiers
 
-A tool's authority comes from the **invoking human**, never from the model. Every risky tool
-re-checks `ToolCtx` when it's called.
+A tool's authority comes from the **invoking human**, never from the model. The `Invoker` travels in
+rig's `ToolContext`, a hook narrows each turn's tools to the invoker's tier, and the dispatch hook
+refuses anything outside it.
 
-| Tier | Name          | Tools                                                  | Arrives    |
-| ---- | ------------- | ------------------------------------------------------ | ---------- |
-| 0    | `Safe`        | `current_time`; `remember`, `forget`; `delegate`       | 01, 06, 07 |
-| 1    | `NetworkRead` | `web_search`, `web_fetch`                              | 02         |
-| 2    | `BotData`     | reserved; no tools planned                             | —          |
-| 3    | `Sandbox`     | `read`, `write`, `edit`, `bash`, `grep`, `glob`        | 08         |
-| 4    | `Privileged`  | `manage_project`; `start_work`, `answer_work_question` | 09, 10     |
+| Tier | Name          | Tools                                                         | Arrives    |
+| ---- | ------------- | ------------------------------------------------------------- | ---------- |
+| 0    | `Safe`        | `current_time`; `remember`, `forget`; `delegate`              | 01, 06, 07 |
+| 1    | `NetworkRead` | `web_search`, `web_fetch`                                     | 02         |
+| 2    | `BotData`     | reserved; no tools planned                                    | —          |
+| 3    | `Sandbox`     | rig-tools' `read`, `write`, `edit`, `search`, `list`, `shell` | 08         |
+| 4    | `Privileged`  | `manage_project`; `start_work`, `answer_work_question`        | 09, 10     |
 
 | Caller                               | Granted tier  |
 | ------------------------------------ | ------------- |
@@ -208,7 +256,8 @@ before any provider call, with its worst case reserved. Pipeline runs have their
 switch stops everything and survives a restart.
 
 **Output.** The web renders markdown, so its sanitisation boundary is the renderer, which drops raw
-HTML. Discord output passes through `filter_output`. Tool previews are always shown as plain text.
+HTML. Discord messages are sent with no mentions allowed, so Discord refuses every ping. Tool previews
+are always shown as plain text.
 
 **Duty of care.** Every chat message is classified. An acute message gets a reviewed, never-generated
 response with real resources, and the model is never asked to improvise it.
@@ -242,8 +291,9 @@ cascade, which loose ends commit 2.1 fixes.
 
 ## Testing strategy
 
-- **`MockProvider` is the most important test enabler in the plan.** It scripts text, tool calls, and
-  errors, so the harness, delegation, and pipeline are all testable offline.
+- **rig's `MockCompletionModel` is the most important test enabler in the plan.** It scripts text, tool
+  calls, streams, and errors, so turns, hooks, delegation, and the pipeline are all testable offline.
+  rig-agent's `HookTestHarness` tests a hook without running an agent.
 - **No unit test touches the network.** Live checks, like milestone 02's Exa check, are `#[ignore]`d
   and run by hand.
 - **Unit tests are colocated** in `#[cfg(test)] mod tests` at the bottom of the file, per `AGENTS.md`.
@@ -252,15 +302,19 @@ cascade, which loose ends commit 2.1 fixes.
 - **Sandbox and image tests are gated** behind `sandbox-integration`, run by `devenv shell
 test-sandbox`, and excluded from CI, which has no rootless podman.
 - **Pure functions get table tests**: admission, branch naming, strategy detection, the pipeline's
-  `advance`, `is_public`, and `filter_output`.
+  `advance`, and failure descriptions.
+- **Stored rig messages have a fixture test** (milestone 03), so a rig upgrade that can't read rows
+  already in the database fails the suite.
 - `devenv test` runs `cargo nextest run`, and CI runs `cargo test`. Both must pass.
 
 ## Risks
 
 1. **Cost is the real operational risk.** A tool loop can spend a budget in minutes. That's why limits
    come in milestone 04, before personas, specialists, or anything else multiplies spend.
-2. **`rig-core` is pre-1.0.** Its documentation already describes removed APIs. The `Provider` boundary
-   and `convert.rs` are where its churn is absorbed.
+2. **rig is pre-1.0, and munibot now uses its types directly.** 0.43 to 0.46 rewrote its completion
+   API, and its stored message format has changed between releases. Upgrades are deliberate: read its
+   `MIGRATING.md`, run the stored-message fixture test, and record surprises in
+   `docs/notes/rig-findings.md`.
 3. **Prompt quality is the product.** `companion.md` deserves real time, and never stops being worked
    on.
 4. **The sandbox runs hostile code.** Milestone 08's posture is designed to be checked, not trusted:
@@ -281,6 +335,11 @@ test-sandbox`, and excluded from CI, which has no rootless podman.
    from a conversation is a bigger trust decision.
 6. **Bot-data tools.** Tier 2 is reserved. Reading someone's balance or quotes on request is a
    privacy choice to make on purpose.
-7. **Extended thinking with tools.** Needs thinking-block signatures carried through history first.
-8. **Plans after milestone 04 will change.** They're outlines on purpose. Expand each one when its
-   turn comes, against the code as it is then.
+7. **Extended thinking.** rig carries thinking signatures in its messages and exposes reasoning
+   through `GenerationOptions::reasoning`, so it's now a matter of choosing a budget and what the
+   page shows, not of plumbing.
+8. **Whether to keep `munibot_vcs`.** See its entry under [types munibot owns](#types-munibot-owns-and-why).
+9. **A second reqwest.** rig and the milestone 02 libraries use reqwest 0.13, while the rest of the
+   workspace uses 0.12. Moving the workspace to 0.13 removes the duplicate whenever it's convenient.
+10. **Plans after milestone 04 will change.** They're outlines on purpose. Expand each one when its
+    turn comes, against the code as it is then.
