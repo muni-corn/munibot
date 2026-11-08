@@ -22,7 +22,10 @@ After milestone 04:
 ## Design notes
 
 **The persona is the unit of configuration.** A persona is a model, its parameters, a system prompt,
-a tool selection, and a budget. Later milestones add fields as they need them, never before:
+a tool selection, and a budget. rig-agent's `AgentBuilder` is how a persona becomes runnable, but it
+is a builder, not configuration data: it can't be read from TOML, listed in a picker, or recorded on
+a conversation. So `Persona` stays munibot's own, and the registry turns each one into a rig `Agent`
+at startup. Later milestones add fields as they need them, never before:
 
 | Field       | Added in     |
 | ----------- | ------------ |
@@ -43,7 +46,7 @@ prompt_dir = "/etc/munibot/prompts" # optional; embedded prompts otherwise
 [ai.personas.munibot]
 display_name = "munibot"
 description = "warm, playful conversation, with research when it helps"
-model = "anthropic:claude-opus-5"
+model = "anthropic/claude-opus-5"
 prompt = "companion.md"
 tools = ["tier0", "tier1"]
 temperature = 1.0
@@ -51,10 +54,10 @@ temperature = 1.0
 [ai.personas.writer]
 display_name = "writer"
 description = "brainstorming, drafting, and editing"
-model = "anthropic:claude-opus-5"
+model = "anthropic/claude-opus-5"
 prompt = "writer.md"
 tools = ["tier0"]
-budget = { max_iterations = 4, max_cost_usd = 0.15 }
+budget = { max_turns = 4, max_cost_usd = 0.15 }
 ```
 
 **A conversation picks its persona once, when it starts.** It's a visible choice, never an invisible
@@ -66,28 +69,31 @@ someone in for a moment".
 It becomes persona-aware rather than being replaced by a new `Ai` type. Rename it only if it
 genuinely outgrows the name.
 
-**Template variables are few and explicit.** `{{display_name}}` is the user's name, and `{{today}}`
-is the date. A template that references an unknown variable fails at startup, not mid-conversation.
+**No template engine.** rig's `completion::SystemPrompt` is a role plus named `Section`s, rendered
+into one system message as `<tag>…</tag>` blocks when the request is sent. A persona's markdown file
+is the role. Anything that changes per turn is a section: `person` (the user's display name) and
+`today` here, and `memories` and `care` in milestone 06. Sections can't be misspelled the way
+`{{variables}}` can, and a hook can read or move one by its tag.
 
 ## Commits
 
-| #    | Commit                                                     | Summary                                                                                                                                                                                                                         |
-| ---- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.1  | `feat(persona): add prompt templates`                      | `PromptTemplate` with `{{variable}}` substitution and `required_variables()`. Rendering names every missing variable at once.                                                                                                   |
-| 5.2  | `feat(persona): add persona types`                         | `PersonaId` and `Persona { id, display_name, description, model, params, prompt, tools, budget }`.                                                                                                                              |
-| 5.3  | `feat(config): add persona configuration`                  | `default_persona`, `prompt_dir`, and `personas: BTreeMap<PersonaId, PersonaConfig>`, using config-friendly shapes such as dollar amounts and humantime strings.                                                                 |
-| 5.4  | `feat(persona): add the companion prompt`                  | `prompts/companion.md` replaces `conversation.md`. It covers voice, the instruction hierarchy, untrusted content, advice boundaries, and research guidance. **This file is the product.**                                       |
-| 5.5  | `feat(persona): add the writer and coder prompts`          | `writer.md`, and `coder.md`, which states plainly that he can read pasted code but can't run or change anything yet.                                                                                                            |
-| 5.6  | `feat(persona): add the persona registry`                  | Loads personas from config, synthesizing `munibot` when none are declared. Resolves prompts from `prompt_dir` or embedded defaults, checks that every model's provider resolves, and fails startup listing every problem found. |
-| 5.7  | `feat(provider): resolve providers per persona`            | A `ProviderSource` trait over `ProviderResolver`, so the chat service builds a harness per persona and tests can substitute fakes.                                                                                              |
-| 5.8  | `feat(db): record the persona on conversations and usage`  | `ai_conversations.persona_id` and `ai_usage.persona_id`, with existing rows backfilled to `munibot`.                                                                                                                            |
-| 5.9  | `feat(ai): run turns as the conversation's persona`        | Uses the persona's model, prompt, tools, and budget. Admission reserves the persona's own `max_cost`.                                                                                                                           |
-| 5.10 | `feat(chat): add persona wire types`                       | `PersonaSummary`, and the persona on `ConversationSummary`.                                                                                                                                                                     |
-| 5.11 | `feat(api): choose a persona when starting a conversation` | `list_personas`, and an optional `persona` on `send_message` that only applies when it creates the conversation.                                                                                                                |
-| 5.12 | `feat(gui): add the persona picker`                        | Shown on a new conversation only, and defaults to `default_persona`.                                                                                                                                                            |
-| 5.13 | `feat(gui): show who you are talking to`                   | The persona's name in the conversation header and the sidebar.                                                                                                                                                                  |
-| 5.14 | `feat(gui): add the persona catalogue`                     | `/personas` lists each persona's description, model, and tools. It doubles as user-facing documentation.                                                                                                                        |
-| 5.15 | `docs: document personas`                                  | The runbook gains how to write a persona and how prompt overrides work. `docs/chat.md` gains the picker.                                                                                                                        |
+| #    | Commit                                                     | Summary                                                                                                                                                                                                                                                                                    |
+| ---- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 5.1  | `feat(persona): add persona types`                         | `PersonaId` and `Persona { id, display_name, description, model, temperature, prompt, tools, budget }`, where `model` is a rig catalog reference.                                                                                                                                          |
+| 5.2  | `feat(config): add persona configuration`                  | `default_persona`, `prompt_dir`, and `personas: BTreeMap<PersonaId, PersonaConfig>`, using config-friendly shapes such as dollar amounts and humantime strings.                                                                                                                            |
+| 5.3  | `feat(persona): add the companion prompt`                  | `prompts/companion.md` replaces `conversation.md`. It covers voice, the instruction hierarchy, untrusted content, advice boundaries, and research guidance. **This file is the product.**                                                                                                  |
+| 5.4  | `feat(persona): add the writer and coder prompts`          | `writer.md`, and `coder.md`, which states plainly that he can read pasted code but can't run or change anything yet.                                                                                                                                                                       |
+| 5.5  | `feat(persona): add per-turn prompt sections`              | Builds the persona's rig `SystemPrompt`: its markdown as the role, plus `person` and `today` sections.                                                                                                                                                                                     |
+| 5.6  | `feat(persona): add the persona registry`                  | Loads personas from config, synthesizing `munibot` when none are declared. Resolves prompts from `prompt_dir` or embedded defaults, connects every model through rig's catalog, and fails startup listing every problem found. Tests hand it `MockCompletionModel`s instead of connecting. |
+| 5.7  | `refactor(ai): build one rig agent per persona`            | `Chat` holds the registry's agents instead of a single one. No behaviour change while only `munibot` exists.                                                                                                                                                                               |
+| 5.8  | `feat(db): record the persona on conversations and usage`  | `ai_conversations.persona_id` and `ai_usage.persona_id`, with existing rows backfilled to `munibot`.                                                                                                                                                                                       |
+| 5.9  | `feat(ai): run turns as the conversation's persona`        | Uses the persona's agent, prompt sections, tools, and budget. Admission reserves the persona's own `max_cost_usd`.                                                                                                                                                                         |
+| 5.10 | `feat(chat): add persona wire types`                       | `PersonaSummary`, and the persona on `ConversationSummary`.                                                                                                                                                                                                                                |
+| 5.11 | `feat(api): choose a persona when starting a conversation` | `list_personas`, and an optional `persona` on `send_message` that only applies when it creates the conversation.                                                                                                                                                                           |
+| 5.12 | `feat(gui): add the persona picker`                        | Shown on a new conversation only, and defaults to `default_persona`.                                                                                                                                                                                                                       |
+| 5.13 | `feat(gui): show who you are talking to`                   | The persona's name in the conversation header and the sidebar.                                                                                                                                                                                                                             |
+| 5.14 | `feat(gui): add the persona catalogue`                     | `/personas` lists each persona's description, model, and tools. It doubles as user-facing documentation.                                                                                                                                                                                   |
+| 5.15 | `docs: document personas`                                  | The runbook gains how to write a persona and how prompt overrides work. `docs/chat.md` gains the picker.                                                                                                                                                                                   |
 
 ## Definition of done
 
