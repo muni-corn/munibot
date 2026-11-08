@@ -46,8 +46,9 @@ pub type ChatResult<T> = Result<T, ChatError>;
 #[cfg(feature = "server")]
 impl From<munibot_ai::rig::ProviderError> for ChatError {
     fn from(e: munibot_ai::rig::ProviderError) -> Self {
+        tracing::warn!(error = %e, "a chat reply couldn't start");
         Self::ServerFnError(ServerFnError::ServerError {
-            message: e.to_string(),
+            message: super::failure::describe_failure(&e),
             code: StatusCode::INTERNAL_SERVER_ERROR.into(),
             details: None,
         })

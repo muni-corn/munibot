@@ -14,6 +14,8 @@
 
 mod error;
 mod event;
+#[cfg(feature = "server")]
+mod failure;
 mod message;
 mod validate;
 

@@ -30,7 +30,10 @@ impl ChatEvent {
             let mut reply = state?;
             match reply.next().await {
                 Some(Ok(text)) => Some((Self::TextDelta(text), Some(reply))),
-                Some(Err(error)) => Some((Self::Failed(error.to_string()), None)),
+                Some(Err(error)) => {
+                    tracing::warn!(%error, "a chat reply failed partway through");
+                    Some((Self::Failed(super::failure::describe_failure(&error)), None))
+                }
                 None => Some((Self::Finished, None)),
             }
         })
@@ -79,7 +82,8 @@ mod tests {
         assert_eq!(events.len(), 2, "nothing should follow a failure");
         assert_eq!(events[0], ChatEvent::TextDelta("par".to_string()));
         assert!(
-            matches!(&events[1], ChatEvent::Failed(message) if message.contains("bad api key"))
+            matches!(&events[1], ChatEvent::Failed(message) if !message.contains("bad api key")),
+            "the provider's own text stays in the server log"
         );
     }
 }
