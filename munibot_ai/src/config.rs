@@ -1,10 +1,9 @@
 //! The `[ai]` section of munibot's configuration file.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-
-use crate::types::{AiError, ModelRef};
+use thiserror::Error;
 
 /// Settings for munibot's conversation interface.
 ///
@@ -19,12 +18,32 @@ pub struct AiConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// The model every conversation talks to, written as `provider:model`,
-    /// like `anthropic:claude-opus-5`. Required once `enabled` is `true`.
+    /// The model every conversation talks to, as a rig catalog reference:
+    /// `vendor/model`, like `anthropic/claude-opus-5`. Required once
+    /// `enabled` is `true`.
     ///
-    /// Also accepted as `default_model`, the key earlier configs used.
-    #[serde(default, alias = "default_model")]
-    pub model: Option<ModelRef>,
+    /// Kept as the string the operator wrote. rig's catalog is what decides
+    /// whether it names a real model, when the chat service connects at
+    /// startup, so parsing it here as well would only duplicate that check
+    /// with worse error messages.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+/// Why the `[ai]` section couldn't be loaded.
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("couldn't read '{}' :< does the file have read permissions? ({source})", path.display())]
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[error("couldn't parse the [ai] section of '{}' :< {source}", path.display())]
+    Parse {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
 }
 
 impl AiConfig {
@@ -37,9 +56,9 @@ impl AiConfig {
     ///
     /// # Errors
     ///
-    /// Returns [`AiError::Config`] if the file exists but can't be read or
+    /// Returns a [`ConfigError`] if the file exists but can't be read or
     /// parsed.
-    pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self, AiError> {
+    pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         #[derive(Deserialize)]
         struct ConfigFile {
             #[serde(default)]
@@ -52,19 +71,17 @@ impl AiConfig {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(Self::default());
             }
-            Err(error) => {
-                return Err(AiError::Config(format!(
-                    "couldn't read '{}' :< {error}. does the file have read permissions?",
-                    path.display()
-                )));
+            Err(source) => {
+                return Err(ConfigError::Read {
+                    path: path.to_owned(),
+                    source,
+                });
             }
         };
 
-        let file: ConfigFile = toml::from_str(&raw).map_err(|error| {
-            AiError::Config(format!(
-                "couldn't parse the [ai] section of '{}' :< {error}",
-                path.display()
-            ))
+        let file: ConfigFile = toml::from_str(&raw).map_err(|source| ConfigError::Parse {
+            path: path.to_owned(),
+            source,
         })?;
         Ok(file.ai)
     }
@@ -73,6 +90,13 @@ impl AiConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn load(contents: &str) -> Result<AiConfig, ConfigError> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, contents).unwrap();
+        AiConfig::load_from_file(&path)
+    }
 
     #[test]
     fn test_default_config_is_disabled() {
@@ -89,71 +113,31 @@ mod tests {
 
     #[test]
     fn test_file_without_an_ai_table_yields_the_default() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
-        std::fs::write(&path, "[discord]\n").unwrap();
-
-        assert_eq!(
-            AiConfig::load_from_file(&path).unwrap(),
-            AiConfig::default()
-        );
+        assert_eq!(load("[discord]\n").unwrap(), AiConfig::default());
     }
 
     #[test]
     fn test_loads_enabled_and_model() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
-        std::fs::write(
-            &path,
-            "[ai]\nenabled = true\nmodel = \"anthropic:claude-opus-5\"\n",
-        )
-        .unwrap();
-
-        let config = AiConfig::load_from_file(&path).unwrap();
+        let config = load("[ai]\nenabled = true\nmodel = \"anthropic/claude-opus-5\"\n").unwrap();
         assert!(config.enabled);
-        assert_eq!(
-            config.model,
-            Some(ModelRef::new("anthropic", "claude-opus-5"))
-        );
-    }
-
-    #[test]
-    fn test_accepts_the_legacy_default_model_key() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
-        std::fs::write(
-            &path,
-            "[ai]\nenabled = true\ndefault_model = \"openai:gpt-5\"\n",
-        )
-        .unwrap();
-
-        let config = AiConfig::load_from_file(&path).unwrap();
-        assert_eq!(config.model, Some(ModelRef::new("openai", "gpt-5")));
+        assert_eq!(config.model.as_deref(), Some("anthropic/claude-opus-5"));
     }
 
     #[test]
     fn test_ignores_sections_it_doesnt_know() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
-        std::fs::write(
-            &path,
-            "[ai]\nenabled = true\nmodel = \"openai:gpt-5\"\n[ai.rate_limits.user]\nmax_requests \
+        let config = load(
+            "[ai]\nenabled = true\nmodel = \"openai/gpt-5\"\n[ai.rate_limits.user]\nmax_requests \
              = 5\n",
         )
         .unwrap();
-
-        assert!(AiConfig::load_from_file(&path).unwrap().enabled);
+        assert!(config.enabled);
     }
 
     #[test]
-    fn test_malformed_toml_is_a_config_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
-        std::fs::write(&path, "[ai\nenabled =").unwrap();
-
+    fn test_malformed_toml_is_a_parse_error() {
         assert!(matches!(
-            AiConfig::load_from_file(&path),
-            Err(AiError::Config(_))
+            load("[ai\nenabled ="),
+            Err(ConfigError::Parse { .. })
         ));
     }
 }

@@ -1,21 +1,16 @@
 //! munibot's conversation interface.
 //!
-//! A provider-agnostic way to hold a plain, temporary conversation with a
-//! model: [`Chat`] streams a reply to whatever history it is handed and
-//! remembers nothing afterwards.
+//! A plain, temporary conversation with a model: [`Chat`] streams a reply to
+//! whatever history it is handed and remembers nothing afterwards.
 //!
-//! Organized as modules rather than separate crates for a project this size:
-//! `types` holds the provider-neutral domain types everything else speaks, and
-//! `provider` is the only module allowed to depend on `rig-core`.
+//! Model access, messages, requests, streaming, usage, and errors are all
+//! rig's own types, re-exported as [`rig`] so every crate that talks to the
+//! chat service speaks the exact same version of them. This crate only adds
+//! what rig doesn't have: munibot's configuration and the service itself.
 
 pub mod config;
 pub mod conversation;
-pub mod provider;
-pub mod types;
 
-pub use config::AiConfig;
+pub use config::{AiConfig, ConfigError};
 pub use conversation::Chat;
-pub use types::{
-    AiError, CompletionRequest, CompletionResponse, ContentBlock, History, Message, ModelParams,
-    ModelRef, ModelRefError, Role, StopReason, StreamEvent, Usage,
-};
+pub use rig_core as rig;

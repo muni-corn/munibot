@@ -37,7 +37,7 @@ impl ChatMessage {
 }
 
 #[cfg(feature = "server")]
-impl From<ChatMessage> for munibot_ai::Message {
+impl From<ChatMessage> for munibot_ai::rig::message::Message {
     fn from(message: ChatMessage) -> Self {
         match message.role {
             ChatRole::User => Self::user(message.content),
@@ -48,19 +48,19 @@ impl From<ChatMessage> for munibot_ai::Message {
 
 #[cfg(all(test, feature = "server"))]
 mod tests {
+    use munibot_ai::rig::message::Message;
+
     use super::*;
 
     #[test]
     fn test_user_message_converts_to_a_user_turn() {
-        let message: munibot_ai::Message = ChatMessage::user("hi").into();
-        assert_eq!(message.role, munibot_ai::Role::User);
-        assert_eq!(message.text(), "hi");
+        let message: Message = ChatMessage::user("hi").into();
+        assert_eq!(message, Message::user("hi"));
     }
 
     #[test]
     fn test_assistant_message_converts_to_an_assistant_turn() {
-        let message: munibot_ai::Message = ChatMessage::assistant("hello!").into();
-        assert_eq!(message.role, munibot_ai::Role::Assistant);
-        assert_eq!(message.text(), "hello!");
+        let message: Message = ChatMessage::assistant("hello!").into();
+        assert_eq!(message, Message::assistant("hello!"));
     }
 }

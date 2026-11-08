@@ -5,13 +5,14 @@
 //! message. Where the history lives, and for how long, is entirely the
 //! caller's concern.
 
-use std::sync::Arc;
-
-use futures::{StreamExt, stream::BoxStream};
-
-use crate::{
-    provider::{Provider, ProviderResolver},
-    types::{AiError, CompletionRequest, History, Message, ModelParams, ModelRef, StreamEvent},
+use futures::{StreamExt, future, stream::BoxStream};
+use rig_core::{
+    DynModel, ProviderError,
+    catalog::Catalog,
+    completion::{CompletionRequest, Message},
+    operation::Completion,
+    providers::registry::ConnectError,
+    streaming::{Item, StreamEvent},
 };
 
 /// The system prompt every conversation starts with.
@@ -21,70 +22,73 @@ const SYSTEM_PROMPT: &str = include_str!("../prompts/conversation.md");
 ///
 /// Anthropic's api requires a ceiling on every request, and a bounded reply
 /// is a sensible default for the other providers too.
-const MAX_REPLY_TOKENS: u32 = 4096;
+const MAX_REPLY_TOKENS: u64 = 4096;
 
 /// A conversation partner backed by one configured model.
 pub struct Chat {
-    provider: Arc<dyn Provider>,
-    model: ModelRef,
+    model: DynModel<Completion>,
 }
 
 impl Chat {
-    /// Builds a chat service for `model`, resolving its provider from the
-    /// environment (for example, `ANTHROPIC_API_KEY` for an `anthropic:`
-    /// model).
+    /// Connects to `model`, a rig catalog reference such as
+    /// `anthropic/claude-opus-5`, reading its credentials from the
+    /// environment (`ANTHROPIC_API_KEY` for an `anthropic/` model, and so
+    /// on).
     ///
     /// # Errors
     ///
-    /// Returns [`AiError::Config`] if the provider is unknown or its
-    /// credentials aren't set.
-    pub fn new(model: ModelRef) -> Result<Self, AiError> {
-        let provider = ProviderResolver::new().resolve(&model)?;
-        Ok(Self::with_provider(provider, model))
+    /// Returns rig's [`ConnectError`] if the reference isn't `vendor/model`,
+    /// names a vendor rig doesn't know, or its key isn't set.
+    pub fn connect(model: &str) -> Result<Self, ConnectError> {
+        Ok(Self::with_model(Catalog::builtin().connect(model)?))
     }
 
-    /// Builds a chat service over an already-constructed provider.
-    pub fn with_provider(provider: Arc<dyn Provider>, model: ModelRef) -> Self {
-        Self { provider, model }
-    }
-
-    /// The model this service talks to.
-    pub fn model(&self) -> &ModelRef {
-        &self.model
+    /// Builds a chat service over an already-connected model, such as rig's
+    /// scripted mock in tests.
+    pub fn with_model(model: impl Into<DynModel<Completion>>) -> Self {
+        Self {
+            model: model.into(),
+        }
     }
 
     /// Streams the model's reply to `history`, as chunks of text.
     ///
-    /// Reasoning and bookkeeping events from the provider are dropped: only
-    /// text the model wants shown reaches the caller.
+    /// Reasoning, tool calls, and provider payloads rig doesn't model are
+    /// dropped: only text the model wants shown reaches the caller.
     ///
     /// # Errors
     ///
-    /// Returns an error if `history` is empty, or if the provider refuses the
-    /// request outright. Failures that happen mid-reply arrive as an `Err`
+    /// Returns an error if the request can't be sent at all, such as an
+    /// empty `history`. Failures that happen mid-reply arrive as an `Err`
     /// item on the returned stream instead.
-    pub async fn reply(
+    #[allow(
+        clippy::result_large_err,
+        reason = "passes rig's own error through unchanged, as rig's own model calls do"
+    )]
+    pub fn reply(
         &self,
         history: Vec<Message>,
-    ) -> Result<BoxStream<'static, Result<String, AiError>>, AiError> {
+    ) -> Result<BoxStream<'static, Result<String, ProviderError>>, ProviderError> {
+        // rig counts the system prompt as history, so it would happily send a
+        // request with nothing to answer
         if history.is_empty() {
-            return Err(AiError::Other(
-                "there's nothing to reply to yet :< send a message first".to_string(),
+            return Err(ProviderError::request(
+                "there's nothing to reply to yet :< send a message first",
             ));
         }
 
-        let request = CompletionRequest::new(self.model.clone(), History::from(history))
-            .with_system(SYSTEM_PROMPT)
-            .with_params(ModelParams::new().with_max_tokens(MAX_REPLY_TOKENS));
+        let request = CompletionRequest::from(history)
+            .preamble(SYSTEM_PROMPT)
+            .max_tokens(MAX_REPLY_TOKENS);
 
-        let events = self.provider.stream(request).await?;
+        let events = self.model.stream(request)?;
         Ok(events
-            .filter_map(|event| async move {
-                match event {
-                    Ok(StreamEvent::TextDelta { text }) => Some(Ok(text)),
+            .filter_map(|item| {
+                future::ready(match item {
+                    Ok(Item::Event(StreamEvent::Text { text, .. })) => Some(Ok(text)),
                     Ok(_) => None,
                     Err(error) => Some(Err(error)),
-                }
+                })
             })
             .boxed())
     }
@@ -92,22 +96,13 @@ impl Chat {
 
 #[cfg(test)]
 mod tests {
+    use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent, mock_final};
+
     use super::*;
-    use crate::{
-        provider::MockProvider,
-        types::{CompletionResponse, ContentBlock, StopReason, Usage},
-    };
 
-    fn model() -> ModelRef {
-        ModelRef::new("mock", "mock-1")
-    }
-
-    fn chat_with(provider: Arc<MockProvider>) -> Chat {
-        Chat::with_provider(provider, model())
-    }
-
-    async fn collect(chat: &Chat, history: Vec<Message>) -> Result<String, AiError> {
-        let mut stream = chat.reply(history).await?;
+    #[allow(clippy::result_large_err, reason = "mirrors Chat::reply")]
+    async fn collect(chat: &Chat, history: Vec<Message>) -> Result<String, ProviderError> {
+        let mut stream = chat.reply(history)?;
         let mut text = String::new();
         while let Some(chunk) = stream.next().await {
             text.push_str(&chunk?);
@@ -115,10 +110,18 @@ mod tests {
         Ok(text)
     }
 
+    fn replying(events: Vec<MockStreamEvent>) -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([events])
+    }
+
     #[tokio::test]
     async fn test_reply_streams_the_models_text() {
-        let provider = Arc::new(MockProvider::new().respond_text("hi there!"));
-        let chat = chat_with(provider);
+        let model = replying(vec![
+            MockStreamEvent::text("hi "),
+            MockStreamEvent::text("there!"),
+            MockStreamEvent::FinalResponse(mock_final(Default::default())),
+        ]);
+        let chat = Chat::with_model(model);
 
         let text = collect(&chat, vec![Message::user("hello")]).await.unwrap();
 
@@ -127,8 +130,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_reply_sends_the_system_prompt_and_whole_history() {
-        let provider = Arc::new(MockProvider::new().respond_text("ok"));
-        let chat = chat_with(provider.clone());
+        let model = replying(vec![
+            MockStreamEvent::text("ok"),
+            MockStreamEvent::FinalResponse(mock_final(Default::default())),
+        ]);
+        let chat = Chat::with_model(model.clone());
 
         collect(&chat, vec![
             Message::user("first"),
@@ -138,28 +144,25 @@ mod tests {
         .await
         .unwrap();
 
-        let requests = provider.requests();
+        let requests = model.requests();
         assert_eq!(requests.len(), 1, "one reply should be one request");
-        assert_eq!(requests[0].system.as_deref(), Some(SYSTEM_PROMPT));
-        assert_eq!(
-            requests[0].history.len(),
-            3,
-            "the full history should be sent"
-        );
-        assert_eq!(requests[0].model, model());
+        let history = &requests[0].chat_history;
+        assert_eq!(*history[0], Message::system(SYSTEM_PROMPT));
+        assert_eq!(history.len(), 4, "the system prompt then the full history");
+        assert_eq!(requests[0].max_tokens, Some(MAX_REPLY_TOKENS));
     }
 
     #[tokio::test]
     async fn test_reply_drops_reasoning() {
-        let provider = Arc::new(MockProvider::new().respond(Ok(CompletionResponse::new(
-            vec![
-                ContentBlock::thinking("hmm, let me think"),
-                ContentBlock::text("the answer"),
-            ],
-            StopReason::EndTurn,
-            Usage::default(),
-        ))));
-        let chat = chat_with(provider);
+        let model = replying(vec![
+            MockStreamEvent::ReasoningDelta {
+                id: "reasoning-0".to_string(),
+                reasoning: "hmm, let me think".to_string(),
+            },
+            MockStreamEvent::text("the answer"),
+            MockStreamEvent::FinalResponse(mock_final(Default::default())),
+        ]);
+        let chat = Chat::with_model(model);
 
         let text = collect(&chat, vec![Message::user("q")]).await.unwrap();
 
@@ -168,24 +171,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_reply_rejects_an_empty_history() {
-        let provider = Arc::new(MockProvider::new());
-        let chat = chat_with(provider.clone());
+        let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+        let chat = Chat::with_model(model.clone());
 
-        let result = chat.reply(Vec::new()).await;
+        let result = collect(&chat, Vec::new()).await;
 
         assert!(result.is_err(), "there's nothing to answer");
-        assert_eq!(provider.request_count(), 0, "no request should be made");
+        assert_eq!(model.request_count(), 0, "no request should be made");
     }
 
     #[tokio::test]
-    async fn test_reply_propagates_provider_errors() {
-        let provider = Arc::new(
-            MockProvider::new().respond_error(AiError::Rejected("bad api key".to_string())),
-        );
-        let chat = chat_with(provider);
+    async fn test_reply_passes_provider_errors_through() {
+        let model = replying(vec![
+            MockStreamEvent::text("par"),
+            MockStreamEvent::Error(MockError::provider("bad api key")),
+        ]);
+        let chat = Chat::with_model(model);
 
-        let result = chat.reply(vec![Message::user("hi")]).await;
+        let result = collect(&chat, vec![Message::user("hi")]).await;
 
-        assert!(matches!(result, Err(AiError::Rejected(_))));
+        assert!(result.is_err(), "a mid-reply failure should surface");
     }
 }

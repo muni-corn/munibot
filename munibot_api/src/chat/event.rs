@@ -20,7 +20,7 @@ impl ChatEvent {
     /// [`Self::Finished`], or with [`Self::Failed`] at the first error,
     /// whichever comes first.
     pub fn stream_from_reply(
-        reply: futures::stream::BoxStream<'static, Result<String, munibot_ai::AiError>>,
+        reply: futures::stream::BoxStream<'static, Result<String, munibot_ai::rig::ProviderError>>,
     ) -> futures::stream::BoxStream<'static, Self> {
         use futures::StreamExt;
 
@@ -41,11 +41,11 @@ impl ChatEvent {
 #[cfg(all(test, feature = "server"))]
 mod tests {
     use futures::{StreamExt, stream};
-    use munibot_ai::AiError;
+    use munibot_ai::rig::ProviderError;
 
     use super::*;
 
-    async fn events(chunks: Vec<Result<String, AiError>>) -> Vec<ChatEvent> {
+    async fn events(chunks: Vec<Result<String, ProviderError>>) -> Vec<ChatEvent> {
         ChatEvent::stream_from_reply(stream::iter(chunks).boxed())
             .collect()
             .await
@@ -71,7 +71,7 @@ mod tests {
     async fn test_an_error_ends_the_stream_with_failed_and_nothing_after() {
         let events = events(vec![
             Ok("par".to_string()),
-            Err(AiError::Rejected("bad api key".to_string())),
+            Err(ProviderError::Provider("bad api key".to_string())),
             Ok("never seen".to_string()),
         ])
         .await;

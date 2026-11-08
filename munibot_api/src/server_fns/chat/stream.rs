@@ -30,7 +30,6 @@ pub async fn chat_stream(
 
     let reply = chat
         .reply(messages.into_iter().map(Into::into).collect())
-        .await
         .map_err(ChatError::from)?;
 
     let events = ChatEvent::stream_from_reply(reply).map(Ok::<ChatEvent, axum::BoxError>);

@@ -12,21 +12,26 @@ use tracing::info;
 /// # Errors
 ///
 /// Fails startup, rather than leaving a chat page that can never answer, if
-/// `ai.enabled` is `true` but no `ai.model` is set, or if the model's provider
-/// can't be set up (an unknown provider, or its api key isn't in the
-/// environment).
+/// `ai.enabled` is `true` but no `ai.model` is set, or if rig can't connect to
+/// the model (it isn't written as `vendor/model`, rig doesn't know the
+/// vendor, or its api key isn't in the environment).
 pub fn build(config: &AiConfig) -> anyhow::Result<Option<Arc<Chat>>> {
     if !config.enabled {
         info!("ai.enabled is false; chat is turned off");
         return Ok(None);
     }
 
-    let model = config.model.clone().context(
+    let model = config.model.as_deref().context(
         "ai.enabled is true but ai.model isn't set :< add something like `model = \
-         \"anthropic:claude-opus-5\"` to the [ai] section of the config file",
+         \"anthropic/claude-opus-5\"` to the [ai] section of the config file",
     )?;
-    let chat = Chat::new(model.clone())?;
+    let chat = Chat::connect(model).with_context(|| {
+        format!(
+            "couldn't connect to ai.model `{model}` :< it should be written as `vendor/model`, \
+             like `anthropic/claude-opus-5`"
+        )
+    })?;
 
-    info!(%model, "chat is turned on");
+    info!(model, "chat is turned on");
     Ok(Some(Arc::new(chat)))
 }
