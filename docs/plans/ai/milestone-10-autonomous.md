@@ -25,7 +25,7 @@ After milestone 09:
 - `Permission::Developer` grants `Privileged`.
 - `manage_project` is the only `Privileged` tool.
 
-From the code at `9b4a38e1`:
+From the code as it stands:
 
 - There's no `munibot_vcs` or `munibot_github` crate, and no `octocrab`.
 - There's no webhook route.
@@ -108,6 +108,27 @@ Runs started by a webhook have no conversation, so they ask by posting an issue 
 maintainer's reply resumes them. Milestone 12 adds a Discord thread adapter through the same
 `InteractionAdapter` trait.
 
+### What's reused
+
+| Need                                      | Reused                                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| GitHub App JWTs and installation tokens   | octocrab: `OctocrabBuilder::app`, `installation`, and its cached `installation_token_with_buffer`                        |
+| Webhook signature verification            | octocrab's `verification` module: HMAC-SHA256 over the raw body, compared in constant time                               |
+| Typed webhook payloads                    | octocrab's `WebhookEvent::try_from_header_and_body`                                                                      |
+| Issues, comments, branches, pull requests | octocrab's REST client                                                                                                   |
+| Structured agent output                   | rig-agent's output-tool mode (`AgentBuilder::output_schema` with `OutputMode::Tool`), with schemas derived by `schemars` |
+| Validating that output in full            | `rig_core::tool::validate`, since rig-agent itself only checks top-level required fields                                 |
+| Driving each agent                        | the persona agents and hooks from milestones 01 to 08                                                                    |
+
+**Why `munibot_vcs` exists at all.** The pipeline should never see a GitHub payload, so that a second
+forge is one crate implementing two traits. That's a bet on a second forge arriving. If it never
+does, `munibot_vcs` is an indirection over octocrab with one implementation, and the pipeline could
+use octocrab's types directly. It's kept small (types, events, two traits) so the bet is cheap either
+way.
+
+The pipeline's own types (states, roles, plans, subtasks, handoff payloads) describe munibot's
+process. No library models them.
+
 ### Spend
 
 Pipeline turns record usage and tool calls with a `pipeline_id`, attributed to whoever started the
@@ -136,50 +157,50 @@ There's no TOML list of repositories to keep in sync.
 
 ### Forge crates
 
-| #     | Commit                                                      | Summary                                                                                                                                            |
-| ----- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 10.1  | `build(secretspec): declare github app credentials`         | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_WEBHOOK_SECRET`, all optional.                                                              |
-| 10.2  | `build(vcs): create the vcs crate`                          | No forge-specific dependency, ever.                                                                                                                |
-| 10.3  | `feat(vcs): add repository and issue types`                 | `Forge`, `RepoRef`, `IssueRef`, `Issue`, and `Comment`, displayed in `owner/name#number` form.                                                     |
-| 10.4  | `feat(vcs): add normalized forge events`                    | `IssueOpened`, `IssueLabeled`, `IssueCommented`, and `PullRequestReviewed`.                                                                        |
-| 10.5  | `feat(vcs): add trigger types`                              | `TriggerMode` and a pure `matches(&ForgeEvent)`, with table tests.                                                                                 |
-| 10.6  | `feat(vcs): add forge traits`                               | `IssueSource` (fetch, comments, post, create) and `PullRequestTarget` (branch, push, open). Both object-safe.                                      |
-| 10.7  | `build(github): create the github crate`                    | octocrab, jsonwebtoken, hmac, sha2, and subtle.                                                                                                    |
-| 10.8  | `feat(github): add app authentication`                      | A JWT, then a per-installation token, cached until a few minutes before it expires.                                                                |
-| 10.9  | `feat(github): verify webhook signatures`                   | HMAC over the **raw** body, compared in constant time, before anything is parsed.                                                                  |
-| 10.10 | `feat(github): normalize webhook payloads`                  | Ignores event types munibot doesn't act on, and filters out events authored by munibot's own app.                                                  |
-| 10.11 | `feat(github): implement the forge traits`                  | `GitHubForge` over an installation token.                                                                                                          |
-| 10.12 | `test(github): add a wiremock forge suite`                  | Idempotent branch reuse, a rejected push, and opening a pull request end to end.                                                                   |
-| 10.13 | `feat(project): clone private repositories through the app` | A `CloneCredentials` implementation using installation tokens through `git credential approve` on stdin. Never in a URL, never in argv.            |
-| 10.14 | `feat(project): register projects from app installations`   | An installation's repositories become projects on first use, behind an `auto_register` setting. When it's off, the skip is logged with its reason. |
+| #     | Commit                                                      | Summary                                                                                                                                                |
+| ----- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 10.1  | `build(secretspec): declare github app credentials`         | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_WEBHOOK_SECRET`, all optional.                                                                  |
+| 10.2  | `build(vcs): create the vcs crate`                          | No forge-specific dependency, ever.                                                                                                                    |
+| 10.3  | `feat(vcs): add repository and issue types`                 | `Forge`, `RepoRef`, `IssueRef`, `Issue`, and `Comment`, displayed in `owner/name#number` form.                                                         |
+| 10.4  | `feat(vcs): add normalized forge events`                    | `IssueOpened`, `IssueLabeled`, `IssueCommented`, and `PullRequestReviewed`.                                                                            |
+| 10.5  | `feat(vcs): add trigger types`                              | `TriggerMode` and a pure `matches(&ForgeEvent)`, with table tests.                                                                                     |
+| 10.6  | `feat(vcs): add forge traits`                               | `IssueSource` (fetch, comments, post, create) and `PullRequestTarget` (branch, push, open). Both object-safe.                                          |
+| 10.7  | `build(github): create the github crate`                    | octocrab, with its JWT support on the `jwt-rust-crypto` backend, so nix doesn't build aws-lc.                                                          |
+| 10.8  | `feat(github): add app authentication`                      | octocrab's app builder and its cached installation tokens, refreshed a few minutes before they expire.                                                 |
+| 10.9  | `feat(github): verify webhook signatures`                   | octocrab's `verification` module over the **raw** body, before anything is parsed.                                                                     |
+| 10.10 | `feat(github): normalize webhook payloads`                  | From octocrab's typed `WebhookEvent` into `ForgeEvent`. Ignores event types munibot doesn't act on, and filters out events munibot's own app authored. |
+| 10.11 | `feat(github): implement the forge traits`                  | `GitHubForge` over an installation token.                                                                                                              |
+| 10.12 | `test(github): add a wiremock forge suite`                  | Idempotent branch reuse, a rejected push, and opening a pull request end to end.                                                                       |
+| 10.13 | `feat(project): clone private repositories through the app` | A `CloneCredentials` implementation using installation tokens through `git credential approve` on stdin. Never in a URL, never in argv.                |
+| 10.14 | `feat(project): register projects from app installations`   | An installation's repositories become projects on first use, behind an `auto_register` setting. When it's off, the skip is logged with its reason.     |
 
 ### Handoffs
 
-| #     | Commit                                        | Summary                                                                                                                                                                                                                                                 |
-| ----- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 10.15 | `feat(persona): add handoff schemas`          | `Persona.handoff: Option<HandoffSchema>`, unset for chat and delegation.                                                                                                                                                                                |
-| 10.16 | `feat(harness): validate handoffs with retry` | An injected `handoff` tool whose schema is the expected payload. Valid calls end the turn; invalid ones get the validation error back and retry within a budget. Never rig's native structured output, which can suppress tool calls on some providers. |
+| #     | Commit                                  | Summary                                                                                                                                                                                                                                                                                                                     |
+| ----- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 10.15 | `feat(persona): add handoff schemas`    | `Persona.handoff: Option<schemars::Schema>`, unset for chat and delegation. A persona with one is built with rig-agent's `output_schema` in `OutputMode::Tool`.                                                                                                                                                             |
+| 10.16 | `feat(turn): validate handoffs in full` | An `on_model_turn_finished` hook checks the output tool's arguments with `rig_core::tool::validate`, and answers a failure with `ModelTurnAction::Retry` and the problems as feedback, within a retry budget. Tool mode only, never a provider's native structured output, which can suppress tool calls on some providers. |
 
 ### Pipeline core
 
-| #     | Commit                                                     | Summary                                                                                                                                     |
-| ----- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| 10.17 | `feat(pipeline): add pipeline state types`                 | `PipelineId`, and every state from `Triaging` through `Complete` and `Failed`, including `AwaitingInput`.                                   |
-| 10.18 | `feat(pipeline): add role and handoff payload types`       | Twelve roles, and a `JsonSchema` payload per handoff.                                                                                       |
-| 10.19 | `feat(pipeline): add plan and subtask types`               | Mirrors what the architect prompt emits.                                                                                                    |
-| 10.20 | `feat(db): add pipeline tables`                            | `ai_pipelines` (with project, issue, `started_by_user_id`, and conversation) and the append-only `ai_pipeline_events`.                      |
-| 10.21 | `feat(db): attribute usage and tool calls to pipelines`    | Nullable `pipeline_id` on `ai_usage` and `ai_tool_calls`.                                                                                   |
-| 10.22 | `feat(db): add triggers to projects`                       | `trigger_mode` and `trigger_label` on `ai_projects`.                                                                                        |
-| 10.23 | `feat(config): add pipeline and github settings`           | `[ai.pipeline]` and `[ai.github]`.                                                                                                          |
-| 10.24 | `feat(pipeline): add the event-sourced store`              | In-memory and diesel implementations. State is always a fold over events.                                                                   |
-| 10.25 | `feat(pipeline): add the transition function`              | A pure `advance(state, event)` with exhaustive table tests. It is the specification.                                                        |
-| 10.26 | `feat(persona): attach handoff schemas to the team`        | The output contracts stripped out during the milestone 07 and 08 ports, supplied exactly once, here.                                        |
-| 10.27 | `feat(tools): let tools act for a pipeline`                | `ToolCtx.conversation_id` becomes optional, and `pipeline_id` is added. No identifier is ever fabricated.                                   |
-| 10.28 | `feat(pipeline): add the agent dispatcher`                 | Maps a role to its persona and handoff, runs it through the harness, and records usage and audit rows with the `pipeline_id`.               |
-| 10.29 | `feat(pipeline): add the project-backed sandbox lifecycle` | A workspace on the run's branch via `ProjectManager::workspace_for`, from the project's image. Teardown keeps the worktree.                 |
-| 10.30 | `feat(pipeline): add the executor`                         | Dispatch, append, advance, persist, and repeat. The per-run cost ceiling and the global cap are checked before each invocation.             |
-| 10.31 | `feat(pipeline): synthesize fix subtasks`                  | So the final review's change requests loop back to the project manager instead of dead-ending.                                              |
-| 10.32 | `feat(pipeline): add the registry and concurrency limits`  | Global and per-project limits, a FIFO queue, one live run per issue, and abort propagating cancellation into the harness and the container. |
+| #     | Commit                                                     | Summary                                                                                                                             |
+| ----- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 10.17 | `feat(pipeline): add pipeline state types`                 | `PipelineId`, and every state from `Triaging` through `Complete` and `Failed`, including `AwaitingInput`.                           |
+| 10.18 | `feat(pipeline): add role and handoff payload types`       | Twelve roles, and a `JsonSchema` payload per handoff.                                                                               |
+| 10.19 | `feat(pipeline): add plan and subtask types`               | Mirrors what the architect prompt emits.                                                                                            |
+| 10.20 | `feat(db): add pipeline tables`                            | `ai_pipelines` (with project, issue, `started_by_user_id`, and conversation) and the append-only `ai_pipeline_events`.              |
+| 10.21 | `feat(db): attribute usage and tool calls to pipelines`    | Nullable `pipeline_id` on `ai_usage` and `ai_tool_calls`.                                                                           |
+| 10.22 | `feat(db): add triggers to projects`                       | `trigger_mode` and `trigger_label` on `ai_projects`.                                                                                |
+| 10.23 | `feat(config): add pipeline and github settings`           | `[ai.pipeline]` and `[ai.github]`.                                                                                                  |
+| 10.24 | `feat(pipeline): add the event-sourced store`              | In-memory and diesel implementations. State is always a fold over events.                                                           |
+| 10.25 | `feat(pipeline): add the transition function`              | A pure `advance(state, event)` with exhaustive table tests. It is the specification.                                                |
+| 10.26 | `feat(persona): attach handoff schemas to the team`        | The output contracts stripped out during the milestone 07 and 08 ports, supplied exactly once, here.                                |
+| 10.27 | `feat(tools): let tools act for a pipeline`                | `Invoker` gains an optional `pipeline_id`, beside an optional conversation. No identifier is ever fabricated.                       |
+| 10.28 | `feat(pipeline): add the agent dispatcher`                 | Maps a role to its persona and handoff, runs the persona's agent, and records usage and audit rows with the `pipeline_id`.          |
+| 10.29 | `feat(pipeline): add the project-backed sandbox lifecycle` | A workspace on the run's branch via `ProjectManager::workspace_for`, from the project's image. Teardown keeps the worktree.         |
+| 10.30 | `feat(pipeline): add the executor`                         | Dispatch, append, advance, persist, and repeat. The per-run cost ceiling and the global cap are checked before each invocation.     |
+| 10.31 | `feat(pipeline): synthesize fix subtasks`                  | So the final review's change requests loop back to the project manager instead of dead-ending.                                      |
+| 10.32 | `feat(pipeline): add the registry and concurrency limits`  | Global and per-project limits, a FIFO queue, one live run per issue, and abort dropping the running agent stream and the container. |
 
 ### Wiring
 
@@ -189,7 +210,7 @@ There's no TOML list of repositories to keep in sync.
 | 10.34 | `feat(gui): add the github webhook route`       | Verify, normalize, match against project triggers, then launch. Returns 202 immediately.                                    |
 | 10.35 | `feat(munibot): wire the pipeline at startup`   | Built only when the app credentials exist. Without them there's no launcher, and startup still succeeds.                    |
 | 10.36 | `feat(munibot): resume unfinished runs at boot` | Replay, re-provision, and continue, before the webhook route accepts deliveries.                                            |
-| 10.37 | `test(pipeline): add a launch integration test` | A signed webhook payload resolves a project, starts the executor, and is aborted, against `MockProvider`.                   |
+| 10.37 | `test(pipeline): add a launch integration test` | A signed webhook payload resolves a project, starts the executor, and is aborted, against `MockCompletionModel`.            |
 
 ### Interaction and starting work
 
